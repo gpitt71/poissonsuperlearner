@@ -1,0 +1,123 @@
+---
+title: "Replicate Cox with simple survival models"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Replicate Cox with simple survival models}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(tmlensemble)
+library(survival)
+```
+
+
+Let us consider a simple survival setting
+
+$$
+O=(L_1, \widetilde{T},  {\Delta}),
+$$
+
+where we have a covariate $L_1 \in \{0,1\}$, the survival time $\widetilde{T}=\min(T,C)$, where $T\in \mathbb{R}^+$ is the time to event and $C \in \mathbb{R}^+$ represents the censoring random variable. $\Delta$ indicates censoring when equal to 0 and event when equal to 1.
+
+We simulate data assuming a proportional model for the hazard 
+
+$$
+\lambda(t | \ell) = \lambda_0 t \exp(\beta_0  \mathbf{1}(\ell=0)+ \beta_1 \mathbf{1}(\ell=1)).
+$$
+In our example we will assume $\lambda_0 = 0.5$, $\beta_1 = 0.1$, and $\beta_0 = 0.25$. The censoring random variable follows a uniform distribution between $0$ and $4.5$.
+
+We will simulate $i=1, \ldots, n$ observations of $O$, namely 
+
+
+$$
+O_i = (L_{1,i}, \widetilde{T}_i,  {\Delta}_i),
+$$
+
+
+```{r}
+
+inverse_sf<- function(lambda, beta, X1, u){
+  
+  out <- -log(u)/(lambda*exp(beta*X1))
+  
+  return(out)
+}
+
+
+```
+
+```{r}
+
+n <- 100000
+
+{
+  set.seed(1)
+  
+  sample0 <- 1-runif(as.integer(n/2), min=0, max= 1)
+
+  sample1 <- 1-runif(as.integer(n/2), min=0, max= 1)
+  
+  
+  }
+
+```
+
+```{r}
+
+
+times_0 <- inverse_sf(u=sample0,
+                      lambda=0.5,
+                      beta=0.25,
+                      X1=0)
+
+times_1 <- inverse_sf(u=sample1,
+                      lambda=0.5,
+                      beta=0.1,
+                      X1=1)
+
+time = c(times_0,times_1)
+max(time)
+
+{
+  set.seed(1)
+  cens <- runif(n=length(time),
+              min=0,
+              max=4.5)
+  
+  }
+
+tmp <- time
+tmp[time > cens] <- cens[time > cens]
+
+dt <- data.table(
+  id=1:length(dt),
+  time = tmp,
+  covariate = as.factor(c(rep(0,length(times_0)),
+                rep(1, length(times_1)))),
+  event = 1-as.numeric(time > cens)
+  
+  
+)
+
+table(dt$event)
+```
+
+
+
+```{r}
+
+cox_model <- coxph(Surv(time, event) ~ covariate, dt)
+
+summary(cox_model)
+```
+
+
