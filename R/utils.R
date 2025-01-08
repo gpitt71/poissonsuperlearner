@@ -1,9 +1,9 @@
-create_offset_variable_survival <- function(nodes, time_to_event){
+create_offset_variable_survival <- function(nodes, delta, time_to_event){
 
   tmp <- c(nodes[nodes < time_to_event],
            first(nodes[nodes >= time_to_event]))
 
-  tmp[length(tmp)] <- time_to_event
+  if(delta == 1){tmp[length(tmp)] <- time_to_event}
 
   tij <- diff(c(tmp))
 

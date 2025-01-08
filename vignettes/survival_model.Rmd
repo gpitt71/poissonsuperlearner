@@ -27,14 +27,14 @@ $$
 O=(L_1, \widetilde{T},  {\Delta}),
 $$
 
-where we have a covariate $L_1 \in \{0,1\}$, the survival time $\widetilde{T}=\min(T,C)$, where $T\in \mathbb{R}^+$ is the time to event and $C \in \mathbb{R}^+$ represents the censoring random variable. $\Delta$ indicates censoring when equal to 0 and event when equal to 1.
+where we have a numeric covariate $L_1$, the survival time $\widetilde{T}=\min(T,C)$, where $T\in \mathbb{R}^+$ is the time to event and $C \in \mathbb{R}^+$ represents the censoring random variable. $\Delta$ indicates censoring when equal to 0 and event when equal to 1.
 
 We simulate data assuming a proportional model for the hazard 
 
 $$
-\lambda(t | \ell) = \lambda_0 t \exp(\beta_0  \mathbf{1}(\ell=0)+ \beta_1 \mathbf{1}(\ell=1)).
+\lambda(t | \ell) = \lambda_0 t \exp(\beta L_1).
 $$
-In our example we will assume $\lambda_0 = 0.5$, $\beta_1 = 0.1$, and $\beta_0 = 0.25$. The censoring random variable follows a uniform distribution between $0$ and $4.5$.
+In our example we will assume $\lambda_0 = 0.5$, $\beta = 0.1$. The censoring random variable follows a uniform distribution between $0$ and $4.5$.
 
 We will simulate $i=1, \ldots, n$ observations of $O$, namely 
 
@@ -65,14 +65,12 @@ inverse_sf<- function(lambda, beta, X1, u){
 
 ```{r}
 
-n <- 300
+n <- 200
 
 {
   set.seed(1)
   
   sample <- 1-runif(as.integer(n), min=0, max= 1)
-  # sample0 <- 1-runif(as.integer(n/2), min=0, max= 1)
-  # sample1 <- 1-runif(as.integer(n/2), min=0, max= 1)
   X <- rnorm(n)
   
   }
@@ -81,18 +79,7 @@ n <- 300
 
 ```{r}
 
-# 
-# times_0 <- inverse_sf(u=sample0,
-#                       lambda=0.5,
-#                       beta=0.25,
-#                       X1=0)
-# 
-# times_1 <- inverse_sf(u=sample1,
-#                       lambda=0.5,
-#                       beta=0.1,
-#                       X1=1)
-# 
-# time = c(times_0,times_1)
+
 
 time<- inverse_sf(u=sample,
                       lambda=0.5,
@@ -105,7 +92,7 @@ max(time)
   set.seed(1)
   cens <- runif(n=length(time),
               min=0,
-              max=4.5)
+              max=5.5)
   
   }
 
@@ -144,7 +131,7 @@ data_pp <- DataPreProcessing(data=dt,
                               setting = "survival",
                               covariates,
                               treatment,
-                              # nodes= seq(1,5,by=.4),
+                              nodes= seq(0,6,by=1),
                               event="time")
   
   
@@ -169,9 +156,9 @@ summary(model_pois)
 
 ```{r}
 
-tmp <- data.frame(node=sort(unique(data_pp$data$node)),
+tmp <- data.frame(node=factor(sort(unique(data_pp$data$node))),
                   tij=1,
-                  covariate=1
+                  covariate=0.5
                   )
 
 
@@ -183,27 +170,22 @@ pw_constant_hazard <- predict(model_pois,
 tmp[,"sf_hat"] = exp(-cumsum(pw_constant_hazard))
   
 
-tmp<- tmp[pw_constant_hazard<=1,]
-  
-```
-
-```{r}
-pw_constant_hazard[2]
 ```
 
 
 
+
+
 ```{r}
+xtrue <- 0:5
+ytrue <- sf(xtrue,
+            beta = 0.1,
+            X1 = 0.5)
 
-
-sf(tmp$node[1],
-   lambda=0.5,
-   beta=0.1,
-   X1=1)
-
-
-
-plot(tmp$node,tmp$sf_hat)
+plot(xtrue,
+     ytrue,
+     type="line")
+lines(0:6,c(1,tmp$sf_hat), col="red")
 ```
 
 

@@ -42,21 +42,25 @@ DataPreProcessing <- function(data,
       reframe(
         node = eval(parse(
           text = paste0(
-            "create_offset_variable_survival(grid_nodes, time_to_event=",
+            "create_offset_variable_survival(nodes=grid_nodes, time_to_event=",
             event,
+            ",delta=",
+            status,
             ")[,1]"
           )
         )),
         tij = eval(parse(
           text = paste0(
-            "create_offset_variable_survival(grid_nodes, time_to_event=",
+            "create_offset_variable_survival(nodes=grid_nodes, time_to_event=",
             event,
+            ",delta=",
+            status,
             ")[,2]"
           )
         )),
         deltaij = eval(parse(
           text = paste0(
-            "create_response_variable_survival(grid_nodes, time_to_event=",
+            "create_response_variable_survival(nodes=grid_nodes, time_to_event=",
             event,
             ",delta=",
             status,
