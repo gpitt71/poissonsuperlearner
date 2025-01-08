@@ -13,6 +13,7 @@ DataPreProcessing <- function(data,
                               setting = "survival",
                               covariates,
                               treatment,
+                              nodes=NULL,
                               event){
 
 
@@ -20,17 +21,52 @@ DataPreProcessing <- function(data,
 
   if(setting == "survival"){
 
-    nodes <- sort(unique(dt[,"event"]))
+    if(is.null(nodes)){
 
+      grid_nodes <- c(0,sort(unique(data[,event])))
 
-    dt_fit <- dt %>%
+    }else{
+
+      grid_nodes <- nodes
+
+      if(!(0 %in% grid_nodes)){
+
+        grid_nodes <- c(0,grid_nodes)
+
+      }
+
+    }
+
+    dt_fit <- data %>%
       group_by(id) %>%
-      mutate(node = eval(parse(text = paste0("create_offset_variable_survival(nodes, time_to_event=", event,")[,1]"))),
-              tij = eval(parse(text = paste0("create_offset_variable_survival(nodes, time_to_event=", event,")[,2]"))),
-              deltaij = eval(parse(text = paste0("create_response_variable_survival(nodes, time_to_event=", event,",delta=status)"))))
+      reframe(
+        node = eval(parse(
+          text = paste0(
+            "create_offset_variable_survival(grid_nodes, time_to_event=",
+            event,
+            ")[,1]"
+          )
+        )),
+        tij = eval(parse(
+          text = paste0(
+            "create_offset_variable_survival(grid_nodes, time_to_event=",
+            event,
+            ")[,2]"
+          )
+        )),
+        deltaij = eval(parse(
+          text = paste0(
+            "create_response_variable_survival(grid_nodes, time_to_event=",
+            event,
+            ",delta=",
+            status,
+            ")"
+          )
+        ))
+      )
 
 
-
+    dt_fit <- merge(dt_fit,data,by="id",all.x=T)
   }
 
   out <- list(data = dt_fit)

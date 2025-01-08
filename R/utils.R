@@ -5,15 +5,17 @@ create_offset_variable_survival <- function(nodes, time_to_event){
 
   tmp[length(tmp)] <- time_to_event
 
-  tij <- diff(c(0,tmp))
+  tij <- diff(c(tmp))
 
-  return(cbind(tmp,tij))
+  grid_nodes <- c(nodes[nodes < time_to_event])
+
+  return(cbind(grid_nodes,tij))
 }
 
 create_response_variable_survival <- function(nodes, time_to_event, delta, event_type){
 
 
-  l <- sum(nodes <= time_to_event)
+  l <- sum(nodes < time_to_event)
 
   out <- c(rep(0,l-1),
            delta)

@@ -17,6 +17,7 @@ knitr::opts_chunk$set(
 ```{r setup}
 library(tmlensemble)
 library(survival)
+library(data.table)
 ```
 
 
@@ -45,6 +46,13 @@ $$
 
 ```{r}
 
+sf <- function(t,lambda, beta, X1){
+  
+  out <- exp(-lambda*exp(beta*X1)*t)
+  return(out)
+}
+
+
 inverse_sf<- function(lambda, beta, X1, u){
   
   out <- -log(u)/(lambda*exp(beta*X1))
@@ -57,15 +65,15 @@ inverse_sf<- function(lambda, beta, X1, u){
 
 ```{r}
 
-n <- 100000
+n <- 300
 
 {
   set.seed(1)
   
-  sample0 <- 1-runif(as.integer(n/2), min=0, max= 1)
-
-  sample1 <- 1-runif(as.integer(n/2), min=0, max= 1)
-  
+  sample <- 1-runif(as.integer(n), min=0, max= 1)
+  # sample0 <- 1-runif(as.integer(n/2), min=0, max= 1)
+  # sample1 <- 1-runif(as.integer(n/2), min=0, max= 1)
+  X <- rnorm(n)
   
   }
 
@@ -73,18 +81,24 @@ n <- 100000
 
 ```{r}
 
+# 
+# times_0 <- inverse_sf(u=sample0,
+#                       lambda=0.5,
+#                       beta=0.25,
+#                       X1=0)
+# 
+# times_1 <- inverse_sf(u=sample1,
+#                       lambda=0.5,
+#                       beta=0.1,
+#                       X1=1)
+# 
+# time = c(times_0,times_1)
 
-times_0 <- inverse_sf(u=sample0,
-                      lambda=0.5,
-                      beta=0.25,
-                      X1=0)
-
-times_1 <- inverse_sf(u=sample1,
+time<- inverse_sf(u=sample,
                       lambda=0.5,
                       beta=0.1,
-                      X1=1)
+                      X1=X)
 
-time = c(times_0,times_1)
 max(time)
 
 {
@@ -98,26 +112,101 @@ max(time)
 tmp <- time
 tmp[time > cens] <- cens[time > cens]
 
+
 dt <- data.table(
-  id=1:length(dt),
+  id=1:length(tmp),
   time = tmp,
-  covariate = as.factor(c(rep(0,length(times_0)),
-                rep(1, length(times_1)))),
-  event = 1-as.numeric(time > cens)
+  covariate = X,
+  status = 1-as.numeric(time > cens)
   
   
 )
 
-table(dt$event)
+table(dt$status)
 ```
 
 
 
 ```{r}
 
-cox_model <- coxph(Surv(time, event) ~ covariate, dt)
+cox_model <- coxph(Surv(time, status) ~ covariate, dt)
 
 summary(cox_model)
 ```
+
+
+
+
+```{r}
+data_pp <- DataPreProcessing(data=dt,
+                              id="id",
+                              status="status",
+                              setting = "survival",
+                              covariates,
+                              treatment,
+                              # nodes= seq(1,5,by=.4),
+                              event="time")
+  
+  
+```
+
+
+
+
+
+
+
+```{r}
+model_pois <- glm("deltaij ~ covariate-1+factor(node)+offset(log(tij))",
+                  data = data_pp$data,
+                  family = poisson(link = "log"))
+
+
+summary(model_pois)
+
+```
+
+
+```{r}
+
+tmp <- data.frame(node=sort(unique(data_pp$data$node)),
+                  tij=1,
+                  covariate=1
+                  )
+
+
+pw_constant_hazard <- predict(model_pois,
+                              newdata=tmp,
+                              type = "response")
+
+
+tmp[,"sf_hat"] = exp(-cumsum(pw_constant_hazard))
+  
+
+tmp<- tmp[pw_constant_hazard<=1,]
+  
+```
+
+```{r}
+pw_constant_hazard[2]
+```
+
+
+
+```{r}
+
+
+sf(tmp$node[1],
+   lambda=0.5,
+   beta=0.1,
+   X1=1)
+
+
+
+plot(tmp$node,tmp$sf_hat)
+```
+
+
+
 
 
