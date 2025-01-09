@@ -1,5 +1,5 @@
 ---
-title: "Replicate Cox with simple survival models"
+title: "Piecewise constant hazards for modelling survival"
 output: rmarkdown::html_vignette
 vignette: >
   %\VignetteIndexEntry{Replicate Cox with simple survival models}
@@ -20,6 +20,8 @@ library(survival)
 library(data.table)
 ```
 
+
+# Simulation set-up
 
 Let us consider a simple survival setting
 
@@ -111,7 +113,9 @@ dt <- data.table(
 
 table(dt$status)
 ```
+# Data application
 
+## Replicating the Cox model
 
 
 ```{r}
@@ -131,16 +135,10 @@ data_pp <- DataPreProcessing(data=dt,
                               setting = "survival",
                               covariates,
                               treatment,
-                              nodes= seq(0,6,by=1),
                               event="time")
   
   
 ```
-
-
-
-
-
 
 
 ```{r}
@@ -153,6 +151,52 @@ summary(model_pois)
 
 ```
 
+## Different choices of the grid
+
+
+In this Section we check out that we model the survival function correctly when I change the grid span. In particular, we compare the grid constructed on the observed data points, a grid with step one and a grid with step $0.5$.
+
+### Sequence with unit distant points
+
+```{r}
+data_pp_1 <- DataPreProcessing(data=dt,
+                              id="id",
+                              status="status",
+                              setting = "survival",
+                              covariates,
+                              treatment,
+                              nodes = seq(0,6,1),
+                              event="time")
+
+
+model_pois_1 <- glm("deltaij ~ covariate-1+factor(node)+offset(log(tij))",
+                  data = data_pp_1$data,
+                  family = poisson(link = "log"))
+
+
+```
+
+### Sequence with 0.5 distant points
+
+```{r}
+data_pp_05 <- DataPreProcessing(data=dt,
+                              id="id",
+                              status="status",
+                              setting = "survival",
+                              covariates,
+                              treatment,
+                              nodes = seq(0,6,0.5),
+                              event="time")
+
+
+model_pois_05 <- glm("deltaij ~ covariate-1+factor(node)+offset(log(tij))",
+                  data = data_pp_05$data,
+                  family = poisson(link = "log"))
+
+
+```
+
+## Check out the survival function behavior
 
 ```{r}
 
@@ -167,8 +211,35 @@ pw_constant_hazard <- predict(model_pois,
                               type = "response")
 
 
-tmp[,"sf_hat"] = exp(-cumsum(pw_constant_hazard))
+tmp[,"sf_hat"] = exp(-cumsum(pw_constant_hazard*diff(c(sort(unique(data_pp$data$node)),1))))
+
+
+
+tmp_1 <- data.frame(node=factor(sort(unique(data_pp_1$data$node))),
+                  tij=1,
+                  covariate=0.5
+                  )
+
+pw_constant_hazard_1 <- predict(model_pois_1,
+                              newdata=tmp_1,
+                              type = "response")
+
+
+tmp_1[,"sf_hat"] = exp(-cumsum(pw_constant_hazard_1*1))
   
+
+tmp_05 <- data.frame(node=factor(sort(unique(data_pp_05$data$node))),
+                  tij=1,
+                  covariate=0.5
+                  )
+
+pw_constant_hazard_05 <- predict(model_pois_05,
+                              newdata=tmp_05,
+                              type = "response")
+
+
+tmp_05[,"sf_hat"] = exp(-cumsum(pw_constant_hazard_05*0.5))
+
 
 ```
 
@@ -177,16 +248,40 @@ tmp[,"sf_hat"] = exp(-cumsum(pw_constant_hazard))
 
 
 ```{r}
-xtrue <- 0:5
+xtrue <- seq(0,6,0.001)
 ytrue <- sf(xtrue,
+            lambda=.5,
             beta = 0.1,
             X1 = 0.5)
 
 plot(xtrue,
      ytrue,
-     type="line")
-lines(0:6,c(1,tmp$sf_hat), col="red")
+     type="line",
+     xlab="Time", ylab="Survival Function")
+lines(sort(unique(data_pp$data$node)),c(tmp$sf_hat), col="red",type="S")
+lines(seq(0,6,by=1),c(1,tmp_1$sf_hat), col="green",type="S")
+lines(seq(0,5.5,by=.5),c(1,tmp_05$sf_hat), col="blue",type="S")
+legend(x = "topright", 
+       title="Fitted Curve",  
+       legend=c("Observed grid", "Step 1", "Step 0.5"),  
+       fill = c("red","green","blue")) 
+
+
+
+
 ```
+
+## Different learners 
+
+In this Section we repeat the same experiment but we fit different learners to the data.
+
+
+
+
+
+
+
+
 
 
 
