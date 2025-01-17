@@ -18,7 +18,19 @@ knitr::opts_chunk$set(
 library(tmlensemble)
 library(survival)
 library(data.table)
+library(reticulate)
+library(keras)
 ```
+
+
+```{r}
+seed=1
+use_condaenv("C:\\Users\\pwt887\\AppData\\Local\\anaconda3\\envs\\pytmle")
+Sys.setenv(PYTHONHASHSEED = seed)
+set.seed(seed)
+reticulate::py_set_seed(seed)
+```
+
 
 
 # Simulation set-up
@@ -67,10 +79,10 @@ inverse_sf<- function(lambda, beta, X1, u){
 
 ```{r}
 
-n <- 200
+n <- 20000
 
 {
-  set.seed(1)
+  set.seed(seed)
   
   sample <- 1-runif(as.integer(n), min=0, max= 1)
   X <- rnorm(n)
@@ -128,7 +140,7 @@ summary(cox_model)
 
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 data_pp <- DataPreProcessing(data=dt,
                               id="id",
                               status="status",
@@ -141,7 +153,7 @@ data_pp <- DataPreProcessing(data=dt,
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 model_pois <- glm("deltaij ~ covariate-1+factor(node)+offset(log(tij))",
                   data = data_pp$data,
                   family = poisson(link = "log"))
@@ -200,15 +212,15 @@ model_pois_05 <- glm("deltaij ~ covariate-1+factor(node)+offset(log(tij))",
 
 ```{r}
 
-tmp <- data.frame(node=factor(sort(unique(data_pp$data$node))),
-                  tij=1,
-                  covariate=0.5
-                  )
-
-
-pw_constant_hazard <- predict(model_pois,
-                              newdata=tmp,
-                              type = "response")
+# tmp <- data.frame(node=factor(sort(unique(data_pp$data$node))),
+#                   tij=1,
+#                   covariate=0.5
+#                   )
+# 
+# 
+# pw_constant_hazard <- predict(model_pois,
+#                               newdata=tmp,
+#                               type = "response")
 
 
 tmp[,"sf_hat"] = exp(-cumsum(pw_constant_hazard*diff(c(sort(unique(data_pp$data$node)),1))))
@@ -258,7 +270,7 @@ plot(xtrue,
      ytrue,
      type="line",
      xlab="Time", ylab="Survival Function")
-lines(sort(unique(data_pp$data$node)),c(tmp$sf_hat), col="red",type="S")
+# lines(sort(unique(data_pp$data$node)),c(tmp$sf_hat), col="red",type="S")
 lines(seq(0,6,by=1),c(1,tmp_1$sf_hat), col="green",type="S")
 lines(seq(0,5.5,by=.5),c(1,tmp_05$sf_hat), col="blue",type="S")
 legend(x = "topright", 
@@ -276,12 +288,135 @@ legend(x = "topright",
 In this Section we repeat the same experiment but we fit different learners to the data.
 
 
+### Neural Networks 
+
+```{r}
+preprocess_minmax <- function(varData) {
+  X <- as.numeric(varData)
+  2 * (X - min(X)) / (max(X) - min(X)) - 1
+}
+
+
+x_nn <- data_pp_1$data %>%
+  select(covariate,node) %>%
+  mutate(covariate=preprocess_minmax(covariate))%>%
+    fastDummies::dummy_cols(select_columns = "node",
+               remove_selected_columns = TRUE,
+               remove_first_dummy = FALSE)
+
+y_nn <- data_pp_1$data %>%
+  select(deltaij,tij) 
+
+nfeatures <- dim(x_nn)[2]
+
+
+Design  <- keras::layer_input(shape = c(nfeatures), dtype = 'float32', name = 'Design') 
+LogVol  <- layer_input(shape = c(1), dtype = 'float32', name = 'LogVol')
+
+Network <- Design %>%
+  layer_dense(units = 2, activation = 'tanh', name = 'layer1',  use_bias = F) %>%
+  layer_dense(units = 1, activation = 'exponential', name = 'Network',  use_bias = F)
+
+Response <- LogVol %>%
+  layer_dense(units = 1,  use_bias = F, activation = k_exp, name = 'Response', trainable = FALSE,
+              weights =list( array(1, dim = c(1, 1))))
+
+
+# Combine the outputs of the two networks
+combined_output <- layer_multiply(list(Network, Response))
+
+# Create a model with the combined output
+model <- keras_model(inputs = list(Design, LogVol), outputs = combined_output)
+
+```
+
+```{r}
+poisson_nll <- function(y_true, y_pred, ...) {
+
+  out <- -sum(y_true * log(y_pred) - y_pred)
+
+  return(out)
+
+}
+
+
+model %>% compile(
+  loss = 'poisson',
+  optimizer = 'adam'
+)
+
+summary(model)
 
 
 
 
+```
+
+```{r}
+# set hyperparameters
+epochs <- 300
+batch_size <- 2000
+validation_split <- 0.2  # set to >0 to see train/validation loss in plot(fit)
+verbose <- 1
+```
 
 
+```{r}
+model_fit <- model %>% fit(
+    list(as.matrix.data.frame(x_nn), as.matrix(log(y_nn$tij))), as.matrix((y_nn$deltaij)),
+    epochs = epochs,
+    batch_size = batch_size,
+    validation_split = validation_split,
+    verbose = verbose
+  )
+```
+
+```{r}
+tmp_1 <- data.frame(node=factor(sort(unique(data_pp_1$data$node))),
+                  tij=1,
+                  covariate=0.5
+                  )
+
+X_nn_test = tmp_1 %>%
+  select(covariate,node) %>%
+  mutate(covariate=2 * (covariate - min(data_pp_1$data$covariate)) / (max(data_pp_1$data$covariate) - min(data_pp_1$data$covariate)) - 1)%>%
+    fastDummies::dummy_cols(select_columns = "node",
+               remove_selected_columns = TRUE,
+               remove_first_dummy = FALSE) %>%
+  as.matrix()
+  
+
+
+
+pw_constant_hazard_1_nn <- as.vector(model%>% predict(list(X_nn_test, as.matrix(rep(log(1),dim(X_nn_test)[1])))))
+
+
+
+tmp_1['sf_nn'] <- exp(-cumsum(pw_constant_hazard_1_nn*1))
+
+```
+
+```{r}
+xtrue <- seq(0,6,0.001)
+ytrue <- sf(xtrue,
+            lambda=.5,
+            beta = 0.1,
+            X1 = 0.5)
+
+plot(xtrue,
+     ytrue,
+     type="line",
+     xlab="Time", ylab="Survival Function")
+# lines(sort(unique(data_pp$data$node)),c(tmp$sf_hat), col="red",type="S")
+lines(seq(0,6,by=1),c(1,tmp_1$sf_hat), col="red",type="S")
+lines(seq(0,6,by=1),c(1,tmp_1$sf_nn), col="green",type="S")
+legend(x = "topright", 
+       title="Fitted Curve",  
+       legend=c( "glm", "nn"),  
+       fill = c("red","green")) 
+
+
+```
 
 
 
