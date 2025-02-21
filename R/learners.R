@@ -32,16 +32,25 @@ learner_xgboost <- function(data,covariates){
 #'
 #'
 #' @export
-learner_glmnet <- function(formula,
+learner_glmnet <- function(covariates,
+                           treatment=NULL,
                            cross_validation=FALSE,
-                           learner_label=NULL,
                            ...){
 
+  # browser()
+  xs <- paste(covariates, collapse="+")
+
+  if(!is.null(treatment)){
+
+    xs <- paste(xs,"+",treatment)
+  }
+
+  formula_string <- paste("deltaij ~", xs,"-1+node+offset(log(tij))", sep="")
 
   if(cross_validation){
 
     learner <- function(data,
-                        formula,
+                        formula=formula_string,
                         ...){
 
       tmp <- datapp_glmnet(data, formula)
@@ -57,7 +66,7 @@ learner_glmnet <- function(formula,
   }else{
 
     learner <- function(data,
-                        formula,
+                        formula=formula_string,
                         ...){
 
       tmp <- datapp_glmnet(data, formula)

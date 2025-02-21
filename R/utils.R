@@ -83,8 +83,8 @@ create_offset_variable <- function(nodes, delta, time_to_event){
 
 
 datapp_glmnet <- function(data, formula) {
-  glmnet_train.mf  <- model.frame(as.formula(formula), data)
-  x  <- model.matrix(attr(xgtrain.mf, "terms"), data = data)
+  train.mf  <- model.frame(as.formula(formula), data)
+  x  <- model.matrix(attr(train.mf, "terms"), data = data)
   y  <- data[['deltaij']]
   offset <- log(data[['tij']])
 

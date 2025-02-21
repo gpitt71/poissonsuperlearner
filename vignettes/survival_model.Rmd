@@ -529,7 +529,7 @@ legend(x = "topright",
 
 ```
 
-# Competing risks
+# Learners
 
 ```{r}
 tmp2 <- data_pre_processing(
@@ -551,8 +551,69 @@ model_pois_1 <- glm("deltaij ~ covariate-1+factor(node)+offset(log(tij))",
 ```
 
 
+```{r}
+tmp_05 <- data.frame(node = factor(sort(unique(
+  tmp2$node
+))),
+tij = 1,
+covariate = 0.5)
+
+pw_constant_hazard <- predict(model_pois_1, newdata = tmp_05, type = "response")
 
 
+tmp_05[, "sf_hat"] = exp(-cumsum(pw_constant_hazard * 0.5))
+```
+
+```{r}
+l1 <- learner_glmnet(covariates = c("covariate"),
+                     treatment = NULL,
+                     cross_validation=T)
+```
+
+```{r}
+fit <- l1(tmp2)
+```
+
+<!-- ```{r} -->
+
+<!-- # glmnet_test.mf  <- model.frame(as.formula("deltaij ~ covariate-1+node+offset(log(tij))"),tmp_05) -->
+
+<!-- pw_constant_hazard_1_glmnet <- predict(fit, newx = tmp_05 %>%select(covariate,node) %>%as.matrix(), newoffset= 0, type = "response", s = "lambda.min") -->
+
+<!-- tmp_05['sf_glmnet'] <- exp(-cumsum(pw_constant_hazard_1_glmnet*.5)) -->
+
+
+<!-- tmp_1_glmnet <- tmp_1 %>% mutate(deltaij=1, -->
+<!--                                  tij=.5) -->
+
+<!-- # glmnet_test.mf  <- model.frame(as.formula("deltaij ~ covariate-1+node+offset(log(tij))"),tmp_1_glmnet) -->
+
+<!-- x_glmnet  <- model.matrix(attr(glmnet_test.mf,"terms"),data = tmp_1_glmnet) -->
+<!-- newoffset_glmnet = rep(0,dim(x_glmnet)[1]) -->
+<!-- pw_constant_hazard_1_glmnet <- predict(glmnet_fit, newx = x_glmnet, newoffset= newoffset_glmnet, type = "response") -->
+<!-- tmp_1['sf_glmnet'] <- exp(-cumsum(pw_constant_hazard_1_glmnet*1)) -->
+
+
+<!-- ``` -->
+<!-- ```{r} -->
+<!-- xtrue <- seq(0,6,0.001) -->
+<!-- ytrue <- sf(xtrue, -->
+<!--             lambda=.5, -->
+<!--             beta = 0.1, -->
+<!--             X1 = 0.5) -->
+
+
+<!-- plot(xtrue, -->
+<!--      ytrue, -->
+<!--      type="line", -->
+<!--      xlab="Time", ylab="Survival Function") -->
+<!-- if(n<1000){lines(sort(unique(data_pp$data$node)),c(tmp$sf_hat), col="red",type="S")} -->
+<!-- lines(seq(0,5.5,by=.5),c(1,tmp_05$sf_glmnet), col="blue",type="S") -->
+<!-- legend(x = "topright",  -->
+<!--        title="Fitted Curve",   -->
+<!--        legend=c("Observed grid", "Step 1", "Step 0.5"),   -->
+<!--        fill = c("red","green","blue"))  -->
+<!-- ``` -->
 
 
 
