@@ -144,7 +144,7 @@ summary(cox_model)
 
 
 ```{r eval=FALSE, include=FALSE}
-data_pp <- DataPreProcessing(data=dt,
+if(n<1000){data_pp <- DataPreProcessing(data=dt,
                               id="id",
                               status="status",
                               setting = "survival",
@@ -153,16 +153,13 @@ data_pp <- DataPreProcessing(data=dt,
                               event="time")
   
   
-```
 
-
-```{r eval=FALSE, include=FALSE}
 model_pois <- glm("deltaij ~ covariate-1+factor(node)+offset(log(tij))",
                   data = data_pp$data,
                   family = poisson(link = "log"))
 
 
-summary(model_pois)
+summary(model_pois)}
 
 ```
 
@@ -174,14 +171,14 @@ In this Section we check out that we model the survival function correctly when 
 ### Sequence with unit distant points
 
 ```{r}
-data_pp_1 <- DataPreProcessing(data=dt,
+data_pp_1 <- data_pre_processing(data=dt,
                               id="id",
                               status="status",
-                              setting = "survival",
-                              covariates,
-                              treatment,
+                              # setting = "survival",
+                              covariates="covariate",
+                              treatment=NULL,
                               nodes = seq(0,6,1),
-                              event="time")
+                              event_time="time")
 
 
 model_pois_1 <- glm("deltaij ~ covariate-1+factor(node)+offset(log(tij))",
@@ -215,45 +212,45 @@ model_pois_05 <- glm("deltaij ~ covariate-1+factor(node)+offset(log(tij))",
 
 ```{r}
 
-# tmp <- data.frame(node=factor(sort(unique(data_pp$data$node))),
-#                   tij=1,
-#                   covariate=0.5
-#                   )
-# 
-# 
-# pw_constant_hazard <- predict(model_pois,
-#                               newdata=tmp,
-#                               type = "response")
 
-
-tmp[,"sf_hat"] = exp(-cumsum(pw_constant_hazard*diff(c(sort(unique(data_pp$data$node)),1))))
-
-
-
-tmp_1 <- data.frame(node=factor(sort(unique(data_pp_1$data$node))),
-                  tij=1,
-                  covariate=0.5
-                  )
-
-pw_constant_hazard_1 <- predict(model_pois_1,
-                              newdata=tmp_1,
-                              type = "response")
-
-
-tmp_1[,"sf_hat"] = exp(-cumsum(pw_constant_hazard_1*1))
+if (n < 1000) {
+  tmp <- data.frame(node = factor(sort(unique(
+    data_pp$data$node
+  ))),
+  tij = 1,
+  covariate = 0.5)
   
-
-tmp_05 <- data.frame(node=factor(sort(unique(data_pp_05$data$node))),
-                  tij=1,
-                  covariate=0.5
-                  )
-
-pw_constant_hazard_05 <- predict(model_pois_05,
-                              newdata=tmp_05,
-                              type = "response")
+  
+  pw_constant_hazard <- predict(model_pois, newdata = tmp, type = "response")
+  tmp[, "sf_hat"] = exp(-cumsum(pw_constant_hazard * diff(c(sort(
+    unique(data_pp$data$node)
+  ), 1))))
+}
 
 
-tmp_05[,"sf_hat"] = exp(-cumsum(pw_constant_hazard_05*0.5))
+
+tmp_1 <- data.frame(node = factor(sort(unique(
+  data_pp_1$data$node
+))),
+tij = 1,
+covariate = 0.5)
+
+pw_constant_hazard_1 <- predict(model_pois_1, newdata = tmp_1, type = "response")
+
+
+tmp_1[, "sf_hat"] = exp(-cumsum(pw_constant_hazard_1 * 1))
+
+
+tmp_05 <- data.frame(node = factor(sort(unique(
+  data_pp_05$data$node
+))),
+tij = 1,
+covariate = 0.5)
+
+pw_constant_hazard_05 <- predict(model_pois_05, newdata = tmp_05, type = "response")
+
+
+tmp_05[, "sf_hat"] = exp(-cumsum(pw_constant_hazard_05 * 0.5))
 
 
 ```
@@ -273,7 +270,7 @@ plot(xtrue,
      ytrue,
      type="line",
      xlab="Time", ylab="Survival Function")
-# lines(sort(unique(data_pp$data$node)),c(tmp$sf_hat), col="red",type="S")
+if(n<1000){lines(sort(unique(data_pp$data$node)),c(tmp$sf_hat), col="red",type="S")}
 lines(seq(0,6,by=1),c(1,tmp_1$sf_hat), col="green",type="S")
 lines(seq(0,5.5,by=.5),c(1,tmp_05$sf_hat), col="blue",type="S")
 legend(x = "topright", 
@@ -375,10 +372,7 @@ model_fit <- model %>% fit(
 ```
 
 ```{r}
-tmp_1 <- data.frame(node=factor(sort(unique(data_pp_1$data$node))),
-                  tij=1,
-                  covariate=0.5
-                  )
+
 
 X_nn_test = tmp_1 %>%
   select(covariate,node) %>%
@@ -534,6 +528,30 @@ legend(x = "topright",
 
 
 ```
+
+# Competing risks
+
+```{r}
+tmp2 <- data_pre_processing(
+  data = dt,
+  id = "id",
+  status = "status",
+  # covariates = c("Sex", "D", "Phase", "Age", "Source"),
+  # treatment = NULL,
+  nodes = seq(0,6,0.5),
+  event_time = "time"
+)
+```
+
+
+```{r}
+model_pois_1 <- glm("deltaij ~ covariate-1+factor(node)+offset(log(tij))",
+                  data = tmp2,
+                  family = poisson(link = "log"))
+```
+
+
+
 
 
 

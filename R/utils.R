@@ -52,3 +52,45 @@ poisson_nll <- function(y_true, y_pred, ...) {
 
 }
 
+
+create_response_variable_c_risks <- function(nodes, time_to_event, delta, event_type){
+  # browser()
+  p_holder <- ifelse(delta == event_type, 1, 0)
+
+  l <- sum(nodes < time_to_event)
+
+  out <- c(rep(0,l-1),
+           p_holder)
+
+  return(out)
+}
+
+create_offset_variable <- function(nodes, delta, time_to_event){
+
+  tmp <- c(nodes[nodes < time_to_event],
+           first(nodes[nodes >= time_to_event]))
+
+  # if(delta == 1){
+  tmp[length(tmp)] <- time_to_event
+  # }
+
+  tij <- diff(c(tmp))
+
+  grid_nodes <- c(nodes[nodes < time_to_event])
+
+  return(cbind(grid_nodes,tij))
+}
+
+
+datapp_glmnet <- function(data, formula) {
+  glmnet_train.mf  <- model.frame(as.formula(formula), data)
+  x  <- model.matrix(attr(xgtrain.mf, "terms"), data = data)
+  y  <- data[['deltaij']]
+  offset <- log(data[['tij']])
+
+  out <- list(x = x, y = y, offset = offset)
+
+  return(out)
+
+}
+
