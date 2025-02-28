@@ -65,14 +65,14 @@ $$
 
 sf <- function(t,lambda, beta, X1){
   
-  out <- exp(-lambda*exp(beta*X1)*t)
+  out <- exp(-lambda*exp(beta*X1+beta1*(X2^2))*t)
   return(out)
 }
 
 
-inverse_sf<- function(lambda, beta, X1, u){
+inverse_sf<- function(lambda, beta, X1, u,beta1,X2){
   
-  out <- -log(u)/(lambda*exp(beta*X1))
+  out <- -log(u)/(lambda*exp(beta*X1+beta1*(X2^2)))
   
   return(out)
 }
@@ -89,7 +89,8 @@ n <- 20000
   
   sample <- 1-runif(as.integer(n), min=0, max= 1)
   X <- rnorm(n)
-  
+  X2 <- sample(c(.1,.2,.3), n, replace = TRUE)
+
   }
 
 ```
@@ -101,7 +102,9 @@ n <- 20000
 time<- inverse_sf(u=sample,
                       lambda=0.5,
                       beta=0.1,
-                      X1=X)
+                      X1=X,
+                  beta1 = .02,
+                  X2=X2)
 
 max(time)
 
@@ -121,6 +124,7 @@ dt <- data.table(
   id=1:length(tmp),
   time = tmp,
   covariate = X,
+  covariate2 = X2,
   status = 1-as.numeric(time > cens)
   
   
@@ -565,14 +569,51 @@ tmp_05[, "sf_hat"] = exp(-cumsum(pw_constant_hazard * 0.5))
 ```
 
 ```{r}
-l1 <- learner_glmnet(covariates = c("covariate"),
-                     treatment = NULL,
-                     cross_validation=T)
+l1 <- Learner_glmnet(covariates = c("covariate"),
+                     cross_validation=TRUE)
+
+l2 <- Learner_glm(covariates = c("covariate2"),
+                     cross_validation=FALSE)
 ```
 
 ```{r}
-fit <- l1(tmp2)
+
+learners <- list(l1,l2)
+
+sl <- Superlearner(data=dt,
+                   learners=learners,
+                   id="id",
+                   status="status",
+                   nodes=seq(0,6,.5),
+                   event_time = "time")
+
 ```
+
+
+```{r}
+glmnet_fit <- l1$fit(tmp2 %>% mutate(node=as.factor(node)))
+```
+
+
+```{r}
+tmp_05 <- data.frame(node = factor(sort(unique(
+  tmp2$node
+))),
+tij = 1,
+covariate = 0.5,
+deltaij=0)
+
+
+```
+
+```{r}
+out <- l1$predictor(model=glmnet_fit,newdata=tmp_05)
+```
+
+```{r}
+# sl_fit <- superlearner
+```
+
 
 <!-- ```{r} -->
 

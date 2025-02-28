@@ -1,3 +1,11 @@
+#' Helper functions
+#'
+#' This script contains the utils functions that are used in the package.
+#'
+#' @import data.table
+
+# Data preprocessing ----
+
 create_offset_variable_survival <- function(nodes, delta, time_to_event){
 
   tmp <- c(nodes[nodes < time_to_event],
@@ -81,6 +89,77 @@ create_offset_variable <- function(nodes, delta, time_to_event){
   return(cbind(grid_nodes,tij))
 }
 
+data_pre_processing <- function(data,
+                                id,
+                                status,
+                                event_time,
+                                nodes=NULL
+){
+
+
+
+  setDT(data)
+
+  #  Handle nodes ----
+  ##Either the nodes are given or we take all of the realised times
+  if (is.null(nodes)) {
+    grid_nodes <- sort(unique(data[[event_time]]))
+
+  } else{
+    grid_nodes <- nodes
+
+  }
+
+  # Add zero if missing
+  if (!(0 %in% grid_nodes)) {
+    grid_nodes <- c(0, grid_nodes)
+
+  }
+
+
+  # Handle competing risks ----
+  ## for each of the competing risks (CR) we need to create a table
+  n_crisks <- length(unique(data[[status]])) - 1
+  ## the CR tables are stuck on top of each other to allow for possible interactions
+  dt_fit <- do.call(rbind, replicate(n_crisks, dt, simplify = FALSE))
+  ## we create an artificial k index. Table specific.
+  dt_fit <- dt_fit[, k := rep(1:n_crisks, each = dim(dt)[1])]
+
+
+  # Data Transformation ----
+  tmp <- c(id, "k")
+
+  dt_fit <- eval(parse(text = paste("dt_fit[, .(node = create_offset_variable(grid_nodes, time_to_event = ",
+                                    event_time,
+                                    ")[, 1]",
+                                    ", tij = create_offset_variable(grid_nodes, time_to_event = ",
+                                    event_time,
+                                    ")[,2]",
+                                    ", deltaij = create_response_variable_c_risks(grid_nodes,time_to_event = ",
+                                    event_time,
+                                    ", delta=",
+                                    status,
+                                    ", event_type = k)",
+                                    ")",
+                                    ", by = .(",
+                                    id,
+                                    ", k)",
+                                    "]")))
+
+  ## Retrieve covariates
+
+  dt_fit <- merge(dt_fit, dt, by = id, all.x = TRUE)
+
+  dt_fit[,c("node",
+            "k"):=list(as.factor(node),
+                       as.factor(k))]
+
+  return(dt_fit)
+
+}
+
+
+# Learners ----
 
 datapp_glmnet <- function(data, formula) {
   train.mf  <- model.frame(as.formula(formula), data)
@@ -91,6 +170,46 @@ datapp_glmnet <- function(data, formula) {
   out <- list(x = x, y = y, offset = offset)
 
   return(out)
+}
+
+
+# Other utils ----
+create_formula <- function(covariates=NA_character_,
+                           treatment=NA_character_,
+                           competing_risks=FALSE){
+
+
+
+  if (!any(is.na( covariates))) {
+  xs <- paste(covariates, collapse = "+")
+  }
+
+  if (!is.na( treatment)) {
+    xs <- paste(xs, "+", treatment)
+  }
+
+  if (competing_risks) {
+    xs <- paste(xs, "+ k")
+  }
+
+  out <- paste("deltaij ~", xs, "-1+node+offset(log(tij))", sep =
+                 "")
+
+  return(out)
+
+
+
 
 }
+
+
+
+
+
+
+
+
+
+
+
 
