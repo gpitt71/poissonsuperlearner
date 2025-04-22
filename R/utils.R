@@ -89,35 +89,23 @@ create_offset_variable <- function(nodes, delta, time_to_event){
   return(cbind(grid_nodes,tij))
 }
 
-create_offset_variable_interval_data <- function(nodes,
-                                                 start_time,
-                                                 end_time){
+create_offset_variable_interval_data <- function(nodes, start_time, end_time) {
+  nodes <- sort(unique(nodes))
+  nodes_in_range <- nodes[nodes >= start_time & nodes < end_time]
 
-  individual_times <- sort(unique(c(start_time,end_time)))
+  # Add boundaries if needed
+  if (!start_time %in% nodes_in_range) nodes_in_range <- c(start_time, nodes_in_range)
+  nodes_after <- nodes[nodes >= end_time]
+  first_after <- if (length(nodes_after) > 0) min(nodes_after) else end_time
+  tmp <- sort(unique(c(nodes_in_range, end_time, first_after)))
 
-  last_observed_time <- max(individual_times)
+  tmp[tmp > end_time] <- end_time
+  tmp <- unique(tmp)
 
-  individual_selection <- nodes>=min(individual_times) & nodes < last_observed_time
-
-  tmp <- c(nodes[individual_selection],
-           first(nodes[nodes >= last_observed_time]))
-
-  # if(delta == 1){
-  tmp[length(tmp)] <- last_observed_time
-  # }
-
-
-  filler <- setdiff(union(individual_times, tmp), intersect(individual_times, tmp))
-
-  tmp <- sort(unique(c(filler,tmp)))
-
-  tij <- diff(c(tmp))
-
-  grid_nodes <- c(tmp[tmp < last_observed_time])
-
-  return(cbind(grid_nodes,tij))
+  tij <- diff(tmp)
+  grid_nodes <- tmp[-length(tmp)]
+  return(cbind(grid_nodes, tij))
 }
-
 
 data_pre_processing <- function(data,
                                 id,
@@ -189,82 +177,54 @@ data_pre_processing <- function(data,
 }
 
 
-data_pre_processing_interval_data <- function(data,
-                                id,
-                                status,
-                                start_time,
-                                end_time,
-                                nodes=NULL
-){
-
-
-
+data_pre_processing_interval_data <- function(data, id, status, start_time, end_time, nodes = NULL) {
   setDT(data)
 
-  #  Handle nodes ----
-  ##Either the nodes are given or we take all of the realised times
   if (is.null(nodes)) {
-
-    observed_times <- c(data[[start_time]],
-                               data[[end_time]])
-
+    observed_times <- c(data[[start_time]], data[[end_time]])
     grid_nodes <- sort(unique(observed_times))
-
-  } else{
-    grid_nodes <- nodes
-
+  } else {
+    grid_nodes <- sort(nodes)
   }
 
-  # Add zero if missing
   if (!(0 %in% grid_nodes)) {
     grid_nodes <- c(0, grid_nodes)
-
   }
 
-
-  # Handle competing risks ----
-  ## for each of the competing risks (CR) we need to create a table
   n_crisks <- length(unique(data[[status]])) - 1
-  ## the CR tables are stuck on top of each other to allow for possible interactions
-  dt_fit <- do.call(rbind, replicate(n_crisks, dt, simplify = FALSE))
-  ## we create an artificial k index. Table specific.
-  dt_fit <- dt_fit[, k := rep(1:n_crisks, each = dim(dt)[1])]
+  output_list <- list()
 
+  for (i in 1:nrow(data)) {
+    row_i <- data[i]
+    id_val <- row_i[[id]]
+    st <- row_i[[start_time]]
+    et <- row_i[[end_time]]
+    delta <- row_i[[status]]
 
+    intervals <- create_offset_variable_interval_data(grid_nodes, st, et)
+    grid_nodes_i <- intervals[, 1]
+    tij_i <- intervals[, 2]
 
+    for (k in 1:n_crisks) {
+      deltaij <- as.integer((delta == k) & (grid_nodes_i + tij_i >= et))
+      temp_dt <- data.table(
+        id = id_val,
+        node = grid_nodes_i,
+        tij = tij_i,
+        deltaij = deltaij,
+        k = k,
+        x1 = row_i[["x1"]],
+        x2 = row_i[["x2"]]
+      )
+      output_list[[length(output_list) + 1]] <- temp_dt
+    }
+  }
 
-  # Data Transformation ----
-  tmp <- c(id, "k")
-
-  dt_fit <- eval(parse(text = paste("dt_fit[, .(node = create_offset_variable(grid_nodes, time_to_event = ",
-                                    event_time,
-                                    ")[, 1]",
-                                    ", tij = create_offset_variable(grid_nodes, time_to_event = ",
-                                    event_time,
-                                    ")[,2]",
-                                    ", deltaij = create_response_variable_c_risks(grid_nodes,time_to_event = ",
-                                    event_time,
-                                    ", delta=",
-                                    status,
-                                    ", event_type = k)",
-                                    ")",
-                                    ", by = .(",
-                                    id,
-                                    ", k)",
-                                    "]")))
-
-  ## Retrieve covariates
-
-  dt_fit <- merge(dt_fit, dt, by = id, all.x = TRUE)
-
-  dt_fit[,c("node",
-            "k"):=list(as.factor(node),
-                       as.factor(k))]
+  dt_fit <- rbindlist(output_list)
+  dt_fit[, c("node", "k") := list(as.factor(node), as.factor(k))]
 
   return(dt_fit)
-
 }
-
 
 # Learners ----
 

@@ -69,6 +69,7 @@ Superlearner <- function(data,
       id = id,
       status = status,
       start_time = start_time,
+      nodes = nodes,
       end_time = end_time
     )
 
