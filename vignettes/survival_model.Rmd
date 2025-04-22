@@ -28,10 +28,10 @@ library(rpart)
 
 ```{r}
 seed=1
-use_condaenv("C:\\Users\\pwt887\\AppData\\Local\\anaconda3\\envs\\pytmle")
-Sys.setenv(PYTHONHASHSEED = seed)
-set.seed(seed)
-reticulate::py_set_seed(seed)
+# use_condaenv("C:\\Users\\pwt887\\AppData\\Local\\anaconda3\\envs\\pytmle")
+# Sys.setenv(PYTHONHASHSEED = seed)
+# set.seed(seed)
+# reticulate::py_set_seed(seed)
 ```
 
 
@@ -41,7 +41,7 @@ reticulate::py_set_seed(seed)
 Let us consider a simple survival setting
 
 $$
-O=(L_1, \widetilde{T},  {\Delta}),
+O=(L_1, L_2. \widetilde{T},  {\Delta}),
 $$
 
 where we have a numeric covariate $L_1$, the survival time $\widetilde{T}=\min(T,C)$, where $T\in \mathbb{R}^+$ is the time to event and $C \in \mathbb{R}^+$ represents the censoring random variable. $\Delta$ indicates censoring when equal to 0 and event when equal to 1.
@@ -49,7 +49,7 @@ where we have a numeric covariate $L_1$, the survival time $\widetilde{T}=\min(T
 We simulate data assuming a proportional model for the hazard 
 
 $$
-\lambda(t | \ell) = \lambda_0 t \exp(\beta L_1).
+\lambda(t | \ell) = \lambda_0 t \exp(\beta_1 L_1 + \beta_2 L_2).
 $$
 In our example we will assume $\lambda_0 = 0.5$, $\beta = 0.1$. The censoring random variable follows a uniform distribution between $0$ and $4.5$.
 
@@ -57,22 +57,22 @@ We will simulate $i=1, \ldots, n$ observations of $O$, namely
 
 
 $$
-O_i = (L_{1,i}, \widetilde{T}_i,  {\Delta}_i),
+O_i = (L_{1,i}, L_{2,i}, \widetilde{T}_i,  {\Delta}_i),
 $$
 
 
 ```{r}
 
-sf <- function(t,lambda, beta, X1){
+sf <- function(t,lambda, beta, X1,beta1,X2){
   
-  out <- exp(-lambda*exp(beta*X1+beta1*(X2^2))*t)
+  out <- exp(-lambda*exp(beta*X1+beta1*(X2))*t)
   return(out)
 }
 
 
-inverse_sf<- function(lambda, beta, X1, u,beta1,X2){
+inverse_sf<- function(lambda, beta, X1,beta1,X2, u){
   
-  out <- -log(u)/(lambda*exp(beta*X1+beta1*(X2^2)))
+  out <- -log(u)/(lambda*exp(beta*X1+beta1*(X2)))
   
   return(out)
 }
@@ -82,14 +82,14 @@ inverse_sf<- function(lambda, beta, X1, u,beta1,X2){
 
 ```{r}
 
-n <- 20000
+n <- 500
 
 {
   set.seed(seed)
   
   sample <- 1-runif(as.integer(n), min=0, max= 1)
   X <- rnorm(n)
-  X2 <- sample(c(.1,.2,.3), n, replace = TRUE)
+  X2 <- sample(c(0,1), n, replace = TRUE)
 
   }
 
@@ -102,10 +102,9 @@ n <- 20000
 time<- inverse_sf(u=sample,
                       lambda=0.5,
                       beta=0.1,
-                      X1=X,
-                  beta1 = .02,
-                  X2=X2)
-
+                  beta1=.2,
+                  X2=X2,
+                      X1=X)
 max(time)
 
 {
@@ -124,7 +123,7 @@ dt <- data.table(
   id=1:length(tmp),
   time = tmp,
   covariate = X,
-  covariate2 = X2,
+  covariate2 = as.character(X2),
   status = 1-as.numeric(time > cens)
   
   
@@ -134,12 +133,242 @@ table(dt$status)
 ```
 # Data application
 
+## Ensembles
+
+
+
+```{r}
+tmp_05 <- data.frame(node = factor(sort(unique(seq(0,5,0.5)
+))),
+tij = .5,
+covariate = 0.5,
+covariate2=factor("1",levels = c("0","1")))
+```
+
+```{r}
+tmp_1 <- data.frame(node = factor(sort(unique(seq(0,5,1)
+))),
+tij = 1,
+covariate = 0.5,
+covariate2=factor("1",levels = c("0","1")))
+```
+
+
+
+```{r}
+l1 <- Learner_glmnet(covariates = c("covariate2"),
+                     cross_validation=FALSE,
+                     lambda=.1)
+
+l2 <- Learner_glmnet(covariates = c("covariate"),
+                     cross_validation=TRUE)
+
+l3 <- Learner_glmnet(covariates = c("covariate","covariate2"),
+                     cross_validation=TRUE)
+```
+
+```{r}
+
+learners <- list(l1,l2)
+
+sl <- Superlearner(data=dt,
+                   learners=learners,
+                   id="id",
+                   status="status",
+                   nodes=seq(0,6,.5),
+                   event_time = "time")
+
+```
+
+```{r}
+sl1 <- Superlearner(data=dt,
+                   learners=learners,
+                   id="id",
+                   status="status",
+                   nodes=seq(0,6,1),
+                   event_time = "time")
+
+```
+
+```{r}
+tmp_1[['deltaij']]<-tmp_05[['deltaij']]<-0
+
+
+# l1$predictor(sl$superlearner$learners_fit)
+
+```
+
+
+```{r}
+preds <- predict(sl,tmp_05)
+```
+```{r}
+preds_1 <- predict(sl1,tmp_1)
+```
+
+
+```{r}
+xtrue <- seq(0,6,0.001)
+ytrue <- sf(xtrue,
+            lambda=.5,
+            beta = 0.1,
+            X1 = 0.5,
+            beta1 = .2,
+            X2=.1)
+
+plot(xtrue,
+     ytrue,
+     type="line",
+     xlab="Time", ylab="Survival Function")
+# lines(sort(unique(data_pp$data$node)),c(tmp$sf_hat), col="red",type="S")
+lines(seq(0,5.5,by=.5),c(1,preds$survival_function), col="red",type="S")
+lines(seq(0,6,by=1),c(1,preds_1$survival_function), col="green",type="S")
+# lines(seq(0,6,by=1),c(1,tmp_1$sf_xgb), col="blue",type="S")
+# lines(seq(0,6,by=1),c(1,tmp_1$sf_glmnet), col="orange",type="S")
+# lines(seq(0,6,by=1),c(1,tmp_1$sf_rpart), col="pink",type="S")
+legend(x = "topright",
+       title="Fitted Curve",
+       legend=c( "superlearner step .5", 
+                 "superlearner step 1"),
+       fill = c("red",
+                "green"))
+
+
+```
+
+
+
+# Time-varying covariates
+
+
+Let us consider again a simple survival setting
+
+$$
+O=(L_1, L_2, L_3(t), \widetilde{T},  {\Delta}),
+$$
+
+where we have a numeric covariate $L_1$, the survival time $\widetilde{T}=\min(T,C)$, where $T\in \mathbb{R}^+$ is the time to event and $C \in \mathbb{R}^+$ represents the censoring random variable. $\Delta$ indicates censoring when equal to 0 and event when equal to 1. We now have a covariate $L_1(t)$ that is time-dependent. In particular, we have $L_1(t)= 0 \cdot \mathbf 1(t < t_0)+1 \cdot \mathbf 1(t\geq t_0)$
+
+
+We simulate data assuming a proportional model for the hazard 
+
+$$
+\lambda(t | \ell) = \lambda_0 t \exp(\beta_1 L_1 + \beta_2 L_2 + \beta_3 L_3(t)).
+$$
+
+```{r}
+sf_time_varying <- function(lambda, beta, X1, beta1, X2, beta2,t0){
+  
+  if(t<=t0){
+    
+    out <- exp(-lambda*exp(beta*X1+beta1*(X2))*t)
+    
+  }else{
+    
+    out <- exp(-(lambda*exp(beta*X1+beta1*(X2))*t0+lambda * (t-t0)* exp(beta * X1 + beta1 * (X2) + beta2)))
+    
+  }
+  
+  
+  return(out)
+}
+
+
+inverse_sf_time_varying <- function(lambda, beta, X1, beta1, X2, beta2, u, t0) {
+  hz1 = lambda * exp(beta * X1 + beta1 * (X2))
+  
+  hz2 = lambda * exp(beta * X1 + beta1 * (X2) + beta2)
+  
+  tmp_cond= -log(u) <= (hz1 * t0)
+  
+  out <- -log(u) / (hz1)
+  out[!tmp_cond] <- (-log(u)-t0*(hz1-hz2)) / (hz1)
+  
+
+  return(out)
+}
+
+
+```
+
+```{r}
+n <- 500
+
+{
+  set.seed(seed)
+  
+  sample <- 1-runif(as.integer(n), min=0, max= 1)
+  X <- rnorm(n)
+  X2 <- sample(c(0,1), n, replace = TRUE)
+  t0 <- rbeta(n,shape1=1,shape2=2)
+  
+
+  }
+
+```
+
+```{r}
+time<- inverse_sf_time_varying(u=sample,
+                      lambda=0.5,
+                      beta=0.1,
+                  beta1=.2,
+                  beta2 = .1,
+                  t0=t0,
+                  X2=X2,
+                      X1=X)
+max(time)
+
+{
+  set.seed(1)
+  cens <- runif(n=length(time),
+              min=0,
+              max=5.5)
+  
+}
+
+
+tmp <- time
+tmp[time > cens] <- cens[time > cens]
+
+
+dt_0 <- data.table(
+  id=1:length(tmp),
+  start_time=ifelse(t0>time,0,t0),
+  end_time = tmp,
+  covariate = X,
+  covariate2 = as.character(X2),
+  covariate_tv = ifelse(t0>time,0,1),
+  status = 1-as.numeric(time > cens))
+
+dt_1 <- data.table(
+  id=1:length(tmp),
+  covariate = X,
+  covariate2 = as.character(X2),
+  covariate_tv=0,
+  start_time=0,
+  end_time=t0,
+  status = 1-as.numeric(time > cens))[t0<time,]
+
+dt <- rbind(dt_0,dt_1)
+
+dt=dt[order(id,start_time),]
+
+```
+
+```{r}
+
+```
+
+
+
+
+
 ## Replicating the Cox model
 
 
 ```{r}
 
-cox_model <- coxph(Surv(time, status) ~ covariate, dt)
+cox_model <- coxph(Surv(time, status) ~ covariate+covariate2, dt)
 
 summary(cox_model)
 ```
@@ -535,45 +764,35 @@ legend(x = "topright",
 
 # Learners
 
+
 ```{r}
-tmp2 <- data_pre_processing(
-  data = dt,
-  id = "id",
-  status = "status",
-  # covariates = c("Sex", "D", "Phase", "Age", "Source"),
-  # treatment = NULL,
-  nodes = seq(0,6,0.5),
-  event_time = "time"
-)
+tmp_05 <- data.frame(node = factor(sort(unique(seq(0,5,0.5)
+))),
+tij = .5,
+covariate = 0.5,
+covariate2=1)
 ```
 
-
 ```{r}
-model_pois_1 <- glm("deltaij ~ covariate-1+factor(node)+offset(log(tij))",
-                  data = tmp2,
-                  family = poisson(link = "log"))
-```
-
-
-```{r}
-tmp_05 <- data.frame(node = factor(sort(unique(
-  tmp2$node
+tmp_1 <- data.frame(node = factor(sort(unique(seq(0,5,1)
 ))),
 tij = 1,
-covariate = 0.5)
-
-pw_constant_hazard <- predict(model_pois_1, newdata = tmp_05, type = "response")
-
-
-tmp_05[, "sf_hat"] = exp(-cumsum(pw_constant_hazard * 0.5))
+covariate = 0.5,
+covariate2=1)
 ```
 
+
+
 ```{r}
-l1 <- Learner_glmnet(covariates = c("covariate"),
+l1 <- Learner_glmnet(covariates = c("covariate2"),
                      cross_validation=TRUE)
 
-l2 <- Learner_glm(covariates = c("covariate2"),
-                     cross_validation=FALSE)
+l2 <- Learner_glmnet(covariates = c("covariate"),
+                     cross_validation=TRUE)
+
+l3 <- Learner_glmnet(covariates = c("covariate","covariate2"),
+                     cross_validation=TRUE)
+
 ```
 
 ```{r}
@@ -588,6 +807,63 @@ sl <- Superlearner(data=dt,
                    event_time = "time")
 
 ```
+```{r}
+sl1 <- Superlearner(data=dt,
+                   learners=learners,
+                   id="id",
+                   status="status",
+                   nodes=seq(0,6,1),
+                   event_time = "time")
+
+```
+
+```{r}
+tmp_1[['deltaij']]<-tmp_05[['deltaij']]<-0
+
+
+# l1$predictor(sl$superlearner$learners_fit)
+
+```
+
+
+```{r}
+preds <- predict(sl,tmp_05)
+```
+```{r}
+preds_1 <- predict(sl1,tmp_1)
+```
+
+
+```{r}
+xtrue <- seq(0,6,0.001)
+ytrue <- sf(xtrue,
+            lambda=.5,
+            beta = 0.1,
+            X1 = 0.5,
+            beta1 = .02,
+            X2=.1)
+
+plot(xtrue,
+     ytrue,
+     type="line",
+     xlab="Time", ylab="Survival Function")
+# lines(sort(unique(data_pp$data$node)),c(tmp$sf_hat), col="red",type="S")
+lines(seq(0,5.5,by=.5),c(1,preds$survival_function), col="red",type="S")
+lines(seq(0,6,by=1),c(1,preds_1$survival_function), col="green",type="S")
+# lines(seq(0,6,by=1),c(1,tmp_1$sf_xgb), col="blue",type="S")
+# lines(seq(0,6,by=1),c(1,tmp_1$sf_glmnet), col="orange",type="S")
+# lines(seq(0,6,by=1),c(1,tmp_1$sf_rpart), col="pink",type="S")
+legend(x = "topright",
+       title="Fitted Curve",
+       legend=c( "superlearner step .5", 
+                 "superlearner step 1"),
+       fill = c("red",
+                "green"))
+
+
+```
+
+
 
 
 ```{r}

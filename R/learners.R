@@ -34,13 +34,15 @@ Learner_glm <- setRefClass(
     cross_validation = "logical",
     competing_risks ="logical",
     formula ="character",
-    learner="function"
+    learner="function",
+    add_nodes="logical"
   ),
   methods = list(
     initialize = function(covariates = NULL,
                           treatment = NA_character_,
                           cross_validation = FALSE,
                           competing_risks = NA ,
+                          add_nodes= TRUE,
                           ...) {
       .self$covariates <- covariates
 
@@ -48,10 +50,13 @@ Learner_glm <- setRefClass(
 
       .self$cross_validation <- cross_validation
 
+      .self$add_nodes <- add_nodes
+
       # create formula for competing risks. It is correct in the fit method if survival.
       .self$formula <- create_formula(covariates = .self$covariates,
                                       treatment = .self$treatment,
-                                      competing_risks =TRUE)
+                                      competing_risks =TRUE,
+                                      add_nodes=.self$add_nodes)
 
 
       if (.self$cross_validation) {
@@ -72,7 +77,8 @@ Learner_glm <- setRefClass(
 
         .self$formula <- create_formula(covariates = .self$covariates,
                                         treatment = .self$treatment,
-                                        competing_risks =FALSE)
+                                        competing_risks =FALSE,
+                                        add_nodes=.self$add_nodes)
 
       }
 
@@ -119,14 +125,16 @@ Learner_glmnet <- setRefClass(
     cross_validation = "logical",
     # competing_risks="logical",
     formula ="character",
-    learner="function"
+    learner="function",
+    add_nodes="logical",
+    fit_arguments = "list"
   ),
   methods = list(
 
     initialize = function(covariates = NULL,
                           treatment = NA_character_,
                           cross_validation = FALSE,
-                          # competing_risks = NA,
+                          add_nodes = TRUE,
                           ...) {
       .self$covariates <- covariates
 
@@ -134,10 +142,13 @@ Learner_glmnet <- setRefClass(
 
       .self$cross_validation <- cross_validation
 
+      .self$add_nodes <- add_nodes
+
       # create formula for competing risks. It is correct in the fit method if survival.
       .self$formula <- create_formula(covariates = .self$covariates,
                                       treatment = .self$treatment,
-                                      competing_risks =TRUE)
+                                      competing_risks =TRUE,
+                                      add_nodes=.self$add_nodes)
 
 
       if (.self$cross_validation) {
@@ -146,9 +157,17 @@ Learner_glmnet <- setRefClass(
       } else{
         .self$learner = glmnet
       }
+
+      .self$fit_arguments <- list(...)
+
+      .self$fit_arguments[['family']] <- "poisson"
+
+      .self$fit_arguments[['intercept']] <- FALSE
+
+
     },
 
-    fit = function(data, formula, ...) {
+    fit = function(data, formula) {
 
       survival_01 <- length(unique(data[['k']])) < 2
 
@@ -158,18 +177,28 @@ Learner_glmnet <- setRefClass(
 
         .self$formula <- create_formula(covariates = .self$covariates,
                                         treatment = .self$treatment,
-                                        competing_risks =FALSE)
+                                        competing_risks =FALSE,
+                                        add_nodes=.self$add_nodes)
 
       }
 
       # one layer of extra data preprocessing
       tmp <- datapp_glmnet(data, .self$formula)
 
-      out<- .self$learner(tmp$x,
-                           tmp$y,
-                           offset = tmp$offset,
-                           family = "poisson",
-                           ...)
+      .self$fit_arguments[['x']] <- tmp$x
+      .self$fit_arguments[['y']] <- tmp$y
+      .self$fit_arguments[['offset']] <- tmp$offset
+
+      out <- do.call(.self$learner,
+                     .self$fit_arguments)
+
+
+      # out<- .self$learner(,
+      #                      tmp$y,
+      #                      offset = ,
+      #                      family = "poisson",
+      #                     intercept = FALSE,
+      #                      ...)
 
       return(out)
 
