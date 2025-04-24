@@ -139,9 +139,9 @@ data_pre_processing <- function(data,
   ## for each of the competing risks (CR) we need to create a table
   n_crisks <- length(unique(data[[status]])) - 1
   ## the CR tables are stuck on top of each other to allow for possible interactions
-  dt_fit <- do.call(rbind, replicate(n_crisks, dt, simplify = FALSE))
+  dt_fit <- do.call(rbind, replicate(n_crisks, data, simplify = FALSE))
   ## we create an artificial k index. Table specific.
-  dt_fit <- dt_fit[, k := rep(1:n_crisks, each = dim(dt)[1])]
+  dt_fit <- dt_fit[, k := rep(1:n_crisks, each = dim(data)[1])]
 
 
   # Data Transformation ----
@@ -166,7 +166,9 @@ data_pre_processing <- function(data,
 
   ## Retrieve covariates
 
-  dt_fit <- merge(dt_fit, dt, by = id, all.x = TRUE)
+  dt_fit <- merge(dt_fit, data, by = id, all.x = TRUE)
+
+  setnames(dt_fit, c(id),c("id"))
 
   dt_fit[,c("node",
             "k"):=list(as.factor(node),
@@ -194,6 +196,10 @@ data_pre_processing_interval_data <- function(data, id, status, start_time, end_
   n_crisks <- length(unique(data[[status]])) - 1
   output_list <- list()
 
+  # Identify covariate columns dynamically
+  core_cols <- c(id, start_time, end_time, status)
+  covariate_names <- setdiff(names(data), core_cols)
+
   for (i in 1:nrow(data)) {
     row_i <- data[i]
     id_val <- row_i[[id]]
@@ -207,20 +213,36 @@ data_pre_processing_interval_data <- function(data, id, status, start_time, end_
 
     for (k in 1:n_crisks) {
       deltaij <- as.integer((delta == k) & (grid_nodes_i + tij_i >= et))
+
+      # Construct base interval data
       temp_dt <- data.table(
         id = id_val,
         node = grid_nodes_i,
         tij = tij_i,
         deltaij = deltaij,
-        k = k,
-        x1 = row_i[["x1"]],
-        x2 = row_i[["x2"]]
+        k = k
       )
+
+      # Append covariates dynamically
+      for (covar in covariate_names) {
+        temp_dt[[covar]] <- row_i[[covar]]
+      }
+
       output_list[[length(output_list) + 1]] <- temp_dt
     }
   }
 
+
+
   dt_fit <- rbindlist(output_list)
+  # browser()
+  # Encode node as N1, N2, ..., based on ordering
+  # unique_nodes <- sort(unique(dt_fit$node))
+  # node_labels <- paste0("N", seq_along(unique_nodes))
+  # node_map <- setNames(node_labels, unique_nodes)
+  # dt_fit[, node := factor(paste0("N", match(node, unique_nodes)))]
+  # dt_fit[, k := as.factor(k)]
+
   dt_fit[, c("node", "k") := list(as.factor(node), as.factor(k))]
 
   return(dt_fit)
@@ -229,7 +251,11 @@ data_pre_processing_interval_data <- function(data, id, status, start_time, end_
 # Learners ----
 
 datapp_glmnet <- function(data, formula) {
-  train.mf  <- model.frame(as.formula(formula), data)
+  train.mf  <- model.frame(as.formula(formula),
+                           data,
+                           drop.unused.levels = FALSE)
+
+  # browser()
   x  <- model.matrix(attr(train.mf, "terms"), data = data)
   y  <- data[['deltaij']]
   offset <- log(data[['tij']])
@@ -255,9 +281,9 @@ create_formula <- function(covariates=NA_character_,
     xs <- paste(xs, "+", treatment)
   }
 
-  if (competing_risks) {
-    xs <- paste(xs, "+ k")
-  }
+  # if (competing_risks) {
+  #   xs <- paste(xs, "+ k")
+  # }
 
   if (add_nodes) {
     xs <- paste(xs, "+ node")
@@ -284,7 +310,26 @@ create_pseudo_observations <- function(train_data,
 
   "
 
+  # browser()
+  check <- setdiff(unique(validation_data$node),
+                   unique(train_data$node))
 
+  if(length(check)>0){
+
+    template_row <- train_data[.N]
+
+    # Step 3: Duplicate and modify the node column
+    dummy_rows <- rbindlist(lapply(check, function(lvl) {
+      row <- copy(template_row)
+      row[, node := factor(lvl, levels = levels(train_data$node))]
+      return(row)
+    }))
+
+    dummy_rows[,tij:=1e-4][,deltaij:=0]
+
+    train_data <- rbind(train_data,dummy_rows)
+
+  }
 
   train_list <- lapply(learners, function(f) f$fit(train_data))
 

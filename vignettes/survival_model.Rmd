@@ -240,128 +240,367 @@ legend(x = "topright",
 
 # Time-varying covariates
 
-
-Let us consider again a simple survival setting
-
-$$
-O=(L_1, L_2, L_3(t), \widetilde{T},  {\Delta}),
-$$
-
-where we have a numeric covariate $L_1$, the survival time $\widetilde{T}=\min(T,C)$, where $T\in \mathbb{R}^+$ is the time to event and $C \in \mathbb{R}^+$ represents the censoring random variable. $\Delta$ indicates censoring when equal to 0 and event when equal to 1. We now have a covariate $L_1(t)$ that is time-dependent. In particular, we have $L_1(t)= 0 \cdot \mathbf 1(t < t_0)+1 \cdot \mathbf 1(t\geq t_0)$
-
-
-We simulate data assuming a proportional model for the hazard 
-
-$$
-\lambda(t | \ell) = \lambda_0 t \exp(\beta_1 L_1 + \beta_2 L_2 + \beta_3 L_3(t)).
-$$
+Here we take the same data set as before but we turn it into interval censored format.
 
 ```{r}
-sf_time_varying <- function(lambda, beta, X1, beta1, X2, beta2,t0){
-  
-  if(t<=t0){
-    
-    out <- exp(-lambda*exp(beta*X1+beta1*(X2))*t)
-    
-  }else{
-    
-    out <- exp(-(lambda*exp(beta*X1+beta1*(X2))*t0+lambda * (t-t0)* exp(beta * X1 + beta1 * (X2) + beta2)))
-    
-  }
-  
-  
-  return(out)
-}
+dt[,stop:=time]
+dt[,start:=0]
+
+dt<-dt[,.SD, .SDcols = !c('time')]
 
 
-inverse_sf_time_varying <- function(lambda, beta, X1, beta1, X2, beta2, u, t0) {
-  hz1 = lambda * exp(beta * X1 + beta1 * (X2))
-  
-  hz2 = lambda * exp(beta * X1 + beta1 * (X2) + beta2)
-  
-  tmp_cond= -log(u) <= (hz1 * t0)
-  
-  out <- -log(u) / (hz1)
-  out[!tmp_cond] <- (-log(u)-t0*(hz1-hz2)) / (hz1)
-  
+l2 <- Learner_glmnet(covariates = c("covariate"),
+                     cross_validation=TRUE)
 
-  return(out)
-}
+l3 <- Learner_glmnet(covariates = c("covariate","covariate2"),
+                     cross_validation=TRUE)
 
+
+learners <- list(l3,l2)
+
+sl <- Superlearner(data=dt,
+                   learners=learners,
+                   id="id",
+                   status="status",
+                   nodes=seq(0,6,.5),
+                   start_time = "start",
+                   meta_learner_algorithm = "glm",
+                   end_time = "stop")
+
+
+tmp_05 <- data.frame(node = factor(sort(unique(seq(0,5,0.5)
+))),
+tij = .5,
+covariate = 0.5,
+deltaij=0,
+covariate2=factor("1",levels = c("0","1")))
+
+preds <- predict(sl,tmp_05)
+
+
+xtrue <- seq(0,6,0.001)
+ytrue <- sf(xtrue,
+            lambda=.5,
+            beta = 0.1,
+            X1 = 0.5,
+            beta1 = .2,
+            X2=.1)
+
+plot(xtrue,
+     ytrue,
+     type="line",
+     xlab="Time", ylab="Survival Function")
+# lines(sort(unique(data_pp$data$node)),c(tmp$sf_hat), col="red",type="S")
+lines(seq(0,5.5,by=.5),c(1,preds$survival_function), col="red",type="S")
+legend(x = "topright",
+       title="Fitted Curve",
+       legend=c( "superlearner step .5"),
+       fill = c("red"))
 
 ```
 
-```{r}
-n <- 500
+# Test on Micaelas code
 
+```{r}
+
+library(simevent)
 {
-  set.seed(seed)
-  
-  sample <- 1-runif(as.integer(n), min=0, max= 1)
-  X <- rnorm(n)
-  X2 <- sample(c(0,1), n, replace = TRUE)
-  t0 <- rbeta(n,shape1=1,shape2=2)
-  
-
+  set.seed(7)
+  dat <- simSurvData(1e4)
   }
+```
+
+```{r}
+l2 <- Learner_glmnet(covariates = c("L0"),
+                     cross_validation=TRUE)
+
+l3 <- Learner_glmnet(covariates = c("L0","A0"),
+                     cross_validation=TRUE)
+
+
+
+dat[,A0:=factor(A0,levels=c("0","1"))]
+
+learners <- list(l3,l2)
+
+sl <- Superlearner(data=dat,
+                   learners=learners,
+                   id="ID",
+                   status="Delta",
+                   nodes=seq(0,35,.5),
+                   event_time =  "Time",
+                   meta_learner_algorithm = "glmnet")
+
+
+tmp_05 <- data.frame(node = factor(sort(unique(seq(0,27,.5)
+))),
+tij = .5,
+L0 = dat[,median(L0)],
+A0=factor("0",levels = c("0","1")),
+deltaij=0
+)
+
+preds <- predict(sl,tmp_05)
+
+cox <- coxph(formula("Surv(Time, Delta) ~  L0  +   A0"), data=dat)
+
+baseline_hazard <- basehaz(cox)
+
+surv_fit <- survfit(cox,
+                    data.frame(L0 = dat[,median(L0)],
+                               A0=factor("0",levels = c("0","1"))))
+
+
+sl2 <- Superlearner(data=dat,
+                   learners=learners,
+                   id="ID",
+                   status="Delta",
+                   nodes=seq(0,35,.5),
+                   event_time =  "Time",
+                   meta_learner_algorithm = "glm")
+
+preds2 <- predict(sl2,tmp_05)
+
+sl3 <- Superlearner(data=dat,
+                    learners=list( Learner_glm(covariates = c("L0")),
+
+                                  Learner_glm(covariates = c("L0","A0"))),
+                    id="ID",
+                    status="Delta",
+                    nodes=seq(0,35,.5),
+                    event_time =  "Time",
+                    meta_learner_algorithm = "glmnet")
+
+preds3 <- predict(sl3,tmp_05)
+
+
+
+sl4 <- Superlearner(data=dat,
+                    learners=list( Learner_glm(covariates = c("L0")),
+
+                                   Learner_glm(covariates = c("L0","A0"))),
+                    id="ID",
+                    status="Delta",
+                    nodes=seq(0,35,.5),
+                    event_time =  "Time",
+                    meta_learner_algorithm = "glm")
+
+preds4 <- predict(sl4,tmp_05)
+
+```
+
+
+```{r}
+
+plot(c(seq(0,27.5,.5)),c(1,preds$survival_function), col="red",type="S")
+lines(surv_fit$time,
+      surv_fit$surv,type="S")
+lines(c(seq(0,27.5,.5)),c(1,preds2$survival_function), col="blue",type="S")
+lines(c(seq(0,27.5,.5)),c(1,preds3$survival_function), col="green",type="S")
+lines(c(seq(0,27.5,.5)),c(1,preds4$survival_function), col="orange",type="S")
+```
+
+
+
+
+## Left truncation
+
+
+
+
+
+```{r}
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+theme_set(theme_bw())
+library(survival)
+library(mgcv)
+library(pammtools)
+Set1 <- RColorBrewer::brewer.pal(9, "Set1")
+```
+
+```{r}
+# raw data
+# https://socserv.mcmaster.ca/jfox/Books/Companion/scripts/appendix-cox.R
+recidivism <- read.table(
+    file   = "https://math.unm.edu/~james/Rossi.txt",
+    header = TRUE) %>%
+  mutate(subject=row_number())
+```
+
+
+```{r}
+# transform into long format
+recidivism_long <- recidivism %>%
+  gather(calendar.week, employed, emp1:emp52) %>%
+  filter(!is.na(employed)) %>% # employed unequal to NA only for intervals under risk
+  group_by(subject) %>%
+  mutate(
+    start  = row_number()-1,
+    stop   = row_number(),
+    arrest = ifelse(stop == last(stop) & arrest == 1, 1, 0),
+    offset = log(stop - start)) %>%
+  select(subject, start, stop, offset, arrest, employed, fin:educ) %>%
+  arrange(subject, stop)
+recidivism_long <- recidivism_long %>%
+  mutate(employed.lag1 = lag(employed, default=0)) %>%
+  slice(-1) %>% # exclusion of first week, as lagged information is missing
+  ungroup()
+
+recidivism_long2<-recidivism_long
+recidivism_long <- recidivism_long %>% select(subject, start,  stop,arrest,age,educ) 
+
+setDT(recidivism_long)
+recidivism_classic <- recidivism_long[, .(
+  start = first(start),
+  stop = last(stop),
+  arrest = last(arrest),
+  age = unique(age),
+  educ = unique(educ)
+), by = subject]
+
 
 ```
 
 ```{r}
-time<- inverse_sf_time_varying(u=sample,
-                      lambda=0.5,
-                      beta=0.1,
-                  beta1=.2,
-                  beta2 = .1,
-                  t0=t0,
-                  X2=X2,
-                      X1=X)
-max(time)
+l2 <- Learner_glm(covariates = c("educ","age"))
 
-{
-  set.seed(1)
-  cens <- runif(n=length(time),
-              min=0,
-              max=5.5)
-  
+l3 <- Learner_glm(covariates = c("age","educ","educ:age"))
+```
+
+```{r}
+
+learners <- list(l3,l2)
+
+sl_rec <- Superlearner(data=recidivism_long,
+                   learners=learners,
+                   id="subject",
+                   status="arrest",
+                   nfold = 4,
+                   # nodes=seq(0,52,1),
+                   start_time = "start",
+                   meta_learner_algorithm="glmnet",
+                   end_time="stop")
+
+sl_rec2 <- Superlearner(data=recidivism_long,
+                   learners=list(l3),
+                   id="subject",
+                   status="arrest",
+                   nfold = 5,
+                   # nodes=seq(0,52,1),
+                   start_time = "start",
+                   meta_learner_algorithm="glm",
+                   end_time="stop")
+
+recidivism_classic[,id:=subject]
+sl_classic <- Superlearner(data=recidivism_classic,
+                   learners=learners,
+                   id="id",
+                   status="arrest",
+                   nfold = 5,
+                   nodes=seq(0,51,1),
+                   # start_time = "start",
+                   meta_learner_algorithm="glmnet",
+                   event_time = "stop")
+
+
+```
+```{r}
+tmp <- sort(unique(c(unique(recidivism_long$start),unique(recidivism_long$stop))))
+
+tmp<-tmp[tmp!=max(recidivism_long$stop)]
+
+benchmark_dt <- data.frame(node = factor(tmp),
+tij = 1,
+age = 29,
+deltaij=0,
+educ=3)
+
+benchmark_dt1 <- data.frame(node = factor(seq(1,51,1)),
+tij = 1,
+age = 29,
+deltaij=0,
+educ=3)
+
+```
+
+```{r}
+preds <- predict(sl_rec,
+                 benchmark_dt,
+                 step = diff(c(tmp,max(recidivism_long$stop))) )
+
+
+preds1 <- predict(sl_rec2,
+                 benchmark_dt,
+                 step = diff(c(tmp,max(recidivism_long$stop))) )
+
+preds2 <- predict(sl_classic,
+                 benchmark_dt1,
+                 step = 1 )
+
+```
+
+
+
+```{r}
+cox <- coxph(formula("Surv(start, stop, arrest) ~ age+educ"), data=recidivism_long)
+
+baseline_hazard <- basehaz(cox)
+
+surv_fit <- survfit(cox,
+                    data.frame(age=29,
+                               educ=3))
+
+cox2 <- coxph(formula("Surv(stop, arrest) ~ age+educ"), data=recidivism_classic)
+
+baseline_hazard2 <- basehaz(cox2)
+
+surv_fit2 <- survfit(cox2,
+                    data.frame(age=29,
+                               educ=3))
+
+```
+
+
+```{r}
+
+dt <- fread("C:\\Users\\pwt887\\Desktop\\readit2.txt")
+dt[,node:=as.factor(node)]
+
+l1 <- Learner_glm(covariates = c("age","educ"))
+model1 <- l1$fit(dt)
+
+predictor1 <- l1$predictor(model=model1,newdata = benchmark_dt)
+
+step=diff(c(tmp,max(recidivism_long2$stop)))
+sf_1 <- exp(-cumsum(predictor1 * step))
+
+```
+
+
+```{r}
+{plot(c(tmp,max(recidivism_long$stop)),
+     c(1,sf_1),
+     col="green",
+     type="s")
+lines(c(0,surv_fit$time),
+      c(1,surv_fit$surv),
+      col="red",
+      type="s")
+lines(c(tmp,max(recidivism_long$stop)),
+     c(1,preds1$survival_function),
+     type="s")
+lines(c(tmp,max(recidivism_long$stop)),
+     c(1,preds$survival_function),
+     type="s",
+     col="blue")
+lines(seq(1,52),
+     c(1,preds2$survival_function),
+     type="s",
+     col="pink")
 }
-
-
-tmp <- time
-tmp[time > cens] <- cens[time > cens]
-
-
-dt_0 <- data.table(
-  id=1:length(tmp),
-  start_time=ifelse(t0>time,0,t0),
-  end_time = tmp,
-  covariate = X,
-  covariate2 = as.character(X2),
-  covariate_tv = ifelse(t0>time,0,1),
-  status = 1-as.numeric(time > cens))
-
-dt_1 <- data.table(
-  id=1:length(tmp),
-  covariate = X,
-  covariate2 = as.character(X2),
-  covariate_tv=0,
-  start_time=0,
-  end_time=t0,
-  status = 1-as.numeric(time > cens))[t0<time,]
-
-dt <- rbind(dt_0,dt_1)
-
-dt=dt[order(id,start_time),]
-
 ```
-
-```{r}
-
-```
-
-
-
-
 
 ## Replicating the Cox model
 

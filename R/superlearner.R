@@ -15,13 +15,16 @@ Superlearner <- function(data,
                          start_time=NULL,
                          end_time=NULL,
                          status="status",
-                         event_time="time",
+                         event_time=NULL,
                          learners,
                          nodes=NULL,
+                         meta_learner_algorithm="glmnet",
                          nfold = 3){
 
-  # Multiple checks about interval data
 
+
+  # Multiple checks about interval data
+  # browser()
   check_1 <- is.null(start_time) & !is.null(end_time)
   check_2 <- !is.null(start_time) & is.null(end_time)
   check_3 <- (!is.null(start_time) || !is.null(end_time)) & !is.null(event_time)
@@ -43,7 +46,12 @@ Superlearner <- function(data,
 
     interval_data_type = TRUE
 
+  }else{
+
+    interval_data_type = FALSE
+
   }
+
 
 
 
@@ -74,6 +82,8 @@ Superlearner <- function(data,
     )
 
 
+
+
   }else{
 
     dt <- data_pre_processing(
@@ -84,10 +94,12 @@ Superlearner <- function(data,
       event_time = event_time
     )
 
+    # browser()
+
   }
 
 
-
+  # browser()
   dt <- merge(dt,
               dt_id,
               by="id",
@@ -95,16 +107,14 @@ Superlearner <- function(data,
 
 
 
-
-  # browser()
   dt_z <- vector("list",n_crisks)
 
   z_covariates <- paste0("Z", 1:length(learners))
-  # browser()
+
+
+
   # Train your models in the training set ----
   for(ix in 1:nfold){
-
-    # browser()
 
     # Training data for each competing risk ----
     tmp_train <- dt[folder != ix,]
@@ -133,50 +143,32 @@ Superlearner <- function(data,
      SIMPLIFY = FALSE
     )
 
+
+
     dt_z <- mapply(function(x,y) rbind(x,y),
                    dt_z,
       pseudo_observations,
       SIMPLIFY = FALSE)
 
-
-    # train_list <- lapply(learners, function(f) f$fit(tmp_train))
-
-  # Predict on the validation set your pseudo-observations ----
-    # val_list <- mapply(
-    #   function(f, model, newdata)
-    #     f$predictor(model = model, newdata = newdata),
-    #   learners,
-    #   train_list,
-    #   MoreArgs = list(newdata = tmp_val)
-    # )
-
-
-
-    # val_list<- apply(as.matrix(val_list),
-    # MARGIN = 2,
-    # log)
-
-    # Name the columns
-
-    # colnames(val_list) <- z_covariates
-    #
-    # dt_z <- rbind(dt_z,
-    #               data.table(val_list)[,c("id",
-    #                                       "folder"):=list(tmp_val$id,
-    #                                                       ix)])
-
-
   }
 
   # browser()
-  data_by_competing_risk <- split(dt, by="k")
 
+  data_by_competing_risk <- split(dt, by="k")
+  # browser()
   # We do another round of glmnet for combining the predictors ----
+  if(meta_learner_algorithm=="glmnet"){
   meta_learner <- Learner_glmnet(covariates = z_covariates,
                           cross_validation=TRUE,
-                          add_nodes=FALSE)
+                          add_nodes=FALSE)}else{
+  meta_learner <- Learner_glm(covariates = z_covariates,
+                                 add_nodes=FALSE)
+
+                          }
 
 
+
+  # browser()
   meta_learner_fits <- mapply(
     function(dt,
              dt_z,
@@ -197,45 +189,6 @@ Superlearner <- function(data,
 
 
   )
-
-
-  # browser()
-
-  # setorder(dt_z, id, "folder")
-  # setorder(dt, id, "folder")
-  #
-  # dt_z <- cbind(dt_z,dt)
-
-  # browser()
-
-  #
-  # meta_learner_fit <- meta_learner$fit(dt_z)
-
-  # learners on the full dataset
-  # full_train_list <- lapply(learners, function(f) f$fit(dt))
-  #
-  # step_0_predictions <- mapply(
-  #   function(f, model, newdata)
-  #     f$predictor(model = model, newdata = newdata),
-  #   learners,
-  #   full_train_list,
-  #   MoreArgs = list(newdata = dt)
-  # )
-  #
-  # step_0_predictions<- apply(as.matrix(step_0_predictions),
-  #                  MARGIN = 2,
-  #                  log)
-
-  # Name the columns
-  # colnames(step_0_predictions) <- z_covariates
-  #
-  # setDT(cbind(as.data.frame.matrix(step_0_predictions),
-  #             dt[,c("node",
-  #                   "tij")]
-  #             ))
-  #
-  # fitted_values <- meta_learner$predictor(meta_learner_fit,
-  #                                   dt_z)
 
 
   out <- list(
