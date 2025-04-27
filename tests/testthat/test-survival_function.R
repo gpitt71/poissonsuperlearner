@@ -10,7 +10,6 @@ library(rpart)
 library(simevent)
 # Define useful functions ----
 
-
 sf <- function(t,lambda, beta, X1,beta1,X2){
 
   out <- exp(-lambda*exp(beta*X1+beta1*(X2))*t)
@@ -128,6 +127,8 @@ sl2 <- Superlearner(data=dt,
 
 
 # Combinations we want to predict for
+## Right now the predict method is mostly something that I used for the plots I showed.
+## Once should think how to make it userfriendly in the future.
 tmp_05 <- data.frame(node = factor(sort(unique(seq(0,5,0.5)
 ))),
 tij = .5,
@@ -202,6 +203,16 @@ deltaij=0
 )
 
 
+tmp_1 <- data.frame(node = factor(sort(unique(seq(0,27,1)
+))),
+tij = 1,
+L0 = dat[,median(L0)],
+A0=factor("0",levels = c("0","1")),
+deltaij=0
+)
+
+
+
 dat[,A0:=factor(A0,levels=c("0","1"))]
 
 learners <- list(l3,l2)
@@ -215,8 +226,8 @@ sl <- Superlearner(data=dat,
                    nfold=10,
                    meta_learner_algorithm = "glmnet")
 
+
 preds <- predict(sl,tmp_5,step=.5)
-preds1 <- predict(sl1,tmp_5,step=.5)
 
 cox <- coxph(formula("Surv(Time, Delta) ~  L0  +   A0"), data=dat)
 

@@ -311,29 +311,6 @@ create_pseudo_observations <- function(train_data,
 
   "
 
-  # browser()
-  check <- setdiff(unique(validation_data$node),
-                   unique(train_data$node))
-
-  # browser()
-
-  # if(length(check)>0){
-  #
-  #   template_row <- train_data[.N]
-  #
-  #   # Step 3: Duplicate and modify the node column
-  #   dummy_rows <- rbindlist(lapply(check, function(lvl) {
-  #     row <- copy(template_row)
-  #     row[, node := factor(lvl, levels = levels(train_data$node))]
-  #     return(row)
-  #   }))
-  #
-  #   dummy_rows[,tij:=1e-4][,deltaij:=0]
-  #
-  #   train_data <- rbind(train_data,dummy_rows)
-  #
-  # }
-
   train_list <- lapply(learners, function(f) f$fit(train_data))
 
   # Predict on the validation set your pseudo-observations ----
