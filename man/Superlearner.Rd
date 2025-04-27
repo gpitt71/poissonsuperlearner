@@ -7,10 +7,13 @@
 Superlearner(
   data,
   id = "id",
+  start_time = NULL,
+  end_time = NULL,
   status = "status",
-  event_time = "time",
+  event_time = NULL,
   learners,
   nodes = NULL,
+  meta_learner_algorithm = "glmnet",
   nfold = 3
 )
 }

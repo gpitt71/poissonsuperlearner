@@ -179,6 +179,7 @@ data_pre_processing <- function(data,
 }
 
 
+
 data_pre_processing_interval_data <- function(data, id, status, start_time, end_time, nodes = NULL) {
   setDT(data)
 
@@ -314,22 +315,24 @@ create_pseudo_observations <- function(train_data,
   check <- setdiff(unique(validation_data$node),
                    unique(train_data$node))
 
-  if(length(check)>0){
+  # browser()
 
-    template_row <- train_data[.N]
-
-    # Step 3: Duplicate and modify the node column
-    dummy_rows <- rbindlist(lapply(check, function(lvl) {
-      row <- copy(template_row)
-      row[, node := factor(lvl, levels = levels(train_data$node))]
-      return(row)
-    }))
-
-    dummy_rows[,tij:=1e-4][,deltaij:=0]
-
-    train_data <- rbind(train_data,dummy_rows)
-
-  }
+  # if(length(check)>0){
+  #
+  #   template_row <- train_data[.N]
+  #
+  #   # Step 3: Duplicate and modify the node column
+  #   dummy_rows <- rbindlist(lapply(check, function(lvl) {
+  #     row <- copy(template_row)
+  #     row[, node := factor(lvl, levels = levels(train_data$node))]
+  #     return(row)
+  #   }))
+  #
+  #   dummy_rows[,tij:=1e-4][,deltaij:=0]
+  #
+  #   train_data <- rbind(train_data,dummy_rows)
+  #
+  # }
 
   train_list <- lapply(learners, function(f) f$fit(train_data))
 
@@ -343,7 +346,6 @@ create_pseudo_observations <- function(train_data,
   )
 
 
-
   val_list<- apply(as.matrix(val_list),
                    MARGIN = 2,
                    log)
@@ -352,8 +354,9 @@ create_pseudo_observations <- function(train_data,
 
   colnames(val_list) <- z_covariates
 
+
   # dt_z <- rbind(dt_z,
-  dt_z <- data.table(val_list)[, c("id", "folder") := list(validation_data$id, ix)]
+  dt_z <- data.table(val_list)[, c("id", "folder","node") := list(validation_data$id, ix, validation_data$node)]
   #)
 
   return(dt_z)
@@ -368,40 +371,48 @@ fit_meta_learner <- function(dt,
                              z_covariates){
 
 
+  # setorder(dt_z, id, "folder")
+  # setorder(dt, id, "folder")
   #
-  setorder(dt_z, id, "folder")
-  setorder(dt, id, "folder")
+  dt_z <- merge(dt_z,dt,by=c("id","folder","node"))
 
-  dt_z <- cbind(dt_z,dt)
+  # dt_z[, virtual_seq := seq_len(.N), by = .(id, folder)]
+  # dt[, virtual_seq := seq_len(.N), by = .(id, folder)]
+  #
+  # dt_z <- merge(dt_z,dt,
+  #               by=c("id","folder","virtual_seq"))
+  #
+  # dt_z[, virtual_seq := NULL]
 
   meta_learner_fit <- meta_learner$fit(dt_z)
 
-  # learners on the full dataset
+  fitted_values <- meta_learner$predictor(meta_learner_fit,
+                                          dt_z)
+
+  # learners on the full dataset ----
   full_train_list <- lapply(learners, function(f) f$fit(dt))
 
-  step_0_predictions <- mapply(
-    function(f, model, newdata)
-      f$predictor(model = model, newdata = newdata),
-    learners,
-    full_train_list,
-    MoreArgs = list(newdata = dt)
-  )
-
-  step_0_predictions<- apply(as.matrix(step_0_predictions),
-                             MARGIN = 2,
-                             log)
+  # step_0_predictions <- mapply(
+  #   function(f, model, newdata)
+  #     f$predictor(model = model, newdata = newdata),
+  #   learners,
+  #   full_train_list,
+  #   MoreArgs = list(newdata = dt)
+  # )
+  #
+  # step_0_predictions<- apply(as.matrix(step_0_predictions),
+  #                            MARGIN = 2,
+  #                            log)
 
   # Name the columns
-  colnames(step_0_predictions) <- z_covariates
+  # colnames(step_0_predictions) <- z_covariates
 
-
-
-  step_0_predictions <- cbind(as.data.frame.matrix(step_0_predictions), dt[, c("node", "tij","deltaij")])
-
-  setDT(step_0_predictions)
-
-  fitted_values <- meta_learner$predictor(meta_learner_fit,
-                                          step_0_predictions)
+  # step_0_predictions <- cbind(as.data.frame.matrix(step_0_predictions), dt[, c("node", "tij","deltaij")])
+  #
+  # setDT(step_0_predictions)
+  #
+  # fitted_values <- meta_learner$predictor(meta_learner_fit,
+  #                                         step_0_predictions)
 
   out <- list(
     model = meta_learner,

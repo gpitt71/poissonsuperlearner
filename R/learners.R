@@ -32,7 +32,7 @@ Learner_glm <- setRefClass(
     covariates = "character",
     treatment = "character",
     cross_validation = "logical",
-    competing_risks ="logical",
+    # competing_risks ="logical",
     formula ="character",
     learner="function",
     add_nodes="logical"
@@ -41,7 +41,7 @@ Learner_glm <- setRefClass(
     initialize = function(covariates = NULL,
                           treatment = NA_character_,
                           cross_validation = FALSE,
-                          competing_risks = NA ,
+                          # competing_risks = NA ,
                           add_nodes= TRUE,
                           ...) {
       .self$covariates <- covariates
@@ -55,12 +55,13 @@ Learner_glm <- setRefClass(
       # create formula for competing risks. It is correct in the fit method if survival.
       .self$formula <- create_formula(covariates = .self$covariates,
                                       treatment = .self$treatment,
-                                      competing_risks =TRUE,
+                                      # competing_risks =TRUE,
                                       add_nodes=.self$add_nodes)
 
 
       if (.self$cross_validation) {
-        .self$learner = NULL
+        .self$learner = glm
+        warning("There is no cross-validation procedure for a glm model. This learner is a simple glm.")
 
       } else{
         .self$learner = glm
@@ -69,18 +70,18 @@ Learner_glm <- setRefClass(
 
     fit = function(data, ...) {
 
-      survival_01 <- length(unique(data[['k']])) < 2
+      # survival_01 <- length(unique(data[['k']])) < 2
 
 
       # practical correction in case it is a survival problem
-      if(survival_01){
-
-        .self$formula <- create_formula(covariates = .self$covariates,
-                                        treatment = .self$treatment,
-                                        competing_risks =FALSE,
-                                        add_nodes=.self$add_nodes)
-
-      }
+      # if(survival_01){
+      #
+      #   .self$formula <- create_formula(covariates = .self$covariates,
+      #                                   treatment = .self$treatment,
+      #                                   competing_risks =FALSE,
+      #                                   add_nodes=.self$add_nodes)
+      #
+      # }
 
       out<- .self$learner(.self$formula,
                           data=data,
@@ -147,7 +148,7 @@ Learner_glmnet <- setRefClass(
       # create formula for competing risks. It is correct in the fit method if survival.
       .self$formula <- create_formula(covariates = .self$covariates,
                                       treatment = .self$treatment,
-                                      competing_risks =TRUE,
+                                      # competing_risks =TRUE,
                                       add_nodes=.self$add_nodes)
 
 
@@ -169,18 +170,18 @@ Learner_glmnet <- setRefClass(
 
     fit = function(data, formula) {
 
-      survival_01 <- length(unique(data[['k']])) < 2
+      # survival_01 <- length(unique(data[['k']])) < 2
 
 
       # practical correction in case it is a survival problem
-      if(survival_01){
-
-        .self$formula <- create_formula(covariates = .self$covariates,
-                                        treatment = .self$treatment,
-                                        competing_risks =FALSE,
-                                        add_nodes=.self$add_nodes)
-
-      }
+      # if(survival_01){
+      #
+      #   .self$formula <- create_formula(covariates = .self$covariates,
+      #                                   treatment = .self$treatment,
+      #                                   competing_risks =FALSE,
+      #                                   add_nodes=.self$add_nodes)
+      #
+      # }
 
       # one layer of extra data preprocessing
       tmp <- datapp_glmnet(data, .self$formula)

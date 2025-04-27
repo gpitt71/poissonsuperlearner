@@ -82,7 +82,7 @@ inverse_sf<- function(lambda, beta, X1,beta1,X2, u){
 
 ```{r}
 
-n <- 500
+n <- 10000
 
 {
   set.seed(seed)
@@ -102,7 +102,7 @@ n <- 500
 time<- inverse_sf(u=sample,
                       lambda=0.5,
                       beta=0.1,
-                  beta1=.2,
+                  beta1=0.2,
                   X2=X2,
                       X1=X)
 max(time)
@@ -141,18 +141,17 @@ table(dt$status)
 tmp_05 <- data.frame(node = factor(sort(unique(seq(0,5,0.5)
 ))),
 tij = .5,
-covariate = 0.5,
-covariate2=factor("1",levels = c("0","1")))
+covariate = 5,
+covariate2=factor("0",levels = c("0","1")))
 ```
 
 ```{r}
 tmp_1 <- data.frame(node = factor(sort(unique(seq(0,5,1)
 ))),
 tij = 1,
-covariate = 0.5,
-covariate2=factor("1",levels = c("0","1")))
+covariate = 5,
+covariate2=factor("0",levels = c("0","1")))
 ```
-
 
 
 ```{r}
@@ -160,10 +159,7 @@ l1 <- Learner_glmnet(covariates = c("covariate2"),
                      cross_validation=FALSE,
                      lambda=.1)
 
-l2 <- Learner_glmnet(covariates = c("covariate"),
-                     cross_validation=TRUE)
-
-l3 <- Learner_glmnet(covariates = c("covariate","covariate2"),
+l2 <- Learner_glmnet(covariates = c("covariate","covariate2"),
                      cross_validation=TRUE)
 ```
 
@@ -171,11 +167,13 @@ l3 <- Learner_glmnet(covariates = c("covariate","covariate2"),
 
 learners <- list(l1,l2)
 
+
 sl <- Superlearner(data=dt,
                    learners=learners,
                    id="id",
                    status="status",
                    nodes=seq(0,6,.5),
+                   meta_learner_algorithm = "glmnet",
                    event_time = "time")
 
 ```
@@ -186,9 +184,36 @@ sl1 <- Superlearner(data=dt,
                    id="id",
                    status="status",
                    nodes=seq(0,6,1),
+                   meta_learner_algorithm = "glmnet",
                    event_time = "time")
-
 ```
+
+
+```{r}
+sl2 <- Superlearner(data=dt,
+                   learners=list(
+                     Learner_glmnet(covariates = c("covariate"),
+                     cross_validation=TRUE), 
+                     Learner_glmnet(covariates = c("covariate2"),
+                     cross_validation=TRUE)),
+                   id="id",
+                   status="status",
+                   nodes=seq(0,6,1),
+                   meta_learner_algorithm = "glmnet",
+                   event_time = "time")
+```
+
+
+```{r}
+cox <- coxph(formula("Surv(time, status) ~  covariate  +   covariate2"), data=dt)
+
+baseline_hazard <- basehaz(cox)
+
+surv_fit <- survfit(cox,
+                    data.frame(covariate = 5,
+                               covariate2=factor("0",levels = c("0","1"))))
+```
+
 
 ```{r}
 tmp_1[['deltaij']]<-tmp_05[['deltaij']]<-0
@@ -200,38 +225,43 @@ tmp_1[['deltaij']]<-tmp_05[['deltaij']]<-0
 
 
 ```{r}
-preds <- predict(sl,tmp_05)
-```
-```{r}
-preds_1 <- predict(sl1,tmp_1)
+preds <- predict(sl,tmp_05,step = .5)
+preds_1 <- predict(sl1,tmp_1,step = 1)
+preds_2 <- predict(sl2,tmp_1,step = 1)
 ```
 
 
 ```{r}
-xtrue <- seq(0,6,0.001)
-ytrue <- sf(xtrue,
-            lambda=.5,
-            beta = 0.1,
-            X1 = 0.5,
-            beta1 = .2,
-            X2=.1)
+xtrue <- seq(0, 6, 0.001)
+ytrue <- sf(
+  xtrue,
+  lambda = 0.5,
+  beta = 0.1,
+  beta1 = 0.2,
+  X1 = 5,
+  X2 = 0
+)
 
 plot(xtrue,
      ytrue,
-     type="line",
+     type="l",
      xlab="Time", ylab="Survival Function")
-# lines(sort(unique(data_pp$data$node)),c(tmp$sf_hat), col="red",type="S")
+lines(surv_fit$time,
+      surv_fit$surv,
+      col="yellow",
+      type="S")
 lines(seq(0,5.5,by=.5),c(1,preds$survival_function), col="red",type="S")
 lines(seq(0,6,by=1),c(1,preds_1$survival_function), col="green",type="S")
+lines(seq(0,6,by=1),c(1,preds_2$survival_function), col="blue",type="S")
 # lines(seq(0,6,by=1),c(1,tmp_1$sf_xgb), col="blue",type="S")
 # lines(seq(0,6,by=1),c(1,tmp_1$sf_glmnet), col="orange",type="S")
 # lines(seq(0,6,by=1),c(1,tmp_1$sf_rpart), col="pink",type="S")
-legend(x = "topright",
-       title="Fitted Curve",
-       legend=c( "superlearner step .5", 
-                 "superlearner step 1"),
-       fill = c("red",
-                "green"))
+# legend(x = "topright",
+#        title="Fitted Curve",
+#        legend=c( "superlearner step .5", 
+#                  "superlearner step 1"),
+#        fill = c("red",
+#                 "green"))
 
 
 ```
@@ -311,6 +341,21 @@ library(simevent)
 ```
 
 ```{r}
+
+
+sf_simevent <- function(t,eta,nu){
+  
+  out <- exp(-eta*(t^{nu}))
+  return(out)
+}
+
+
+
+```
+
+
+
+```{r}
 l2 <- Learner_glmnet(covariates = c("L0"),
                      cross_validation=TRUE)
 
@@ -367,11 +412,20 @@ sl3 <- Superlearner(data=dat,
                                   Learner_glm(covariates = c("L0","A0"))),
                     id="ID",
                     status="Delta",
-                    nodes=seq(0,35,.5),
+                    nodes=seq(0,35,.2),
                     event_time =  "Time",
                     meta_learner_algorithm = "glmnet")
 
-preds3 <- predict(sl3,tmp_05)
+
+tmp_02 <- data.frame(node = factor(sort(unique(seq(0,27,.2)
+))),
+tij = .2,
+L0 = dat[,median(L0)],
+A0=factor("0",levels = c("0","1")),
+deltaij=0
+)
+
+preds3 <- predict(sl3,tmp_02)
 
 
 
@@ -381,33 +435,190 @@ sl4 <- Superlearner(data=dat,
                                    Learner_glm(covariates = c("L0","A0"))),
                     id="ID",
                     status="Delta",
-                    nodes=seq(0,35,.5),
+                    nodes=seq(0,35,.1),
                     event_time =  "Time",
                     meta_learner_algorithm = "glm")
 
-preds4 <- predict(sl4,tmp_05)
+
+tmp_01 <- data.frame(node = factor(sort(unique(seq(0,27,.1)
+))),
+tij = .1,
+L0 = dat[,median(L0)],
+A0=factor("0",levels = c("0","1")),
+deltaij=0
+)
+
+preds4 <- predict(sl4,tmp_01)
 
 ```
 
 
 ```{r}
 
-plot(c(seq(0,27.5,.5)),c(1,preds$survival_function), col="red",type="S")
+x_true <- seq(0,28,.01)
+y_true <- sf_simevent(x_true,.1,1.1)
+
+plot(c(seq(0,27.5,.5)),c(1,preds$survival_function), col="yellow",type="S")
 lines(surv_fit$time,
-      surv_fit$surv,type="S")
+      surv_fit$surv,
+      type="S")
+lines(x_true,
+      y_true, 
+      col="red")
 lines(c(seq(0,27.5,.5)),c(1,preds2$survival_function), col="blue",type="S")
-lines(c(seq(0,27.5,.5)),c(1,preds3$survival_function), col="green",type="S")
-lines(c(seq(0,27.5,.5)),c(1,preds4$survival_function), col="orange",type="S")
+lines(c(seq(0,27.2,.2)),c(1,preds3$survival_function), col="green",type="S")
+lines(c(seq(0,27.1,.1)),c(1,preds4$survival_function), col="orange",type="S")
+legend(x = "topright", 
+       title="Fitted Curve",  
+       legend=c( "Cox", "True", "SL 1", "SL 2", "SL 3" ,"SL 4"),  
+       fill = c("black","red", "blue","green","orange", "yellow")) 
+```
+```{r}
+data_pre_processing <- function(data,
+                                id,
+                                status,
+                                event_time,
+                                nodes=NULL
+){
+
+
+
+  setDT(data)
+
+  #  Handle nodes ----
+  ##Either the nodes are given or we take all of the realised times
+  if (is.null(nodes)) {
+    grid_nodes <- sort(unique(data[[event_time]]))
+
+  } else{
+    grid_nodes <- nodes
+
+  }
+
+  # Add zero if missing
+  if (!(0 %in% grid_nodes)) {
+    grid_nodes <- c(0, grid_nodes)
+
+  }
+
+
+  # Handle competing risks ----
+  ## for each of the competing risks (CR) we need to create a table
+  n_crisks <- length(unique(data[[status]])) - 1
+  ## the CR tables are stuck on top of each other to allow for possible interactions
+  dt_fit <- do.call(rbind, replicate(n_crisks, data, simplify = FALSE))
+  ## we create an artificial k index. Table specific.
+  dt_fit <- dt_fit[, k := rep(1:n_crisks, each = dim(data)[1])]
+
+
+  # Data Transformation ----
+  tmp <- c(id, "k")
+
+  dt_fit <- eval(parse(text = paste("dt_fit[, .(node = create_offset_variable(grid_nodes, time_to_event = ",
+                                    event_time,
+                                    ")[, 1]",
+                                    ", tij = create_offset_variable(grid_nodes, time_to_event = ",
+                                    event_time,
+                                    ")[,2]",
+                                    ", deltaij = create_response_variable_c_risks(grid_nodes,time_to_event = ",
+                                    event_time,
+                                    ", delta=",
+                                    status,
+                                    ", event_type = k)",
+                                    ")",
+                                    ", by = .(",
+                                    id,
+                                    ", k)",
+                                    "]")))
+
+  ## Retrieve covariates
+
+  dt_fit <- merge(dt_fit, data, by = id, all.x = TRUE)
+
+  setnames(dt_fit, c(id),c("id"))
+
+  dt_fit[,c("node",
+            "k"):=list(as.factor(node),
+                       as.factor(k))]
+
+  return(dt_fit)
+
+}
+
+
+
+create_offset_variable <- function(nodes, delta, time_to_event){
+
+  tmp <- c(nodes[nodes < time_to_event],
+           first(nodes[nodes >= time_to_event]))
+
+  # if(delta == 1){
+  tmp[length(tmp)] <- time_to_event
+  # }
+
+  tij <- diff(c(tmp))
+
+  grid_nodes <- c(nodes[nodes < time_to_event])
+
+  return(cbind(grid_nodes,tij))
+}
+
+create_response_variable_c_risks <- function(nodes, time_to_event, delta, event_type){
+  # browser()
+  p_holder <- ifelse(delta == event_type, 1, 0)
+
+  l <- sum(nodes < time_to_event)
+
+  out <- c(rep(0,l-1),
+           p_holder)
+
+  return(out)
+}
+
+```
+
+```{r}
+x_true <- seq(0,28,.01)
+y_true <- sf_simevent(x_true,.1,1.1)
+
+dt <- data_pre_processing(data=dat,
+                                id="ID",
+                                status="Delta",
+                                event_time="Time",
+                                nodes=seq(0,28,by=.05))
+dt[,node:=as.factor(node)]
+
+l1 <- Learner_glmnet(covariates = c("L0","A0"),
+                     cross_validation=TRUE)
+model1 <- l1$fit(dt)
+
+tmp_05 <- data.frame(node = factor(sort(unique(seq(0,28,.5)
+))),
+tij = .5,
+L0 = dat[,median(L0)],
+A0=factor("0",levels = c("0","1")),
+deltaij=0
+)
+
+predictor1 <- l1$predictor(model=model1,newdata = tmp_05)
+
+step=diff(c(seq(0,28,by=.05),28.5))
+sf_1 <- exp(-cumsum(predictor1 * step))
+
+x_true <- seq(0,28,by=.05)
+y_true <- sf_simevent(x_true,.1,1.1)
+
+plot(x_true,
+      y_true, 
+      col="red")
+lines()
+
+
 ```
 
 
 
-
-## Left truncation
-
-
-
-
+## Test on the pammtools dataset
 
 ```{r}
 library(tidyr)
@@ -451,15 +662,6 @@ recidivism_long <- recidivism_long %>%
 recidivism_long2<-recidivism_long
 recidivism_long <- recidivism_long %>% select(subject, start,  stop,arrest,age,educ) 
 
-setDT(recidivism_long)
-recidivism_classic <- recidivism_long[, .(
-  start = first(start),
-  stop = last(stop),
-  arrest = last(arrest),
-  age = unique(age),
-  educ = unique(educ)
-), by = subject]
-
 
 ```
 
@@ -493,18 +695,6 @@ sl_rec2 <- Superlearner(data=recidivism_long,
                    meta_learner_algorithm="glm",
                    end_time="stop")
 
-recidivism_classic[,id:=subject]
-sl_classic <- Superlearner(data=recidivism_classic,
-                   learners=learners,
-                   id="id",
-                   status="arrest",
-                   nfold = 5,
-                   nodes=seq(0,51,1),
-                   # start_time = "start",
-                   meta_learner_algorithm="glmnet",
-                   event_time = "stop")
-
-
 ```
 ```{r}
 tmp <- sort(unique(c(unique(recidivism_long$start),unique(recidivism_long$stop))))
@@ -535,9 +725,6 @@ preds1 <- predict(sl_rec2,
                  benchmark_dt,
                  step = diff(c(tmp,max(recidivism_long$stop))) )
 
-preds2 <- predict(sl_classic,
-                 benchmark_dt1,
-                 step = 1 )
 
 ```
 
@@ -552,13 +739,6 @@ surv_fit <- survfit(cox,
                     data.frame(age=29,
                                educ=3))
 
-cox2 <- coxph(formula("Surv(stop, arrest) ~ age+educ"), data=recidivism_classic)
-
-baseline_hazard2 <- basehaz(cox2)
-
-surv_fit2 <- survfit(cox2,
-                    data.frame(age=29,
-                               educ=3))
 
 ```
 
@@ -574,7 +754,7 @@ model1 <- l1$fit(dt)
 predictor1 <- l1$predictor(model=model1,newdata = benchmark_dt)
 
 step=diff(c(tmp,max(recidivism_long2$stop)))
-sf_1 <- exp(-cumsum(predictor1 * step))
+sf_1 <- exp(-cumsum(predictor1 * 1))
 
 ```
 
@@ -583,22 +763,18 @@ sf_1 <- exp(-cumsum(predictor1 * step))
 {plot(c(tmp,max(recidivism_long$stop)),
      c(1,sf_1),
      col="green",
-     type="s")
+     type="S")
 lines(c(0,surv_fit$time),
       c(1,surv_fit$surv),
       col="red",
-      type="s")
+     type="S")
 lines(c(tmp,max(recidivism_long$stop)),
      c(1,preds1$survival_function),
-     type="s")
+     type="S")
 lines(c(tmp,max(recidivism_long$stop)),
      c(1,preds$survival_function),
-     type="s",
+     type="S",
      col="blue")
-lines(seq(1,52),
-     c(1,preds2$survival_function),
-     type="s",
-     col="pink")
 }
 ```
 
