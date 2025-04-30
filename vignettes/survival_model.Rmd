@@ -213,7 +213,6 @@ tmp_1[['deltaij']]<-tmp_05[['deltaij']]<-0
 ```{r}
 preds <- predict(sl,tmp_05,step = .5)
 preds_1 <- predict(sl1,tmp_1,step = 1)
-preds_2 <- predict(sl2,tmp_1,step = 1)
 ```
 
 
@@ -319,17 +318,23 @@ sl_rec <- Superlearner(data=recidivism_long,
                    nfold = 4,
                    # nodes=seq(0,52,1),
                    start_time = "start",
-                   meta_learner_algorithm="glmnet",
+                   meta_learner_algorithm="glm",
+                   add_nodes_metalearner = TRUE,
+                   add_intercept_metalearner = TRUE,
                    end_time="stop")
 
+
+
 sl_rec2 <- Superlearner(data=recidivism_long,
-                   learners=list(l3),
+                   learners=list(l2),
                    id="subject",
                    status="arrest",
                    nfold = 5,
                    # nodes=seq(0,52,1),
                    start_time = "start",
                    meta_learner_algorithm="glm",
+                   add_nodes_metalearner = TRUE,
+                   add_intercept_metalearner = TRUE,
                    end_time="stop")
 
 ```
@@ -354,8 +359,7 @@ educ=3)
 
 ```{r}
 preds <- predict(sl_rec,
-                 benchmark_dt,
-                 step = diff(c(tmp,max(recidivism_long$stop))) )
+                 benchmark_dt )
 
 
 preds1 <- predict(sl_rec2,
@@ -368,7 +372,7 @@ preds1 <- predict(sl_rec2,
 
 
 ```{r}
-cox <- coxph(formula("Surv(start, stop, arrest) ~ age+educ"), data=recidivism_long)
+cox <- coxph(formula("Surv(start, stop, arrest) ~ age+educ+educ:age"), data=recidivism_long)
 
 baseline_hazard <- basehaz(cox)
 

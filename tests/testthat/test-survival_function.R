@@ -33,7 +33,7 @@ inverse_sf<- function(lambda, beta, X1,beta1,X2, u){
 
 # Define useful variables ----
 seed=42
-n=1000
+n=50
 
 # Generate some data from a simple proportional model ----
 
@@ -79,12 +79,9 @@ dt <- data.table(
 # Fit ----
 ## Learners ----
 
-l1 <- Learner_glm(covariates = c("covariate2"),
-                     cross_validation=FALSE,
-                     lambda=.1)
+l1 <- Learner_glm(covariates = c("covariate2"))
 
-l2 <- Learner_glm(covariates = c("covariate","covariate2"),
-                     cross_validation=TRUE) # there is no CV for a glm, so I return a warning
+l2 <- Learner_glm(covariates = c("covariate","covariate2")) # there is no CV for a glm, so I return a warning
 
 ## Fit Superlearner ----
 
@@ -97,10 +94,11 @@ sl <- Superlearner(data=dt,
                    learners=learners,
                    id="id",
                    status="status",
-                   nodes=seq(0,6,.5),
-                   nfold = 5,
+                   # nodes=seq(0,6,.5),
+                   nfold = 10,
                    meta_learner_algorithm = "glm",
-                   add_nodes_metalearner = FALSE,
+                   add_nodes_metalearner = TRUE,
+                   add_intercept_metalearner = TRUE,
                    event_time = "time")
 
 sl1 <- Superlearner(data=dt,
@@ -108,22 +106,11 @@ sl1 <- Superlearner(data=dt,
                    id="id",
                    status="status",
                    nodes=seq(0,6,1),
-                   nfold = 5,
+                   nfold = 10,
                    meta_learner_algorithm = "glmnet",
-                   add_nodes_metalearner = T,
+                   add_nodes_metalearner = TRUE,
+                   add_intercept_metalearner = FALSE,
                    event_time = "time")
-
-sl2 <- Superlearner(data=dt,
-                    learners=list(Learner_glmnet(covariates = c("covariate2"),
-                                                 cross_validation=FALSE,
-                                                 lambda=.1)),
-                    id="id",
-                    status="status",
-                    nodes=seq(0,6,1),
-                    nfold = 5,
-                    meta_learner_algorithm = "glmnet",
-                    add_nodes_metalearner = TRUE,
-                    event_time = "time")
 
 
 # Combinations we want to predict for
@@ -156,9 +143,8 @@ surv_fit <- survfit(cox,
 
 
 
-preds <- predict(sl,tmp_05,step = .5)
-preds_1 <- predict(sl1,tmp_1,step = 1)
-preds_2 <- predict(sl2,tmp_1,step = 1)
+preds <- predict(sl,tmp_05)
+preds_1 <- predict(sl1,tmp_1)
 
 xtrue <- seq(0, 6, 0.001)
 ytrue <- sf(
@@ -180,23 +166,24 @@ lines(surv_fit$time,
       type="S")
 lines(seq(0,5.5,by=.5),c(1,preds$survival_function), col="red",type="S")
 lines(seq(0,6,by=1),c(1,preds_1$survival_function), col="green",type="S")
-lines(seq(0,6,by=1),c(1,preds_2$survival_function), col="blue",type="S")
 
 # Test on Micaelas code ----
 
 {
   set.seed(7)
-  dat <- simSurvData(1e4)
+  dat <- simSurvData(1e2)
 }
 
 
-l2 <- Learner_glm(covariates = c("L0"))
+l2 <- Learner_glm(covariates = c("L0"),
+                  intercept= TRUE)
 
-l3 <- Learner_glm(covariates = c("L0","A0"))
+l3 <- Learner_glm(covariates = c("L0","A0"),
+                  intercept= TRUE)
 
 tmp_5 <- data.frame(node = factor(sort(unique(seq(0,27,.5)
 ))),
-tij = .5,
+tij = 0.5,
 L0 = dat[,median(L0)],
 A0=factor("0",levels = c("0","1")),
 deltaij=0
@@ -221,13 +208,26 @@ sl <- Superlearner(data=dat,
                    learners=learners,
                    id="ID",
                    status="Delta",
-                   nodes=seq(0,35,.5),
+                   # nodes=seq(0,35,.5),
                    event_time =  "Time",
                    nfold=10,
-                   meta_learner_algorithm = "glmnet")
+                   meta_learner_algorithm = "glm",
+                   add_nodes_metalearner = TRUE,
+                   add_intercept_metalearner = TRUE)
 
+sl1 <- Superlearner(data=dat,
+                   learners=learners,
+                   id="ID",
+                   status="Delta",
+                   nodes=seq(0,35,1),
+                   event_time =  "Time",
+                   nfold=10,
+                   meta_learner_algorithm = "glm",
+                   add_nodes_metalearner = TRUE,
+                   add_intercept_metalearner = TRUE)
 
-preds <- predict(sl,tmp_5,step=.5)
+preds <- predict(sl,tmp_5)
+preds1 <- predict(sl1,tmp_1)
 
 cox <- coxph(formula("Surv(Time, Delta) ~  L0  +   A0"), data=dat)
 
@@ -247,6 +247,10 @@ y_true <- sf_simevent(x_true,.1,1.1)
        type = "S")
   lines(surv_fit$time, surv_fit$surv, type = "S")
   lines(x_true, y_true, col = "red")
+  lines(c(seq(0, 28, 1)),
+        c(1, preds1$survival_function),
+        col="blue",
+        type="S")
 }
 
 

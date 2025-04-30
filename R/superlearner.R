@@ -20,6 +20,7 @@ Superlearner <- function(data,
                          nodes = NULL,
                          meta_learner_algorithm = "glmnet",
                          add_nodes_metalearner=TRUE,
+                         add_intercept_metalearner=TRUE,
                          nfold = 3) {
   # Multiple checks about interval data
   # browser()
@@ -144,6 +145,7 @@ Superlearner <- function(data,
     meta_learner <- Learner_glmnet(
       covariates = z_covariates,
       cross_validation = TRUE,
+      intercept=add_intercept_metalearner,
       add_nodes=add_nodes_metalearner
     )
   } else{

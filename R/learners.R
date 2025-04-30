@@ -32,7 +32,7 @@ Learner_glm <- setRefClass(
     covariates = "character",
     treatment = "character",
     cross_validation = "logical",
-    # competing_risks ="logical",
+    intercept ="logical",
     formula ="character",
     learner="function",
     add_nodes="logical"
@@ -41,7 +41,7 @@ Learner_glm <- setRefClass(
     initialize = function(covariates = NULL,
                           treatment = NA_character_,
                           cross_validation = FALSE,
-                          # competing_risks = NA ,
+                          intercept = FALSE,
                           add_nodes= TRUE,
                           ...) {
       .self$covariates <- covariates
@@ -52,10 +52,12 @@ Learner_glm <- setRefClass(
 
       .self$add_nodes <- add_nodes
 
+      .self$intercept<-intercept
+
       # create formula for competing risks. It is correct in the fit method if survival.
       .self$formula <- create_formula(covariates = .self$covariates,
                                       treatment = .self$treatment,
-                                      # competing_risks =TRUE,
+                                      intercept = .self$intercept,
                                       add_nodes=.self$add_nodes)
 
 
@@ -124,7 +126,7 @@ Learner_glmnet <- setRefClass(
     covariates = "character",
     treatment = "character",
     cross_validation = "logical",
-    # competing_risks="logical",
+    intercept="logical",
     formula ="character",
     learner="function",
     add_nodes="logical",
@@ -135,6 +137,7 @@ Learner_glmnet <- setRefClass(
     initialize = function(covariates = NULL,
                           treatment = NA_character_,
                           cross_validation = FALSE,
+                          intercept=FALSE,
                           add_nodes = TRUE,
                           ...) {
       .self$covariates <- covariates
@@ -143,12 +146,14 @@ Learner_glmnet <- setRefClass(
 
       .self$cross_validation <- cross_validation
 
+      .self$intercept <- intercept
+
       .self$add_nodes <- add_nodes
 
       # create formula for competing risks. It is correct in the fit method if survival.
       .self$formula <- create_formula(covariates = .self$covariates,
                                       treatment = .self$treatment,
-                                      # competing_risks =TRUE,
+                                      intercept =FALSE, #in the glmnet case, intercept is handled separately.
                                       add_nodes=.self$add_nodes)
 
 
@@ -163,7 +168,7 @@ Learner_glmnet <- setRefClass(
 
       .self$fit_arguments[['family']] <- "poisson"
 
-      .self$fit_arguments[['intercept']] <- FALSE
+      .self$fit_arguments[['intercept']] <- .self$intercept
 
 
     },
@@ -190,6 +195,7 @@ Learner_glmnet <- setRefClass(
       .self$fit_arguments[['y']] <- tmp$y
       .self$fit_arguments[['offset']] <- tmp$offset
 
+
       out <- do.call(.self$learner,
                      .self$fit_arguments)
 
@@ -205,7 +211,7 @@ Learner_glmnet <- setRefClass(
 
     },
 
-    predictor = function(model, newdata,...) {
+    predictor = function(model, newdata, ...) {
 
       tmp <- datapp_glmnet(newdata, .self$formula)
 

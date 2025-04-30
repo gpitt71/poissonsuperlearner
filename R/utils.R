@@ -256,7 +256,6 @@ datapp_glmnet <- function(data, formula) {
                            data,
                            drop.unused.levels = FALSE)
 
-  # browser()
   x  <- model.matrix(attr(train.mf, "terms"), data = data)
   y  <- data[['deltaij']]
   offset <- log(data[['tij']])
@@ -270,6 +269,7 @@ datapp_glmnet <- function(data, formula) {
 create_formula <- function(covariates=NA_character_,
                            treatment=NA_character_,
                            competing_risks=FALSE,
+                           intercept=FALSE,
                            add_nodes=TRUE){
 
 
@@ -290,7 +290,11 @@ create_formula <- function(covariates=NA_character_,
     xs <- paste(xs, "+ node")
   }
 
-  out <- paste("deltaij ~", xs, "-1+offset(log(tij))", sep =
+  if(!intercept){
+    xs <- paste(xs, "-1")
+  }
+
+  out <- paste("deltaij ~", xs, "+offset(log(tij))", sep =
                  "")
 
   return(out)

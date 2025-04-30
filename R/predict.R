@@ -9,7 +9,6 @@ predict.poisson_superlearner <- function(object,
                                          newdata,
                                          type = "survival",
                                          k=1,
-                                         step=.5,
                                          ...) {
 
 
@@ -36,15 +35,14 @@ predict.poisson_superlearner <- function(object,
 
   setDT(as.data.frame.matrix(pseudo_observations_data))
 
-
   dt_pred <- object$superlearner[[k]]$model$predictor(object$superlearner[[k]]$meta_learner_fit, newdata =
                                                   cbind(pseudo_observations_data,dt))
 
 
 
 
-  dt[['pw_constant_hazard']] <- dt_pred
-  dt[['survival_function']] <- exp(-cumsum(dt_pred * step))
+  dt[['pwch_times_tij']] <- dt_pred
+  dt[['survival_function']] <- exp(-cumsum(dt_pred))
 
 
   return(dt)
