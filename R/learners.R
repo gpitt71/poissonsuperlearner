@@ -70,7 +70,7 @@ Learner_glm <- setRefClass(
       }
     },
 
-    fit = function(data, ...) {
+    fit = function(data, validation_data=NULL, ...) {
 
       # survival_01 <- length(unique(data[['k']])) < 2
 
@@ -85,11 +85,14 @@ Learner_glm <- setRefClass(
       #
       # }
 
+
+
+
       out<- .self$learner(.self$formula,
-                          data=data,
-                          # offset = tmp$offset,
+                          data=rbind(data,
+                                     validation_data),
                           family = "poisson",
-                          ...)
+                          subset = rep(TRUE,dim(data)[1]))
 
       return(out)
 
@@ -126,11 +129,14 @@ Learner_glmnet <- setRefClass(
     covariates = "character",
     treatment = "character",
     cross_validation = "logical",
+    recycle_information = "logical",
     intercept="logical",
     formula ="character",
     learner="function",
     add_nodes="logical",
-    fit_arguments = "list"
+    penalise_nodes= "logical",
+    fit_arguments = "list",
+    covariates_attributes_matrix= "list"
   ),
   methods = list(
 
@@ -139,6 +145,9 @@ Learner_glmnet <- setRefClass(
                           cross_validation = FALSE,
                           intercept=FALSE,
                           add_nodes = TRUE,
+                          penalise_nodes=FALSE,
+                          recycle_information =NA,
+
                           ...) {
       .self$covariates <- covariates
 
@@ -149,6 +158,8 @@ Learner_glmnet <- setRefClass(
       .self$intercept <- intercept
 
       .self$add_nodes <- add_nodes
+
+      .self$recycle_information <- recycle_information
 
       # create formula for competing risks. It is correct in the fit method if survival.
       .self$formula <- create_formula(covariates = .self$covariates,
@@ -166,6 +177,8 @@ Learner_glmnet <- setRefClass(
 
       .self$fit_arguments <- list(...)
 
+      .self$covariates_attributes_matrix <- list(...)
+
       .self$fit_arguments[['family']] <- "poisson"
 
       .self$fit_arguments[['intercept']] <- .self$intercept
@@ -173,39 +186,68 @@ Learner_glmnet <- setRefClass(
 
     },
 
-    fit = function(data, formula) {
 
-      # survival_01 <- length(unique(data[['k']])) < 2
+    datapp = function(train_data=NULL,
+                      validation_data=NULL) {
 
 
-      # practical correction in case it is a survival problem
-      # if(survival_01){
-      #
-      #   .self$formula <- create_formula(covariates = .self$covariates,
-      #                                   treatment = .self$treatment,
-      #                                   competing_risks =FALSE,
-      #                                   add_nodes=.self$add_nodes)
-      #
-      # }
 
-      # one layer of extra data preprocessing
-      tmp <- datapp_glmnet(data, .self$formula)
+
+
+      if(!is.null(train_data)){
+
+
+        train.mf  <- model.frame(as.formula(.self$formula),
+                                 rbind(train_data,
+                                       validation_data),
+                                 drop.unused.levels = FALSE)
+
+        x  <- model.matrix(attr(train.mf, "terms"), data = train_data)
+
+        y  <- train_data[['deltaij']]
+
+        offset <- log(train_data[['tij']])
+
+        .self$recycle_information <- TRUE
+
+        .self$covariates_attributes_matrix[['train.mf']] <- train.mf
+
+
+
+      }else{
+
+        x  <- model.matrix(attr(.self$covariates_attributes_matrix[['train.mf']], "terms"), data = validation_data)
+        y  <- validation_data[['deltaij']]
+        offset <- log(validation_data[['tij']])
+
+
+      }
+
+
+      out <- list(x = x, y = y, offset = offset)
+
+
+      return(out)
+    },
+
+    fit = function(data, validation_data=NULL, ...) {
+
+      if (is.null(validation_data)) {
+        tmp = datapp_glmnet(data, .self$formula)
+      } else{
+
+        tmp = .self$datapp(data, validation_data)
+
+      }
+
 
       .self$fit_arguments[['x']] <- tmp$x
       .self$fit_arguments[['y']] <- tmp$y
       .self$fit_arguments[['offset']] <- tmp$offset
 
-
       out <- do.call(.self$learner,
                      .self$fit_arguments)
 
-
-      # out<- .self$learner(,
-      #                      tmp$y,
-      #                      offset = ,
-      #                      family = "poisson",
-      #                     intercept = FALSE,
-      #                      ...)
 
       return(out)
 
@@ -213,7 +255,16 @@ Learner_glmnet <- setRefClass(
 
     predictor = function(model, newdata, ...) {
 
-      tmp <- datapp_glmnet(newdata, .self$formula)
+      if(.self$recycle_information){
+
+        tmp <- .self$datapp(validation_data = newdata)
+
+        }else{
+
+          tmp <- datapp_glmnet(newdata, .self$formula)
+
+        }
+
 
       out <- predict(model,
                      ...,

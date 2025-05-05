@@ -79,9 +79,11 @@ dt <- data.table(
 # Fit ----
 ## Learners ----
 
-l1 <- Learner_glm(covariates = c("covariate2"))
+l1 <- Learner_glmnet(covariates = c("covariate2"),
+                     lambda=0)
 
-l2 <- Learner_glm(covariates = c("covariate","covariate2")) # there is no CV for a glm, so I return a warning
+l2 <- Learner_glmnet(covariates = c("covariate","covariate2"),
+                  lambda=0) # there is no CV for a glm, so I return a warning
 
 ## Fit Superlearner ----
 
@@ -95,7 +97,7 @@ sl <- Superlearner(data=dt,
                    id="id",
                    status="status",
                    # nodes=seq(0,6,.5),
-                   nfold = 10,
+                   nfold = 4,
                    meta_learner_algorithm = "glm",
                    add_nodes_metalearner = TRUE,
                    add_intercept_metalearner = TRUE,
@@ -198,7 +200,14 @@ A0=factor("0",levels = c("0","1")),
 deltaij=0
 )
 
+observed_nodes <- sort(unique(dat$Time))
 
+tmp_observed <- data.frame(node = factor(c(0,observed_nodes[observed_nodes!=max(observed_nodes)])),
+                           tij = diff(c(0,observed_nodes)),
+                           L0 = dat[,median(L0)],
+                           A0=factor("0",levels = c("0","1")),
+                           deltaij=0
+)
 
 dat[,A0:=factor(A0,levels=c("0","1"))]
 
@@ -206,6 +215,7 @@ learners <- list(l3,l2)
 
 sl <- Superlearner(data=dat,
                    learners=learners,
+                   stratified_k_fold = TRUE,
                    id="ID",
                    status="Delta",
                    # nodes=seq(0,35,.5),
@@ -217,17 +227,18 @@ sl <- Superlearner(data=dat,
 
 sl1 <- Superlearner(data=dat,
                    learners=learners,
+                   stratified_k_fold = FALSE,
                    id="ID",
                    status="Delta",
-                   nodes=seq(0,35,1),
+                   nodes=seq(0,35,.5),
                    event_time =  "Time",
                    nfold=10,
                    meta_learner_algorithm = "glm",
                    add_nodes_metalearner = TRUE,
                    add_intercept_metalearner = TRUE)
 
-preds <- predict(sl,tmp_5)
-preds1 <- predict(sl1,tmp_1)
+preds <- predict(sl,tmp_observed)
+preds1 <- predict(sl1,tmp_5)
 
 cox <- coxph(formula("Surv(Time, Delta) ~  L0  +   A0"), data=dat)
 
@@ -241,17 +252,19 @@ x_true <- seq(0,28,.01)
 y_true <- sf_simevent(x_true,.1,1.1)
 
 {
-  plot(c(seq(0, 27.5, .5)),
+  plot(c(0,observed_nodes),
        c(1, preds$survival_function),
        col = "green",
        type = "S")
   lines(surv_fit$time, surv_fit$surv, type = "S")
   lines(x_true, y_true, col = "red")
-  lines(c(seq(0, 28, 1)),
-        c(1, preds1$survival_function),
-        col="blue",
-        type="S")
+
 }
+
+## Thomas' code
+
+dt <- synthesize_td1(100)
+
 
 
 

@@ -82,7 +82,7 @@ inverse_sf<- function(lambda, beta, X1,beta1,X2, u){
 
 ```{r}
 
-n <- 100
+n <- 50
 
 {
   set.seed(seed)
@@ -146,21 +146,27 @@ covariate2=factor("0",levels = c("0","1")))
 ```
 
 ```{r}
-tmp_1 <- data.frame(node = factor(sort(unique(seq(0,5,1)
+tmp_1 <- data.frame(node = factor(sort(unique(seq(0,5.4,.1)
 ))),
-tij = 1,
+tij = .1,
+covariate = 5,
+covariate2=factor("0",levels = c("0","1")))
+```
+
+```{r}
+observed_nodes <- sort(unique(dt$time))
+
+tmp_observed <- data.frame(node = factor(c(0,observed_nodes[observed_nodes!=max(observed_nodes)])),
+tij = diff(c(0,observed_nodes)),
 covariate = 5,
 covariate2=factor("0",levels = c("0","1")))
 ```
 
 
 ```{r}
-l1 <- Learner_glmnet(covariates = c("covariate2"),
-                     cross_validation=FALSE,
-                     lambda=.1)
+l1 <- Learner_glm(covariates = c("covariate2"))
 
-l2 <- Learner_glmnet(covariates = c("covariate","covariate2"),
-                     cross_validation=TRUE)
+l2 <- Learner_glm(covariates = c("covariate","covariate2"))
 ```
 
 ```{r}
@@ -170,11 +176,13 @@ learners <- list(l1,l2)
 
 sl <- Superlearner(data=dt,
                    learners=learners,
+                   stratified_k_fold = TRUE,
                    id="id",
                    status="status",
-                   nodes=seq(0,6,.5),
-                   meta_learner_algorithm = "glmnet",
-                   add_nodes_metalearner=FALSE,
+                   # nodes=seq(0,6,.5),
+                   meta_learner_algorithm = "glm",
+                   add_intercept_metalearner = TRUE,
+                   add_nodes_metalearner=TRUE,
                    event_time = "time")
 
 ```
@@ -182,10 +190,14 @@ sl <- Superlearner(data=dt,
 ```{r}
 sl1 <- Superlearner(data=dt,
                    learners=learners,
+                   stratified_k_fold = TRUE,
                    id="id",
                    status="status",
-                   nodes=seq(0,6,1),
-                   meta_learner_algorithm = "glmnet",
+                   nfold=3,
+                   nodes=seq(0,6,.1),
+                   meta_learner_algorithm = "glm",
+                   add_intercept_metalearner = TRUE,
+                   add_nodes_metalearner=TRUE,
                    event_time = "time")
 ```
 
@@ -202,7 +214,7 @@ surv_fit <- survfit(cox,
 
 
 ```{r}
-tmp_1[['deltaij']]<-tmp_05[['deltaij']]<-0
+tmp_observed[['deltaij']]<-tmp_1[['deltaij']]<-tmp_05[['deltaij']]<-0
 
 
 # l1$predictor(sl$superlearner$learners_fit)
@@ -211,8 +223,9 @@ tmp_1[['deltaij']]<-tmp_05[['deltaij']]<-0
 
 
 ```{r}
-preds <- predict(sl,tmp_05,step = .5)
-preds_1 <- predict(sl1,tmp_1,step = 1)
+
+preds_1 <- predict(sl1,tmp_1)
+preds_observed <- predict(sl,tmp_observed)
 ```
 
 
@@ -233,21 +246,24 @@ plot(xtrue,
      xlab="Time", ylab="Survival Function")
 lines(surv_fit$time,
       surv_fit$surv,
-      col="yellow",
+      col="blue",
       type="S")
-lines(seq(0,5.5,by=.5),c(1,preds$survival_function), col="red",type="S")
-lines(seq(0,6,by=1),c(1,preds_1$survival_function), col="green",type="S")
+lines(c(0,observed_nodes),c(1,preds_observed$survival_function), col="red",type="S")
+# lines(seq(0,5.5,by=.5),c(1,preds$survival_function), col="red",type="S")
+lines(seq(0,5.5,by=.1),c(1,preds_1$survival_function), col="green",type="S")
 # lines(seq(0,6,by=1),c(1,tmp_1$sf_xgb), col="blue",type="S")
 # lines(seq(0,6,by=1),c(1,tmp_1$sf_glmnet), col="orange",type="S")
 # lines(seq(0,6,by=1),c(1,tmp_1$sf_rpart), col="pink",type="S")
 legend(x = "topright",
-       title="Fitted Curve vs Real Curve (Black)",
-       legend=c( "Step .5: no nodes in metalearner",
-                 "Step 1:  nodes in metalearner",
-                 "cox"),
+       # title="Fitted Curve vs Real Curve (Black)",
+       legend=c( "sl: combo of glms (obs nodes)",
+                 "cox ph",
+                 "actual Curve",
+                 "sl: step .1"),
        fill = c("red",
-                "green",
-                "yellow"))
+                "blue",
+                "black",
+                "green"))
 
 
 ```
@@ -302,9 +318,9 @@ recidivism_long <- recidivism_long %>% select(subject, start,  stop,arrest,age,e
 ```
 
 ```{r}
-l2 <- Learner_glm(covariates = c("educ","age"))
+l2 <- Learner_glmnet(covariates = c("educ","age"),cross_validation=T)
 
-l3 <- Learner_glm(covariates = c("age","educ","educ:age"))
+l3 <- Learner_glmnet(covariates = c("age","educ","educ:age"))
 ```
 
 ```{r}
@@ -314,8 +330,9 @@ learners <- list(l3,l2)
 sl_rec <- Superlearner(data=recidivism_long,
                    learners=learners,
                    id="subject",
+                   stratified_k_fold = TRUE,
                    status="arrest",
-                   nfold = 4,
+                   nfold = 5,
                    # nodes=seq(0,52,1),
                    start_time = "start",
                    meta_learner_algorithm="glm",
@@ -329,7 +346,7 @@ sl_rec2 <- Superlearner(data=recidivism_long,
                    learners=list(l2),
                    id="subject",
                    status="arrest",
-                   nfold = 5,
+                   nfold = 2,
                    # nodes=seq(0,52,1),
                    start_time = "start",
                    meta_learner_algorithm="glm",

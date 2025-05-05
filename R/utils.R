@@ -6,6 +6,58 @@
 
 # Data preprocessing ----
 
+stratified_sampling <- function(dt,id,status,nfold){
+
+  eval(parse(text=paste("setorder(dt,",status,")")))
+
+  proportions_to_tab <- floor(table(dt[[status]])/nfold)
+
+  missing_to_tot <- table(dt[[status]])-proportions_to_tab*nfold
+
+  replicated_list <- replicate(nfold, proportions_to_tab, simplify = FALSE)
+
+  if(sum(missing_to_tot)>0){replicated_list[[length(replicated_list)]] <- replicated_list[[length(replicated_list)]]+missing_to_tot}
+
+  cols <- c(id,status)
+  tmp <- dt[,..cols]
+
+  eval(parse(text=paste("setorder(tmp,",status,")")))
+
+  out <- NULL
+
+  for(v in (1:nfold)){
+
+    stratified_v <- sampling::strata(tmp,c(status),size=replicated_list[[v]],method="srswor")
+
+    stratified_v <-getdata(tmp,stratified_v)
+
+    cond <- tmp[[id]]%in%setdiff(tmp[[id]],
+            stratified_v[[id]])
+
+    tmp <- tmp[cond,]
+
+
+
+
+    setDT(stratified_v)
+
+    stratified_v[,folder:=v]
+
+    out <- rbind(out,stratified_v)
+
+
+
+  }
+
+  setnames(out,id,"id")
+  subset_cols<-c("id","folder")
+  out<-out[,..subset_cols]
+  return(out)
+
+
+}
+
+
 create_offset_variable_survival <- function(nodes, delta, time_to_event){
 
   tmp <- c(nodes[nodes < time_to_event],
@@ -315,7 +367,9 @@ create_pseudo_observations <- function(train_data,
 
   "
 
-  train_list <- lapply(learners, function(f) f$fit(train_data))
+
+  train_list <- lapply(learners, function(f,validation_data) f$fit(train_data,validation_data=validation_data),validation_data)
+
 
   # Predict on the validation set your pseudo-observations ----
   val_list <- mapply(
@@ -408,10 +462,3 @@ fit_meta_learner <- function(dt,
 
 
 }
-
-
-
-
-
-
-

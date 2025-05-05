@@ -12,6 +12,7 @@
 #' @export
 Superlearner <- function(data,
                          id = "id",
+                         stratified_k_fold=FALSE,
                          start_time = NULL,
                          end_time = NULL,
                          status = "status",
@@ -55,12 +56,31 @@ Superlearner <- function(data,
   n <- length(unique(data[[id]]))#nrow(data)
   n_crisks <- length(unique(data[[status]])) - 1
 
-  id_fold <- sample(1:nfold,
-                    n,
-                    replace = TRUE,
-                    prob = rep(1 / nfold, nfold))
 
-  dt_id <- data.table(folder = id_fold, id = unique(data[[id]]))
+  if (stratified_k_fold) {
+
+    setDT(data)
+
+    dt_id <- eval(parse(text = paste0("data[,last(",status,"),by = ",
+                                     id,"]")))
+
+    eval(parse(text = paste0("setnames(dt_id,'V1','",status,"')")))
+
+    dt_id<-stratified_sampling(dt_id,id,status,nfold)
+
+    dt_id[order(id)]
+
+
+  } else{
+    id_fold <- sample(1:nfold,
+                      n,
+                      replace = TRUE,
+                      prob = rep(1 / nfold, nfold))
+
+    dt_id <- data.table(folder = id_fold, id = unique(data[[id]]))
+  }
+
+
 
 
 

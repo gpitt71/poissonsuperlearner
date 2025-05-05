@@ -7,6 +7,7 @@
 Superlearner(
   data,
   id = "id",
+  stratified_k_fold = FALSE,
   start_time = NULL,
   end_time = NULL,
   status = "status",
@@ -14,6 +15,8 @@ Superlearner(
   learners,
   nodes = NULL,
   meta_learner_algorithm = "glmnet",
+  add_nodes_metalearner = TRUE,
+  add_intercept_metalearner = TRUE,
   nfold = 3
 )
 }

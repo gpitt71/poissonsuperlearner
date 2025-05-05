@@ -29,6 +29,10 @@ predict.poisson_superlearner <- function(object,
 
   pseudo_observations_data <- apply(as.matrix(learners_predictions), MARGIN = 2, log)
 
+  learners_sf <- apply(as.matrix(learners_predictions), MARGIN = 2, function(x) exp(-cumsum(x)) )
+
+  colnames(learners_sf) <- paste0("survival_function_l",1:ncol(learners_sf))
+
   # Name the columns
 
   colnames(pseudo_observations_data) <- z_covariates
@@ -43,6 +47,9 @@ predict.poisson_superlearner <- function(object,
 
   dt[['pwch_times_tij']] <- dt_pred
   dt[['survival_function']] <- exp(-cumsum(dt_pred))
+
+
+  dt <- cbind(dt,learners_sf)
 
 
   return(dt)
