@@ -44,8 +44,12 @@ Superlearner <- function(data,
   if (!is.null(start_time) & !is.null(end_time)) {
     interval_data_type = TRUE
 
+    maximum_followup = max(data[[end_time]])
+
   } else{
     interval_data_type = FALSE
+
+    maximum_followup = max(data[[event_time]])
 
   }
 
@@ -84,15 +88,31 @@ Superlearner <- function(data,
 
 
 
+
+
   # Pre-process the data
 
   if (interval_data_type) {
+
+    # Compute here the nodes checking
+    if (is.null(nodes)) {
+      observed_times <- c(data[[start_time]], data[[end_time]])
+      grid_nodes <- sort(unique(observed_times))
+    } else {
+      grid_nodes <- sort(nodes)
+    }
+
+    if (!(0 %in% grid_nodes)) {
+      grid_nodes <- c(0, grid_nodes)
+    }
+
+    # Actual data pp
     dt <- data_pre_processing_interval_data(
       data = data,
       id = id,
       status = status,
       start_time = start_time,
-      nodes = nodes,
+      nodes = grid_nodes,
       end_time = end_time
     )
 
@@ -100,11 +120,30 @@ Superlearner <- function(data,
 
 
   } else{
+
+    #  Handle nodes
+    ##Either the nodes are given or we take all of the realised times
+    if (is.null(nodes)) {
+      grid_nodes <- sort(unique(data[[event_time]]))
+
+    } else{
+      grid_nodes <- nodes
+
+    }
+
+    # Add zero if missing
+    if (!(0 %in% grid_nodes)) {
+      grid_nodes <- c(0, grid_nodes)
+
+    }
+
+
+    # Actual data pp
     dt <- data_pre_processing(
       data = data,
       id = id,
       status = status,
-      nodes = nodes,
+      nodes = grid_nodes,
       event_time = event_time
     )
 
@@ -195,6 +234,7 @@ Superlearner <- function(data,
   )
 
 
+
   out <- list(
     learners = learners,
     metalearner = meta_learner,
@@ -205,8 +245,9 @@ Superlearner <- function(data,
       event_time = event_time,
       start_time=start_time,
       end_time=end_time,
-      nodes = nodes,
+      nodes = grid_nodes,
       nfold = nfold,
+      maximum_followup=maximum_followup,
       interval_data_type=interval_data_type
     )
   )

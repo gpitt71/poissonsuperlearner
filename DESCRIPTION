@@ -11,7 +11,7 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Depends:
     data.table,
-    sampling
+    riskRegression
 Suggests: 
     knitr,
     rmarkdown,

@@ -146,7 +146,7 @@ Learner_glmnet <- setRefClass(
                           intercept=FALSE,
                           add_nodes = TRUE,
                           penalise_nodes=FALSE,
-                          recycle_information =NA,
+                          recycle_information =FALSE,
 
                           ...) {
       .self$covariates <- covariates
@@ -158,6 +158,8 @@ Learner_glmnet <- setRefClass(
       .self$intercept <- intercept
 
       .self$add_nodes <- add_nodes
+
+      .self$penalise_nodes <- penalise_nodes
 
       .self$recycle_information <- recycle_information
 
@@ -182,6 +184,8 @@ Learner_glmnet <- setRefClass(
       .self$fit_arguments[['family']] <- "poisson"
 
       .self$fit_arguments[['intercept']] <- .self$intercept
+
+
 
 
     },
@@ -241,9 +245,16 @@ Learner_glmnet <- setRefClass(
       }
 
 
+      if(!.self$penalise_nodes){
+
+        .self$fit_arguments[['penalty.factor']] <- 1- grepl("node",colnames(tmp$x))
+
+      }
+
       .self$fit_arguments[['x']] <- tmp$x
       .self$fit_arguments[['y']] <- tmp$y
       .self$fit_arguments[['offset']] <- tmp$offset
+
 
       out <- do.call(.self$learner,
                      .self$fit_arguments)
@@ -288,7 +299,6 @@ Learner_glmnet <- setRefClass(
 #                            cross_validation=FALSE,
 #                            ...){
 #
-#   # browser()
 #   xs <- paste(covariates, collapse="+")
 #
 #   if(!is.null(treatment)){

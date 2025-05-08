@@ -4,7 +4,7 @@
 \alias{predict.poisson_superlearner}
 \title{Individual Data Pre-Processing}
 \usage{
-\method{predict}{poisson_superlearner}(object, newdata, type = "survival", k = 1, ...)
+\method{predict}{poisson_superlearner}(object, newdata, times, type = "survival", cause = 1, ...)
 }
 \value{
 predictions

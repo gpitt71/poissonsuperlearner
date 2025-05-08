@@ -44,6 +44,10 @@ n=50
   X <- rnorm(n)
   X2 <- sample(c(0,1), n, replace = TRUE)
 
+  sample2 <- 1-runif(as.integer(n/3), min=0, max= 1)
+  X.val <- rnorm(as.integer(n/3))
+  X2.val <- sample(c(0,1), as.integer(n/3), replace = TRUE)
+
 }
 
 time<- inverse_sf(u=sample,
@@ -52,18 +56,29 @@ time<- inverse_sf(u=sample,
                   beta1=0.2,
                   X2=X2,
                   X1=X)
-max(time)
 
+time.val<- inverse_sf(u=sample2,
+                  lambda=0.5,
+                  beta=0.1,
+                  beta1=0.2,
+                  X2=X2.val,
+                  X1=X.val)
 {
   set.seed(1)
   cens <- runif(n=length(time),
                 min=0,
                 max=5.5)
 
+  cens2 <- runif(n=length(time.val),
+                min=0,
+                max=5.5)
+
 }
 
 tmp <- time
+tmp2 <- time.val
 tmp[time > cens] <- cens[time > cens]
+tmp2[time.val > cens2] <- cens2[time.val > cens2]
 
 
 dt <- data.table(
@@ -76,14 +91,22 @@ dt <- data.table(
 
 )
 
+dt_val <- data.table(
+  id=1:length(tmp2),
+  time = tmp2,
+  covariate = X.val,
+  covariate2 = as.character(X2.val),
+  status = 1-as.numeric(time.val > cens2)
+
+
+)
+
 # Fit ----
 ## Learners ----
 
-l1 <- Learner_glmnet(covariates = c("covariate2"),
-                     lambda=0)
+l1 <- Learner_glm(covariates = c("covariate","covariate2"))
 
-l2 <- Learner_glmnet(covariates = c("covariate","covariate2"),
-                  lambda=0) # there is no CV for a glm, so I return a warning
+l2 <- Learner_glm(covariates = c("covariate2")) # there is no CV for a glm, so I return a warning
 
 ## Fit Superlearner ----
 
@@ -97,19 +120,128 @@ sl <- Superlearner(data=dt,
                    id="id",
                    status="status",
                    # nodes=seq(0,6,.5),
-                   nfold = 4,
+                   nfold = 3,
                    meta_learner_algorithm = "glm",
                    add_nodes_metalearner = TRUE,
                    add_intercept_metalearner = TRUE,
                    event_time = "time")
 
+out <- predict(sl,dt_val,times=c(0),cause=1)
+
+
+
+cox <- coxph(formula("Surv(time, status) ~  covariate  +   covariate2"), data=dt,x=T)
+
+baseline_hazard <- basehaz(cox)
+
+surv_fit <- survfit(cox,
+                    data.frame(covariate = 5,
+                               covariate2=factor("0",levels = c("0","1"))))
+
+
+#here it seems fine
+1-predictRisk(cox,newdata=data.frame(covariate = 5,
+                                   covariate2=factor("0",levels = c("0","1"))),times= c(3.389589344 ) )
+
+
+1- predictRisk(sl,newdata=data.frame(covariate = 5,
+                                     covariate2=factor("0",levels = c("0","1"))),
+               cause=1,
+               times= c( 3.389589344))
+
+
+# cox acts weird?
+1-predictRisk(cox,newdata=data.frame(covariate = 5,
+                                     covariate2=factor("0",levels = c("0","1"))),times= c(2.274364488 ) )
+
+
+1- predictRisk(sl,newdata=data.frame(covariate = 5,
+                                     covariate2=factor("0",levels = c("0","1"))),
+               cause=1,
+               times= c(2.274364488))
+
+
+surv_fit$time[37]
+surv_fit$surv[37]
+
+# When predicting, should we get the whole interval like cox?
+
+out_cox <- 1-predictRisk(cox,data.frame(covariate = 5,
+                             covariate2=factor("0",levels = c("0","1"))),
+               times=sort(unique(dt$time)))
+
+out <- predict(sl,data.frame(covariate = 5,
+                             covariate2=factor("0",levels = c("0","1"))),
+                                               times=sort(unique(dt$time)),
+                                               cause=1)
+
+out
+
+
+full_out_cox <- predictRisk(cox, dt_val, times = sort(unique(dt$time)))
+
+full_out_sl <- predictRisk(sl, dt_val, times = sort(unique(dt$time)))
+
+predictRisk(sl,data.frame(covariate = 5,
+                          covariate2=factor("0",levels = c("0","1"))),
+            times=sort(unique(dt$time)),
+            cause=1)
+
+predict(sl,data.frame(covariate = 5,
+                      # time=.2,
+                      covariate2=factor("0",levels = c("0","1"))),
+        times=c(min(dt$time)),
+        cause=1)
+
+
+1-predictRisk(cox,newdata=data.frame(covariate = 5,
+
+                                     covariate2=factor("0",levels = c("0","1"))),cause=1,times=.25 )
+
+
+predict(sl,data.frame(covariate = 5,
+                      time=.2,
+                      covariate2=factor("0",levels = c("0","1"))),
+        times=0,
+        cause=1)
+
+
+predictRisk(cox,dt_val,times=c(2.486492854),type = "survival")
+
+1-predictRisk(sl,dt_val,times=c(2.486492854),type = "survival")
+
+
+
+
+
+## When predictRisk takes in times and newdata, in the prediction phase, does the model disregard the time
+## and simply computes feature based predictions based on the given times? aka dt.test <- data.frame(x1 = .., x2=..., time= ...) is
+## time disregarded when predict.somemodel(dt.test,times)? it seems like it.
+
+
+
+library(prodlim)
+library(survival)
+Score(
+  object = list("SL" = sl,
+                "cox" = cox),
+  formula = Surv(time,status)~1,
+  times = quantile(dt$time),
+  data=dt,
+  conf.int=FALSE)
+
+
+
+
+
+
 sl1 <- Superlearner(data=dt,
                    learners=learners,
                    id="id",
                    status="status",
-                   nodes=seq(0,6,1),
-                   nfold = 10,
-                   meta_learner_algorithm = "glmnet",
+                   nodes=seq(0,6,.5),
+                   nfold = 3,
+                   meta_learner_algorithm = "glm",
                    add_nodes_metalearner = TRUE,
                    add_intercept_metalearner = FALSE,
                    event_time = "time")

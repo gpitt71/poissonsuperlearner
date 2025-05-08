@@ -119,7 +119,7 @@ create_response_variable_c_risks <- function(nodes, time_to_event, delta, event_
 
   l <- sum(nodes < time_to_event)
 
-  out <- c(rep(0,l-1),
+  out <- c(rep(0, max(0, l - 1)),
            p_holder)
 
   return(out)
@@ -127,6 +127,7 @@ create_response_variable_c_risks <- function(nodes, time_to_event, delta, event_
 
 create_offset_variable <- function(nodes, delta, time_to_event){
 
+  # browser()
   tmp <- c(nodes[nodes < time_to_event],
            first(nodes[nodes >= time_to_event]))
 
@@ -170,26 +171,9 @@ data_pre_processing <- function(data,
 
   setDT(data)
 
-  #  Handle nodes ----
-  ##Either the nodes are given or we take all of the realised times
-  if (is.null(nodes)) {
-    grid_nodes <- sort(unique(data[[event_time]]))
-
-  } else{
-    grid_nodes <- nodes
-
-  }
-
-  # Add zero if missing
-  if (!(0 %in% grid_nodes)) {
-    grid_nodes <- c(0, grid_nodes)
-
-  }
-
-
   # Handle competing risks ----
   ## for each of the competing risks (CR) we need to create a table
-  n_crisks <- length(unique(data[[status]])) - 1
+  n_crisks <- pmax(length(unique(data[[status]])) - 1,1)
   ## the CR tables are stuck on top of each other to allow for possible interactions
   dt_fit <- do.call(rbind, replicate(n_crisks, data, simplify = FALSE))
   ## we create an artificial k index. Table specific.
@@ -199,13 +183,13 @@ data_pre_processing <- function(data,
   # Data Transformation ----
   tmp <- c(id, "k")
 
-  dt_fit <- eval(parse(text = paste("dt_fit[, .(node = create_offset_variable(grid_nodes, time_to_event = ",
+  dt_fit <- eval(parse(text = paste("dt_fit[, .(node = create_offset_variable(nodes, time_to_event = ",
                                     event_time,
                                     ")[, 1]",
-                                    ", tij = create_offset_variable(grid_nodes, time_to_event = ",
+                                    ", tij = create_offset_variable(nodes, time_to_event = ",
                                     event_time,
                                     ")[,2]",
-                                    ", deltaij = create_response_variable_c_risks(grid_nodes,time_to_event = ",
+                                    ", deltaij = create_response_variable_c_risks(nodes,time_to_event = ",
                                     event_time,
                                     ", delta=",
                                     status,
@@ -235,17 +219,6 @@ data_pre_processing <- function(data,
 data_pre_processing_interval_data <- function(data, id, status, start_time, end_time, nodes = NULL) {
   setDT(data)
 
-  if (is.null(nodes)) {
-    observed_times <- c(data[[start_time]], data[[end_time]])
-    grid_nodes <- sort(unique(observed_times))
-  } else {
-    grid_nodes <- sort(nodes)
-  }
-
-  if (!(0 %in% grid_nodes)) {
-    grid_nodes <- c(0, grid_nodes)
-  }
-
   n_crisks <- length(unique(data[[status]])) - 1
   output_list <- list()
 
@@ -260,7 +233,7 @@ data_pre_processing_interval_data <- function(data, id, status, start_time, end_
     et <- row_i[[end_time]]
     delta <- row_i[[status]]
 
-    intervals <- create_offset_variable_interval_data(grid_nodes, st, et)
+    intervals <- create_offset_variable_interval_data(nodes, st, et)
     grid_nodes_i <- intervals[, 1]
     tij_i <- intervals[, 2]
 

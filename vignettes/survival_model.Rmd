@@ -135,8 +135,6 @@ table(dt$status)
 
 ## Ensembles
 
-
-
 ```{r}
 tmp_05 <- data.frame(node = factor(sort(unique(seq(0,5,0.5)
 ))),
