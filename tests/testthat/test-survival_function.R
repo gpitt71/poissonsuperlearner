@@ -126,9 +126,25 @@ sl <- Superlearner(data=dt,
                    add_intercept_metalearner = TRUE,
                    event_time = "time")
 
+sl1 <- Superlearner(data=dt,
+                   learners=list(Learner_glm(covariates = c("covariate")),l2),
+                   id="id",
+                   status="status",
+                   # nodes=seq(0,6,.5),
+                   nfold = 3,
+                   meta_learner_algorithm = "glm",
+                   add_nodes_metalearner = TRUE,
+                   add_intercept_metalearner = TRUE,
+                   event_time = "time")
+
+coef(sl1$superlearner$`1`$meta_learner_fit)
+
+coef(sl$superlearner$`1`$meta_learner_fit)
+
+log(min(dt$time))
+
+# Integrated functionalities into RiskRegression: new predict method consistent with coxph and stuff ----
 out <- predict(sl,dt_val,times=c(0),cause=1)
-
-
 
 cox <- coxph(formula("Surv(time, status) ~  covariate  +   covariate2"), data=dt,x=T)
 
@@ -139,9 +155,40 @@ surv_fit <- survfit(cox,
                                covariate2=factor("0",levels = c("0","1"))))
 
 
+## When predictRisk takes in times and newdata, in the prediction phase, does the model disregard the time
+## and simply computes feature based predictions based on the given times? aka dt.test <- data.frame(x1 = .., x2=..., time= ...) is
+## time disregarded when predict.somemodel(dt.test,times)? it seems like it.
+
+
+# we can now compare different superlearners in terms of some scoring metrics ----
+library(prodlim)
+library(survival)
+Score(
+  object = list("SL (repl. cox)" = sl,
+                "SL(weak learners)" = sl1),
+  formula = Surv(time,status)~1,
+  times = quantile(dt$time),
+  data=dt,
+  metrics="Brier",
+  conf.int=FALSE)
+
+# Interestingly, one can also compare standard literature benchmark ----
+
+Score(
+  object = list("SL (repl. cox)" = sl,
+                "COX" = cox),
+  formula = Surv(time,status)~1,
+  times = quantile(dt$time),
+  data=dt,
+  metrics="Brier",
+  conf.int=FALSE)
+
+
+
 #here it seems fine
 1-predictRisk(cox,newdata=data.frame(covariate = 5,
-                                   covariate2=factor("0",levels = c("0","1"))),times= c(3.389589344 ) )
+                                   covariate2=factor("0",levels = c("0","1"))),
+              times= c(3.389589344 ) )
 
 
 1- predictRisk(sl,newdata=data.frame(covariate = 5,
@@ -177,6 +224,18 @@ out <- predict(sl,data.frame(covariate = 5,
 
 out
 
+# example
+median(dt$time)
+
+out[time>= 1.1 & time < 1.2, ]
+
+1-predictRisk(cox,data.frame(covariate = 5,
+                             covariate2=factor("0",levels = c("0","1"))),
+              times=median(dt$time))
+
+1-predictRisk(sl,data.frame(covariate = 5,
+                             covariate2=factor("0",levels = c("0","1"))),
+              times=median(dt$time))
 
 full_out_cox <- predictRisk(cox, dt_val, times = sort(unique(dt$time)))
 
@@ -211,40 +270,6 @@ predictRisk(cox,dt_val,times=c(2.486492854),type = "survival")
 1-predictRisk(sl,dt_val,times=c(2.486492854),type = "survival")
 
 
-
-
-
-## When predictRisk takes in times and newdata, in the prediction phase, does the model disregard the time
-## and simply computes feature based predictions based on the given times? aka dt.test <- data.frame(x1 = .., x2=..., time= ...) is
-## time disregarded when predict.somemodel(dt.test,times)? it seems like it.
-
-
-
-library(prodlim)
-library(survival)
-Score(
-  object = list("SL" = sl,
-                "cox" = cox),
-  formula = Surv(time,status)~1,
-  times = quantile(dt$time),
-  data=dt,
-  conf.int=FALSE)
-
-
-
-
-
-
-sl1 <- Superlearner(data=dt,
-                   learners=learners,
-                   id="id",
-                   status="status",
-                   nodes=seq(0,6,.5),
-                   nfold = 3,
-                   meta_learner_algorithm = "glm",
-                   add_nodes_metalearner = TRUE,
-                   add_intercept_metalearner = FALSE,
-                   event_time = "time")
 
 
 # Combinations we want to predict for

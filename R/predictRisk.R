@@ -7,8 +7,6 @@
 #' @export
 predictRisk.poisson_superlearner <- function(object,newdata,times,cause=1, ...){
 
-
-    # browser()
     # rr_output <- matrix(nrow=nrow(newdata),
     #                     ncol=length(times))
 

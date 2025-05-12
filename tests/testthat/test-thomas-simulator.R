@@ -56,39 +56,15 @@ synthesize_td1 <- function(n){
   d[]
 }
 
-# predictRisk.poisson_superlearner <- function(object, newdata, times, cause, ...) {
-#   # Output: matrix of survival probabilities for each time point
-#   # Dimensions: nrow(newdata) x length(times)
-#
-#   # Predict survival function using your model
-#   surv_df <- predict(object, newdata = newdata, type = "survival")
-#
-#   # For cause-specific models, extract the appropriate component
-#   # Let's assume your model stores predictions per cause in a list
-#   surv_mat <- matrix(NA, nrow = nrow(newdata), ncol = length(times))
-#
-#   for (i in seq_along(times)) {
-#     # Interpolate or match survival probabilities at each time
-#     surv_mat[, i] <- approx(surv_df$time, surv_df$survival_function, xout = times[i], rule = 2)$y
-#   }
-#
-#   # Return 1 - survival for event (cumulative incidence for cause)
-#   return(1 - surv_mat)
-# }
-
-
-
-
-
 # load the data
-d <- synthesize_td1(n = 100)
+d <- synthesize_td1(n = 1000)
 d[,id:=1:dim(d)[1]]
 # define the learners
 
 
 l1 <- Learner_glm(covariates = c("value_Albuminuria","diabetes_duration"))
 
-l2 <- Learner_glm(covariates = c("diabetes_duration","value_Albuminuria","value_Albuminuria:diabetes_duration")) # there is no CV for a glm, so I return a warning
+l2 <- Learner_glm(covariates = c("diabetes_duration","value_Albuminuria","value_Albuminuria:diabetes_duration"))
 learners <- list(l1,l2)
 
 # I make different examples below. One can either use a glm or a glmnet and
@@ -100,10 +76,28 @@ sl <- Superlearner(data=d,
                    status="status_cvd",
                    nfold = 3,
                    meta_learner_algorithm = "glm",
+                   nodes=seq(1,35,.5),
                    add_nodes_metalearner = TRUE,
                    add_intercept_metalearner = TRUE,
                    event_time = "time_cvd")
 
+f=CSC(Hist(time_cvd,status_cvd)~diabetes_duration+value_Albuminuria+value_HBA1C,data=d)
+f1=CSC(Hist(time_cvd,status_cvd)~diabetes_duration,data=d)
+x=Score(list("3 variables"=f1,"duration"=f),data=d,split.method = "cv10",formula=Hist(time_cvd,status_cvd)~1,times=5,se.fit = FALSE,contrasts = FALSE)
+x
+predict(sl,
+        newdata = d[1,],
+        times=1,
+        cause = 1)
 
+Score(
+  object = list("SL" = sl,
+                "f"=f),
+  formula = Hist(time_cvd,status_cvd)~1,
+  times = quantile(d$time_cvd),
+  data=d,
+  metrics="Brier",
+  cause=2,
+  conf.int=FALSE)
 
 

@@ -62,9 +62,9 @@ predict.poisson_superlearner <- function(object,
   data_pp[[object$data_info$id]] <- 1:nrow(data_pp)
 
 
-  if (is.null(data_pp[[object$data_info$status]])) {
+  # if (is.null(data_pp[[object$data_info$status]])) {
     data_pp[[object$data_info$status]] <- 0
-  }
+  # }
 
   data_pp <- data_pre_processing(
     data_pp,
@@ -125,7 +125,7 @@ predict.poisson_superlearner <- function(object,
 
   }
 
-  columns_ss <- unique(c(colnames(newdata),"time","pwch_times_tij","survival_function"))
+  columns_ss <- unique(c(colnames(newdata),object$data_info$event_time,"pwch_times_tij","survival_function"))
 
   d <- data_pp[,..columns_ss]
 

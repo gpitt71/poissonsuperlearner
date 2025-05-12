@@ -266,6 +266,7 @@ Learner_glmnet <- setRefClass(
 
     predictor = function(model, newdata, ...) {
 
+
       if(.self$recycle_information){
 
         tmp <- .self$datapp(validation_data = newdata)
