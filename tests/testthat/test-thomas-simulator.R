@@ -59,13 +59,57 @@ synthesize_td1 <- function(n){
 # load the data
 d <- synthesize_td1(n = 1000)
 d[,id:=1:dim(d)[1]]
+d1 <- synthesize_td1(n = 300)
+d1[,id:=1:dim(d1)[1]]
+
 # define the learners
 
+d[, (c("value_Motion", "sex", "value_Smoking")) := lapply(.SD, as.factor), .SDcols = c("value_Motion", "sex", "value_Smoking")]
+d1[, (c("value_Motion", "sex", "value_Smoking")) := lapply(.SD, as.factor), .SDcols = c("value_Motion", "sex", "value_Smoking")]
 
-l1 <- Learner_glm(covariates = c("value_Albuminuria","diabetes_duration"))
 
-l2 <- Learner_glm(covariates = c("diabetes_duration","value_Albuminuria","value_Albuminuria:diabetes_duration"))
-learners <- list(l1,l2)
+l0 <- Learner_glmnet(covariates = c("value_Albuminuria",
+                                 "value_Motion",
+                                 "age",
+                                 "sex",
+                                 "value_SBP",
+                                 "diabetes_duration",
+                                 "value_LDL",
+                                 "value_HBA1C",
+                                 "value_Smoking"),
+                  cross_validation=TRUE,
+                  intercept=FALSE,
+                  penalise_nodes=F)
+
+l1 <- Learner_glmnet(covariates = c("value_Albuminuria",
+                                 "value_Motion"),
+                  cross_validation=TRUE,
+                  intercept=FALSE,
+                  penalise_nodes=F)
+
+l2 <- Learner_glmnet(covariates = c("age",
+                                 "sex"),
+                     cross_validation=TRUE,
+                     intercept=FALSE,
+                     penalise_nodes=F)
+
+l3 <- Learner_glmnet(covariates = c("diabetes_duration",
+                                    "value_SBP"),
+                     cross_validation=TRUE,
+                     intercept=FALSE,
+                     penalise_nodes=F)
+
+l4 <- Learner_glmnet(covariates = c("value_LDL",
+                                    "value_HBA1C",
+                                    "value_Smoking"),
+                     cross_validation=TRUE,
+                     intercept=FALSE,
+                     penalise_nodes=F)
+
+
+
+
+learners <- list(l0,l1,l2,l3,l4)
 
 # I make different examples below. One can either use a glm or a glmnet and
 # either choose to use or not to use the nodes in the meta learner.
@@ -75,29 +119,164 @@ sl <- Superlearner(data=d,
                    id="id",
                    status="status_cvd",
                    nfold = 3,
-                   meta_learner_algorithm = "glm",
-                   nodes=seq(1,35,.5),
+                   meta_learner_algorithm = "glmnet",
+                   nodes=seq(1,35,1),
                    add_nodes_metalearner = TRUE,
-                   add_intercept_metalearner = TRUE,
+                   add_intercept_metalearner = FALSE,
+                   penalise_nodes_metalearner=TRUE,
                    event_time = "time_cvd")
 
-f=CSC(Hist(time_cvd,status_cvd)~diabetes_duration+value_Albuminuria+value_HBA1C,data=d)
-f1=CSC(Hist(time_cvd,status_cvd)~diabetes_duration,data=d)
-x=Score(list("3 variables"=f1,"duration"=f),data=d,split.method = "cv10",formula=Hist(time_cvd,status_cvd)~1,times=5,se.fit = FALSE,contrasts = FALSE)
-x
-predict(sl,
-        newdata = d[1,],
-        times=1,
-        cause = 1)
 
-Score(
-  object = list("SL" = sl,
+sl1 <- Superlearner(data=d,
+                   learners=learners,
+                   id="id",
+                   status="status_cvd",
+                   nfold = 3,
+                   meta_learner_algorithm = "glmnet",
+                   nodes=seq(1,35,.5),
+                   add_nodes_metalearner = TRUE,
+                   add_intercept_metalearner = FALSE,
+                   penalise_nodes_metalearner=TRUE,
+                   event_time = "time_cvd")
+
+sl2 <- Superlearner(data=d,
+                   learners=learners,
+                   id="id",
+                   status="status_cvd",
+                   nfold = 5,
+                   meta_learner_algorithm = "glmnet",
+                   nodes=seq(1,35,1),
+                   add_nodes_metalearner = TRUE,
+                   add_intercept_metalearner = FALSE,
+                   penalise_nodes_metalearner=TRUE,
+                   event_time = "time_cvd")
+
+
+l0 <- Learner_glmnet(covariates = c("value_Albuminuria",
+                                 "value_Motion",
+                                 "age",
+                                 "sex",
+                                 "value_SBP",
+                                 "diabetes_duration",
+                                 "value_LDL",
+                                 "value_HBA1C",
+                                 "value_Smoking"),
+                  lambda=0,
+                  intercept=FALSE,
+                  penalise_nodes=T)
+
+l1 <- Learner_glmnet(covariates = c("value_Albuminuria",
+                                 "value_Motion",
+                                 "age",
+                                 "sex",
+                                 "value_SBP",
+                                 "diabetes_duration",
+                                 "value_LDL",
+                                 "value_HBA1C",
+                                 "value_Smoking"),
+                  cross_validation=TRUE,
+                  intercept=FALSE,
+                  penalise_nodes=T)
+
+learners <- list(l0,l1)
+
+sl3 <- Superlearner(data=d,
+                    learners=learners,
+                    id="id",
+                    status="status_cvd",
+                    nfold = 3,
+                    meta_learner_algorithm = "glm",
+                    nodes=seq(1,35,1),
+                    add_nodes_metalearner = TRUE,
+                    add_intercept_metalearner = FALSE,
+                    penalise_nodes_metalearner=TRUE,
+                    event_time = "time_cvd")
+
+
+
+
+l0 <- Learner_glmnet(covariates = c("value_Albuminuria",
+                                    "value_Motion",
+                                    "age",
+                                    "sex",
+                                    "value_SBP",
+                                    "diabetes_duration",
+                                    "value_LDL",
+                                    "value_HBA1C",
+                                    "value_Smoking"),
+                     lambda=0,
+
+                     intercept=FALSE)
+
+l1 <- Learner_glmnet(covariates = c("value_Albuminuria",
+                                    "value_Motion"),
+                     lambda=0,
+                     intercept=FALSE)
+
+l2 <- Learner_glmnet(covariates = c("age",
+                                    "sex"),
+                     lambda=0,
+                     intercept=FALSE)
+
+l3 <- Learner_glmnet(covariates = c("diabetes_duration",
+                                    "value_SBP"),
+                     lambda=0,
+                     intercept=FALSE)
+
+l4 <- Learner_glmnet(covariates = c("value_LDL",
+                                    "value_HBA1C",
+                                    "value_Smoking"),
+                     lambda=0,
+                     intercept=FALSE)
+
+
+
+
+learners <- list(l0,l1,l2,l3,l4)
+
+sl4 <- Superlearner(data=d,
+                    learners=learners,
+                    id="id",
+                    status="status_cvd",
+                    nfold = 5,
+                    meta_learner_algorithm = "glm",
+                    nodes=seq(1,35,1),
+                    add_nodes_metalearner = TRUE,
+                    add_intercept_metalearner = FALSE,
+                    penalise_nodes_metalearner=FALSE,
+                    event_time = "time_cvd")
+
+library(survival)
+library(prodlim)
+
+f=CSC(Hist(time_cvd,status_cvd)~.,data=d[, !"id"])
+# f1=CSC(Hist(time_cvd,status_cvd)~diabetes_duration,data=d)
+# x=Score(list("3 variables"=f1,"duration"=f),data=d,split.method = "cv10",formula=Hist(time_cvd,status_cvd)~1,times=5,se.fit = FALSE,contrasts = FALSE)
+# x
+# predict(sl,
+#         newdata = d[1,],
+#         times=1,
+#         cause = 1)
+
+
+
+numbers <- quantile(d$time_cvd)
+vector <- d$time_cvd  # Example vector
+
+closest_numbers <- sapply(numbers, function(x) vector[which.min(abs(vector - x))])
+# print(closest_numbers)
+x=Score(
+  object = list("SL (3V, step 1)" = sl,
+                "SL (3V, step 0.5)" = sl1,
+                "SL (5V, step 1)" = sl2,
+                "SL (3V, glm+glmnet, step 1)"=sl3,
+                "SL (3V, lambas 0, step 1)"=sl4,
                 "f"=f),
   formula = Hist(time_cvd,status_cvd)~1,
-  times = quantile(d$time_cvd),
-  data=d,
+  times = closest_numbers,
+  data=d1,
   metrics="Brier",
-  cause=2,
+  cause=1,
   conf.int=FALSE)
 
 

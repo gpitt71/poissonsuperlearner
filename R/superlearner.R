@@ -22,6 +22,9 @@ Superlearner <- function(data,
                          meta_learner_algorithm = "glmnet",
                          add_nodes_metalearner=TRUE,
                          add_intercept_metalearner=TRUE,
+                         matrix_transformation=FALSE,
+                         penalise_nodes_metalearner=TRUE,
+                         variable_transformation=NULL,
                          nfold = 3) {
   # Multiple checks about interval data
   # browser()
@@ -61,28 +64,6 @@ Superlearner <- function(data,
   n_crisks <- length(unique(data[[status]])) - 1
 
 
-  if (stratified_k_fold) {
-
-    setDT(data)
-
-    dt_id <- eval(parse(text = paste0("data[,last(",status,"),by = ",
-                                     id,"]")))
-
-    eval(parse(text = paste0("setnames(dt_id,'V1','",status,"')")))
-
-    dt_id<-stratified_sampling(dt_id,id,status,nfold)
-
-    dt_id[order(id)]
-
-
-  } else{
-    id_fold <- sample(1:nfold,
-                      n,
-                      replace = TRUE,
-                      prob = rep(1 / nfold, nfold))
-
-    dt_id <- data.table(folder = id_fold, id = unique(data[[id]]))
-  }
 
 
 
@@ -124,7 +105,12 @@ Superlearner <- function(data,
     #  Handle nodes
     ##Either the nodes are given or we take all of the realised times
     if (is.null(nodes)) {
+
       grid_nodes <- sort(unique(data[[event_time]]))
+
+
+      # browser()
+      grid_nodes <- grid_nodes[-((length(grid_nodes)-2):length(grid_nodes))]
 
     } else{
       grid_nodes <- nodes
@@ -138,6 +124,9 @@ Superlearner <- function(data,
     }
 
 
+
+    grid_nodes<- grid_nodes[grid_nodes<=max(data[[event_time]])]
+
     # Actual data pp
     dt <- data_pre_processing(
       data = data,
@@ -147,7 +136,74 @@ Superlearner <- function(data,
       event_time = event_time
     )
 
+
+    # browser()
   }
+
+
+  if(matrix_transformation){
+
+    # browser()
+
+    columns_of_interest <- unlist(lapply(learners, function(x){return(unique(c(x$covariates,x$treatment)))}))
+
+    columns_of_interest <- unique(columns_of_interest[(complete.cases(columns_of_interest))])
+
+    # Take the variable that we transform
+
+    lhs_vars <- trimws(unlist(strsplit(strsplit(variable_transformation, "~")[[1]][1], "\\+")))
+    lhs_string <- paste(lhs_vars, collapse = ", ")
+
+    # Take the transformation
+    rhs_vars <- trimws(unlist(strsplit(strsplit(variable_transformation, "~")[[1]][2], "\\+")))
+    rhs_string <- paste(rhs_vars, collapse = ", ")
+
+
+    eval(parse(text = paste0(
+      "
+               dt[,c('", lhs_string
+
+      , "'):=list(", rhs_string
+      , ")]
+               "
+    )))
+
+
+    dt <- dt[,.(tij = sum(tij),
+                 deltaij=sum(deltaij)), by = c(unique(c(columns_of_interest,lhs_string)),"node","k")]
+
+
+    dt[,c("id"):=1:nrow(dt)]
+
+
+
+  }
+
+
+  if (stratified_k_fold) {
+
+    setDT(data)
+
+    dt_id <- eval(parse(text = paste0("data[,last(",status,"),by = ",
+                                      id,"]")))
+
+    eval(parse(text = paste0("setnames(dt_id,'V1','",status,"')")))
+
+    dt_id<-stratified_sampling(dt_id,id,status,nfold)
+
+    dt_id[order(id)]
+
+
+  } else{
+    id_fold <- sample(1:nfold,
+                      n,
+                      replace = TRUE,
+                      prob = rep(1 / nfold, nfold))
+
+    dt_id <- data.table(folder = id_fold, id = unique(data[[id]]))
+  }
+
+
 
 
   # browser()
@@ -170,14 +226,20 @@ Superlearner <- function(data,
     tmp_val <- dt[folder == ix, ]
     validation_data <- split(tmp_val, by = "k")
 
+    # dt[, train_01:=folder != ix]
+    fd <- split(dt, by = "k")
+    # browser()
     # we find the pseudo observations for each fold ----
     pseudo_observations <- mapply(
       function(training_data,
                validation_data,
+               #data,
                learners,
                z_covariates,
                ix)
         create_pseudo_observations(training_data, validation_data, learners, z_covariates, ix),
+      # create_pseudo_observations(data, learners, z_covariates, ix),
+      # fd,
       training_data = training_data,
       validation_data = validation_data,
       MoreArgs = list(
@@ -195,6 +257,8 @@ Superlearner <- function(data,
 
   }
 
+
+  # browser()
   data_by_competing_risk <- split(dt, by = "k")
 
   # browser()
@@ -203,13 +267,15 @@ Superlearner <- function(data,
   if (meta_learner_algorithm == "glmnet") {
     meta_learner <- Learner_glmnet(
       covariates = z_covariates,
-      cross_validation = TRUE,
+      cross_validation = T,
       intercept=add_intercept_metalearner,
-      add_nodes=add_nodes_metalearner
+      add_nodes=add_nodes_metalearner,
+      penalise_nodes=penalise_nodes_metalearner
     )
   } else{
     meta_learner <- Learner_glm(covariates = z_covariates,
-                                add_nodes=add_nodes_metalearner)
+                                add_nodes=add_nodes_metalearner,
+                                intercept=add_intercept_metalearner)
 
   }
 
@@ -234,7 +300,7 @@ Superlearner <- function(data,
   )
 
 
-
+# browser()
   out <- list(
     learners = learners,
     metalearner = meta_learner,
@@ -248,6 +314,8 @@ Superlearner <- function(data,
       nodes = grid_nodes,
       nfold = nfold,
       maximum_followup=maximum_followup,
+      matrix_transformation=matrix_transformation,
+      variable_transformation=variable_transformation,
       interval_data_type=interval_data_type
     )
   )

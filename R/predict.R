@@ -13,7 +13,6 @@ predict.poisson_superlearner <- function(object,
                                          ...) {
   setDT(newdata)
 
-
   tmp <- copy(newdata)
 
   # here we disregard the event_time column if present in the newdata
@@ -75,11 +74,56 @@ predict.poisson_superlearner <- function(object,
   )
 
 
+
+  # browser()
+  if(object$data_info$matrix_transformation){
+
+    # browser()
+
+    columns_of_interest <- unlist(lapply(object$learners, function(x){return(unique(c(x$covariates,x$treatment)))}))
+
+    columns_of_interest <- unique(columns_of_interest[(complete.cases(columns_of_interest))])
+
+    # Take the variable that we transform
+
+    lhs_vars <- trimws(unlist(strsplit(strsplit(object$data_info$variable_transformation, "~")[[1]][1], "\\+")))
+    lhs_string <- paste(lhs_vars, collapse = ", ")
+
+    # Take the transformation
+    rhs_vars <- trimws(unlist(strsplit(strsplit(object$data_info$variable_transformation, "~")[[1]][2], "\\+")))
+    rhs_string <- paste(rhs_vars, collapse = ", ")
+
+
+    eval(parse(text = paste0(
+      "
+               data_pp[,c('", lhs_string
+
+      , "'):=list(", rhs_string
+      , ")]
+               "
+    )))
+
+
+    # data_pp <- data_pp[,.(tij = sum(tij),
+    #             deltaij=sum(deltaij)), by = c(unique(c(columns_of_interest,lhs_string)),"node","k")]
+    #
+    #
+    # data_pp[,c("id"):=1:nrow(data_pp)]
+
+
+
+  }
+
+
   # Set covariates for metalearner
   z_covariates <- paste0("Z", 1:length(object$learners))
 
 
   # Predict on the validation set your pseudo-observations ----
+  # browser()
+
+  data_pp[,deltatime:=tij][,tij:=1]
+
   learners_predictions <- mapply(
     function(f, model, newdata)
       f$predictor(model = model, newdata = data_pp),
@@ -87,6 +131,8 @@ predict.poisson_superlearner <- function(object,
     object$superlearner[[cause]]$learners_fit,
     MoreArgs = list(newdata = data_pp)
   )
+
+  # browser()
 
   pseudo_observations_data <- matrix(apply(as.matrix(learners_predictions, nrow=nrow(newdata), ncol=length(z_covariates)), MARGIN = 2, log),
                                      nrow=nrow(data_pp),
@@ -107,9 +153,9 @@ predict.poisson_superlearner <- function(object,
 
 
 
-  data_pp[['pwch_times_tij']] <- dt_pred
+  data_pp[['pwch']] <- dt_pred
   data_pp <- copy(data_pp)
-  data_pp[,survival_function:=exp(-cumsum(pwch_times_tij)), by=.(id)]
+  data_pp[,survival_function:=pmin(exp(-cumsum(pwch*deltatime)),1), by=.(id)]
 
 
   data_pp <- data_pp[, .SD[.N], by = id][,times:=as.numeric(as.character(node))+tij]
@@ -118,14 +164,14 @@ predict.poisson_superlearner <- function(object,
   if(cond_zero){
 
     data_pp[time==0,
-            c('pwch_times_tij',
+            c('pwch',
               'survival_function'):=list(0,1)]
 
 
 
   }
 
-  columns_ss <- unique(c(colnames(newdata),object$data_info$event_time,"pwch_times_tij","survival_function"))
+  columns_ss <- unique(c(colnames(newdata),object$data_info$event_time,"pwch","survival_function"))
 
   d <- data_pp[,..columns_ss]
 

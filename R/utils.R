@@ -131,9 +131,14 @@ create_offset_variable <- function(nodes, delta, time_to_event){
   tmp <- c(nodes[nodes < time_to_event],
            first(nodes[nodes >= time_to_event]))
 
-  # if(delta == 1){
-  tmp[length(tmp)] <- time_to_event
-  # }
+
+
+  if (all(nodes < time_to_event)) {
+    tmp <- c(tmp, time_to_event)
+  } else{
+    tmp[length(tmp)] <- time_to_event
+  }
+
 
   tij <- diff(c(tmp))
 
@@ -168,6 +173,7 @@ data_pre_processing <- function(data,
 ){
 
 
+  # browser()
 
   setDT(data)
 
@@ -207,8 +213,12 @@ data_pre_processing <- function(data,
   setnames(dt_fit, c(id),c("id"))
 
   dt_fit[,c("node",
-            "k"):=list(as.factor(node),
+            "k"):=list(factor(node,levels=as.character(nodes)),
                        as.factor(k))]
+
+
+  # browser()
+  dt_fit[,node:=relevel(node,ref=as.character(last(nodes)))]
 
   return(dt_fit)
 
@@ -274,6 +284,17 @@ data_pre_processing_interval_data <- function(data, id, status, start_time, end_
   return(dt_fit)
 }
 
+
+## Matrix transformation ----
+
+sl_cut <- function(x, breaks, include.lowest = TRUE, right = TRUE) {
+
+  labels <- paste0(head(breaks, -1), "-", tail(breaks, -1) - if (right) 1 else 0)
+  # Return labeled factor
+  cut(x, breaks = breaks, labels = labels, include.lowest = include.lowest, right = right)
+}
+
+
 # Learners ----
 
 datapp_glmnet <- function(data, formula) {
@@ -330,7 +351,9 @@ create_formula <- function(covariates=NA_character_,
 }
 
 
-create_pseudo_observations <- function(train_data,
+
+create_pseudo_observations <- function(#data,
+                                       training_data,
                                        validation_data,
                                        learners,
                                        z_covariates,
@@ -340,14 +363,14 @@ create_pseudo_observations <- function(train_data,
 
   "
 
-
-  train_list <- lapply(learners, function(f,validation_data) f$fit(train_data,validation_data=validation_data),validation_data)
+  # browser()
+  train_list <- lapply(learners, function(f) f$private_fit(training_data))
 
 
   # Predict on the validation set your pseudo-observations ----
   val_list <- mapply(
     function(f, model, newdata)
-      f$predictor(model = model, newdata = newdata),
+      f$private_predictor(model = model, newdata = newdata),
     learners,
     train_list,
     MoreArgs = list(newdata = validation_data)
@@ -358,14 +381,13 @@ create_pseudo_observations <- function(train_data,
                    MARGIN = 2,
                    log)
 
+
   # Name the columns
 
   colnames(val_list) <- z_covariates
 
 
-  # dt_z <- rbind(dt_z,
-  dt_z <- data.table(val_list)[, c("id", "folder","node") := list(validation_data$id, ix, validation_data$node)]
-  #)
+  dt_z <-  data.table(val_list)[, c("id", "folder","node") := validation_data[,.(id,folder,node)]] #
 
   return(dt_z)
 
@@ -382,6 +404,9 @@ fit_meta_learner <- function(dt,
   # setorder(dt_z, id, "folder")
   # setorder(dt, id, "folder")
   #
+
+
+  # browser()
   dt_z <- merge(dt_z,dt,by=c("id","folder","node"))
 
   # dt_z[, virtual_seq := seq_len(.N), by = .(id, folder)]

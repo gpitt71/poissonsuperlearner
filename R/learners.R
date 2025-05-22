@@ -41,7 +41,7 @@ Learner_glm <- setRefClass(
     initialize = function(covariates = NULL,
                           treatment = NA_character_,
                           cross_validation = FALSE,
-                          intercept = FALSE,
+                          intercept = TRUE,
                           add_nodes= TRUE,
                           ...) {
       .self$covariates <- covariates
@@ -70,7 +70,7 @@ Learner_glm <- setRefClass(
       }
     },
 
-    fit = function(data, validation_data=NULL, ...) {
+    # fit = function(data, validation_data=NULL, ...) {
 
       # survival_01 <- length(unique(data[['k']])) < 2
 
@@ -88,31 +88,114 @@ Learner_glm <- setRefClass(
 
 
 
-      out<- .self$learner(.self$formula,
-                          data=rbind(data,
-                                     validation_data),
-                          family = "poisson",
-                          subset = rep(TRUE,dim(data)[1]))
+    #   out<- .self$learner(.self$formula,
+    #                       data=rbind(data,
+    #                                  validation_data),
+    #                       family = "poisson",
+    #                       subset = rep(TRUE,dim(data)[1]))
+    #
+    #   return(out)
+    #
+    # },
+
+
+    fit = function(data, ...) {
+
+      # out<- .self$learner(.self$formula,
+      #                     data=data,
+      #                     family = "poisson", ...)
+
+      # ss <- data[['train_01']]
+      out <- glm.fit(x=sparse.model.matrix(formula(.self$formula),
+                                           data),#[ss,]
+                     y=data[['deltaij']], #[ss]
+                     offset = log(data[['tij']]), #[ss]
+                     family = poisson())
 
       return(out)
 
     },
 
-    predictor = function(model, newdata,...) {
 
-      # tmp <- datapp_glmnet(newdata, .self$formula)
+    private_fit = function(data, ...) {
 
-      out <- predict(model,
-                     ...,
-                     newdata=newdata,
-                     type = "response")
+      # browser()
+      # ss <- data[['train_01']]
+      out <- glm.fit(x=sparse.model.matrix(formula(.self$formula),
+                                           data),#[ss,],
+                     y=data[['deltaij']],#[ss],
+                     offset = log(data[['tij']]),#[ss]),
+                     family = poisson())
+
+      # out<- .self$learner(.self$formula,
+      #                     data=data[train_01==TRUE,],
+      #                     family = "poisson", ...)
 
       return(out)
 
 
+    },
+
+    predictor = function(model, newdata,...) {
+
+      newdata<-newdata[complete.cases(newdata),]
+
+      newx=sparse.model.matrix(formula(.self$formula),
+                               newdata)
+
+      newoffset = log(newdata[['tij']])
+
+      # browser()
+
+      out <-exp(newx %*% model$coefficients + newoffset)
+
+      # out <- predict(model,
+      #                ...,
+      #                newdata=newdata,
+      #                type = "response")
+
+      return(as.numeric(out))
+      # return(out)
+
+
+    },
+
+    private_predictor = function(model, newdata, ...) {
+
+
+
+      newdata<-newdata[complete.cases(newdata),]
+
+      # ss <- !newdata[['train_01']]
+
+
+      # out <- predict(model,
+      #                ...,
+      #                newdata=newdata[train_01==FALSE,],
+      #                type = "response")
+
+      # return(out)
+
+
+
+      newx=sparse.model.matrix(formula(.self$formula),
+                               newdata)#[ss,]
+
+      newoffset = log(newdata[['tij']])#[ss])
+
+      # browser()
+
+      out <-exp(newx %*% model$coefficients + newoffset)
+
+
+      return(as.numeric(out))
+
+
+
+
+
+
     }
-
-
 
   )
 )
@@ -234,26 +317,54 @@ Learner_glmnet <- setRefClass(
       return(out)
     },
 
-    fit = function(data, validation_data=NULL, ...) {
+    fit = function(data, ...) {
 
-      if (is.null(validation_data)) {
-        tmp = datapp_glmnet(data, .self$formula)
-      } else{
+      data<-data[complete.cases(data),]
 
-        tmp = .self$datapp(data, validation_data)
+      x = sparse.model.matrix(formula(.self$formula),
+                              data)
 
-      }
+      .self$fit_arguments[['y']] <- as.numeric(data[['deltaij']])
+
+      .self$fit_arguments[['offset']] <-  log(data[['tij']])
 
 
       if(!.self$penalise_nodes){
 
-        .self$fit_arguments[['penalty.factor']] <- 1- grepl("node",colnames(tmp$x))
+        .self$fit_arguments[['penalty.factor']] <- 1- grepl("node",colnames(x))
 
       }
 
-      .self$fit_arguments[['x']] <- tmp$x
-      .self$fit_arguments[['y']] <- tmp$y
-      .self$fit_arguments[['offset']] <- tmp$offset
+      .self$fit_arguments[['x']] <- x
+
+      out <- do.call(.self$learner,
+                     .self$fit_arguments)
+
+      return(out)
+
+    },
+
+    private_fit = function(data, ...) {
+
+
+      # browser()
+
+      # ss <- data[['train_01']]
+      x = sparse.model.matrix(formula(.self$formula),
+                              data)#[ss,]
+
+      if(!.self$penalise_nodes){
+
+        .self$fit_arguments[['penalty.factor']] <- 1- grepl("node",colnames(x))
+
+      }
+
+
+
+
+      .self$fit_arguments[['x']] <- x
+      .self$fit_arguments[['y']] <- data[['deltaij']]#[ss]
+      .self$fit_arguments[['offset']] <- log(data[['tij']])#[ss])
 
 
       out <- do.call(.self$learner,
@@ -267,22 +378,37 @@ Learner_glmnet <- setRefClass(
     predictor = function(model, newdata, ...) {
 
 
-      if(.self$recycle_information){
+      # if(.self$recycle_information){
+      #
+      #   tmp <- .self$datapp(validation_data = newdata)
+      #
+      #   }else{
+      #
+      #     tmp <- datapp_glmnet(newdata, .self$formula)
+      #
+      #   }
 
-        tmp <- .self$datapp(validation_data = newdata)
+      # browser()
+      out <- predict(model,
+                     ...,
+                   newx=sparse.model.matrix(formula(.self$formula),
+                                            newdata),
+                   newoffset = log(newdata[['tij']]),
+                   type = "response")
 
-        }else{
+      return(out)
 
-          tmp <- datapp_glmnet(newdata, .self$formula)
 
-        }
+    },
 
+    private_predictor = function(model, newdata, ...) {
 
       out <- predict(model,
                      ...,
-                   newx=tmp$x,
-                   newoffset = tmp$offset,
-                   type = "response")
+                     newx=sparse.model.matrix(formula(.self$formula),
+                                              newdata),#[ss,],
+                     newoffset = log(newdata[['tij']]),#[ss]),
+                     type = "response")
 
       return(out)
 

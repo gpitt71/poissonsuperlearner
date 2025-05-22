@@ -33,7 +33,7 @@ inverse_sf<- function(lambda, beta, X1,beta1,X2, u){
 
 # Define useful variables ----
 seed=42
-n=50
+n=1000
 
 # Generate some data from a simple proportional model ----
 
@@ -104,9 +104,13 @@ dt_val <- data.table(
 # Fit ----
 ## Learners ----
 
-l1 <- Learner_glm(covariates = c("covariate","covariate2"))
+l1 <- Learner_glmnet(covariates = c("covariate","covariate2"),
+                     cross_validation=FALSE,
+                     lambda=0)
 
-l2 <- Learner_glm(covariates = c("covariate2")) # there is no CV for a glm, so I return a warning
+l2 <- Learner_glmnet(covariates = c("covariate"),
+                     cross_validation=T,
+                     penalise_nodes=T)
 
 ## Fit Superlearner ----
 
@@ -116,35 +120,44 @@ learners <- list(l1,l2)
 # either choose to use or not to use the nodes in the meta learner.
 
 sl <- Superlearner(data=dt,
-                   learners=learners,
+                   learners=list(l1,l2),
+                   stratified_k_fold = T,
                    id="id",
                    status="status",
-                   # nodes=seq(0,6,.5),
+                   nodes=seq(0,6,.5),
                    nfold = 3,
                    meta_learner_algorithm = "glm",
-                   add_nodes_metalearner = TRUE,
-                   add_intercept_metalearner = TRUE,
+                   add_nodes_metalearner = T,
+                   add_intercept_metalearner = F,
                    event_time = "time")
 
-sl1 <- Superlearner(data=dt,
-                   learners=list(Learner_glm(covariates = c("covariate")),l2),
-                   id="id",
-                   status="status",
-                   # nodes=seq(0,6,.5),
-                   nfold = 3,
-                   meta_learner_algorithm = "glm",
-                   add_nodes_metalearner = TRUE,
-                   add_intercept_metalearner = TRUE,
-                   event_time = "time")
-
-coef(sl1$superlearner$`1`$meta_learner_fit)
 
 coef(sl$superlearner$`1`$meta_learner_fit)
 
 log(min(dt$time))
 
+
+
+sl <- Superlearner(data=dt,
+                   learners=list(l1,l2),
+                   stratified_k_fold = F,
+                   id="id",
+                   status="status",
+                   nodes=seq(0,6,1),
+                   nfold = 4,
+                   meta_learner_algorithm = "glm",
+                   matrix_transformation = T,
+                   variable_transformation="covariate ~ sl_cut(covariate,breaks=seq(-4,4,.5))",
+                   add_nodes_metalearner = T,
+                   add_intercept_metalearner = F,
+                   event_time = "time")
+
+
+
 # Integrated functionalities into RiskRegression: new predict method consistent with coxph and stuff ----
-out <- predict(sl,dt_val,times=c(0),cause=1)
+out <- predict(sl,dt_val,times=c(0.01),cause=1)
+
+library(survival)
 
 cox <- coxph(formula("Surv(time, status) ~  covariate  +   covariate2"), data=dt,x=T)
 
@@ -165,21 +178,10 @@ library(prodlim)
 library(survival)
 Score(
   object = list("SL (repl. cox)" = sl,
-                "SL(weak learners)" = sl1),
-  formula = Surv(time,status)~1,
-  times = quantile(dt$time),
-  data=dt,
-  metrics="Brier",
-  conf.int=FALSE)
-
-# Interestingly, one can also compare standard literature benchmark ----
-
-Score(
-  object = list("SL (repl. cox)" = sl,
                 "COX" = cox),
   formula = Surv(time,status)~1,
   times = quantile(dt$time),
-  data=dt,
+  data=dt_val,
   metrics="Brier",
   conf.int=FALSE)
 
@@ -188,13 +190,14 @@ Score(
 #here it seems fine
 1-predictRisk(cox,newdata=data.frame(covariate = 5,
                                    covariate2=factor("0",levels = c("0","1"))),
-              times= c(3.389589344 ) )
+              times= c(.2
+                       ) )
 
 
 1- predictRisk(sl,newdata=data.frame(covariate = 5,
                                      covariate2=factor("0",levels = c("0","1"))),
                cause=1,
-               times= c( 3.389589344))
+               times= c(.2))
 
 
 # cox acts weird?
@@ -330,15 +333,17 @@ lines(seq(0,6,by=1),c(1,preds_1$survival_function), col="green",type="S")
 
 {
   set.seed(7)
-  dat <- simSurvData(1e2)
+  dat <- simSurvData(1000000)
 }
 
 
-l2 <- Learner_glm(covariates = c("L0"),
-                  intercept= TRUE)
+l2 <- Learner_glmnet(covariates = c("L0"),
+                  intercept= TRUE,
+                  lambda=0)
 
-l3 <- Learner_glm(covariates = c("L0","A0"),
-                  intercept= TRUE)
+l3 <- Learner_glmnet(covariates = c("L0","A0"),
+                  intercept= TRUE,
+                  lambda=0)
 
 tmp_5 <- data.frame(node = factor(sort(unique(seq(0,27,.5)
 ))),
@@ -372,12 +377,12 @@ learners <- list(l3,l2)
 
 sl <- Superlearner(data=dat,
                    learners=learners,
-                   stratified_k_fold = TRUE,
+                   stratified_k_fold = F,
                    id="ID",
                    status="Delta",
-                   # nodes=seq(0,35,.5),
+                   nodes=seq(0,35,.5),
                    event_time =  "Time",
-                   nfold=10,
+                   nfold=3,
                    meta_learner_algorithm = "glm",
                    add_nodes_metalearner = TRUE,
                    add_intercept_metalearner = TRUE)
