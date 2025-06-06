@@ -4,7 +4,7 @@
 #'
 #' @import data.table
 
-learner_nn <- function(data,covariates){
+Learner_nn <- function(data,covariates){
 
 
   return(0)
@@ -13,7 +13,8 @@ learner_nn <- function(data,covariates){
 
 }
 
-learner_xgboost <- function(data,covariates){
+
+Learner_xgboost <- function(data,covariates){
 
 
   return(0)
