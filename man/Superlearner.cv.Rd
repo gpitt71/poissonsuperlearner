@@ -14,14 +14,17 @@ Superlearner.cv(
   event_time = NULL,
   learners,
   n_cross_validation_folds = 5,
+  number_of_nodes = NULL,
   nodes = NULL,
   meta_learner_algorithm = "glmnet",
   add_nodes_metalearner = TRUE,
   add_intercept_metalearner = TRUE,
   matrix_transformation = FALSE,
+  nested_cross_validation_meta_learner = TRUE,
   penalise_nodes_metalearner = TRUE,
   variable_transformation = NULL,
-  nfold = 3
+  nfold = 3,
+  ...
 )
 }
 \arguments{

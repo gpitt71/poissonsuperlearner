@@ -14,7 +14,8 @@ Depends:
     sampling,
     riskRegression,
     Matrix,
-    glmnet
+    glmnet,
+    mgcv
 Suggests: 
     knitr,
     rmarkdown,

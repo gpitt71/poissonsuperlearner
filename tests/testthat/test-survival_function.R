@@ -101,6 +101,177 @@ dt_val <- data.table(
 
 )
 
+# Check xgboost
+data_pre_processing <- function(data,
+                                id,
+                                status,
+                                event_time,
+                                nodes=NULL
+){
+
+
+  # browser()
+
+  setDT(data)
+
+  # Handle competing risks ----
+  ## for each of the competing risks (CR) we need to create a table
+  n_crisks <- pmax(length(unique(data[[status]])) - 1,1)
+  ## the CR tables are stuck on top of each other to allow for possible interactions
+  dt_fit <- do.call(rbind, replicate(n_crisks, data, simplify = FALSE))
+  ## we create an artificial k index. Table specific.
+  dt_fit <- dt_fit[, k := rep(1:n_crisks, each = dim(data)[1])]
+
+
+  # Data Transformation ----
+  tmp <- c(id, "k")
+
+  dt_fit <- eval(parse(text = paste("dt_fit[, .(node = create_offset_variable(nodes, time_to_event = ",
+                                    event_time,
+                                    ")[, 1]",
+                                    ", tij = create_offset_variable(nodes, time_to_event = ",
+                                    event_time,
+                                    ")[,2]",
+                                    ", deltaij = create_response_variable_c_risks(nodes,time_to_event = ",
+                                    event_time,
+                                    ", delta=",
+                                    status,
+                                    ", event_type = k)",
+                                    ")",
+                                    ", by = .(",
+                                    id,
+                                    ", k)",
+                                    "]")))
+
+  ## Retrieve covariates
+
+  dt_fit <- merge(dt_fit, data, by = id, all.x = TRUE)
+
+  setnames(dt_fit, c(id),c("id"))
+
+  dt_fit[,c("node",
+            "k"):=list(factor(node,levels=as.character(nodes)),
+                       as.factor(k))]
+
+
+  # browser()
+  dt_fit[,node:=relevel(node,ref=as.character(last(nodes)))]
+
+  return(dt_fit)
+
+}
+
+
+create_response_variable_c_risks <- function(nodes, time_to_event, delta, event_type){
+  # browser()
+  p_holder <- ifelse(delta == event_type, 1, 0)
+
+  l <- sum(nodes < time_to_event)
+
+  out <- c(rep(0, max(0, l - 1)),
+           p_holder)
+
+  return(out)
+}
+
+create_offset_variable <- function(nodes, delta, time_to_event){
+
+  # browser()
+  tmp <- c(nodes[nodes < time_to_event],
+           first(nodes[nodes >= time_to_event]))
+
+
+
+  if (all(nodes < time_to_event)) {
+    tmp <- c(tmp, time_to_event)
+  } else{
+    tmp[length(tmp)] <- time_to_event
+  }
+
+
+  tij <- diff(c(tmp))
+
+  grid_nodes <- c(nodes[nodes < time_to_event])
+
+  return(cbind(grid_nodes,tij))
+}
+
+
+
+data_pp_1 <- data_pre_processing(data=dt,
+                                 id="id",
+                                 status="status",
+                                 # setting = "survival",
+                                 # covariates="covariate",
+                                 # treatment=NULL,
+                                 nodes = seq(0,5,1),
+                                 event_time="time")
+
+
+xgtrain.mf  <- model.frame(as.formula("deltaij ~ covariate+ covariate2-1+node+offset(log(tij))"),data_pp_1)
+xgtrain.m  <- model.matrix(attr(xgtrain.mf,"terms"),data = data_pp_1)
+xgtrain  <- xgb.DMatrix(xgtrain.m,label = data_pp_1$deltaij)
+setinfo(xgtrain, "base_margin", log(data_pp_1$tij))
+
+xgb = xgb.train(
+  nrounds = 800
+  , params = list(objective="count:poisson",
+                  eta=.01,
+                  max_depth =2,
+                  alpha=.5,
+                  lambda=.5)
+  , data = xgtrain
+)
+
+tmp_1 <- data.frame(node = factor(sort(unique(
+  data_pp_1$node
+))),
+tij = 1,
+covariate = .5,
+covariate2=factor(0,levels=c("0","1")))
+
+tmp_1_xgb <-tmp_1%>% dplyr::mutate(deltaij=1)
+xgtrain.mf  <- model.frame(as.formula("deltaij ~ covariate+ covariate2-1+node+offset(log(tij))"),tmp_1_xgb)
+xgtrain.m  <- model.matrix(attr(xgtrain.mf,"terms"),data = tmp_1_xgb)
+xgtest  <- xgb.DMatrix(xgtrain.m,label = tmp_1_xgb$deltaij)
+setinfo(xgtest, "base_margin", log(tmp_1_xgb$tij))
+
+pw_constant_hazard_1_xgb <- predict(xgb, newdata = xgtest)
+
+tmp_1['sf_xgb'] <- exp(-cumsum(pw_constant_hazard_1_xgb*1))
+tmp_1
+
+sf <- function(t,lambda, beta, X1,beta1,X2){
+
+  out <- exp(-lambda*exp(beta*X1+beta1*(X2))*t)
+  return(out)
+}
+
+
+inverse_sf<- function(lambda, beta, X1,beta1,X2, u){
+
+  out <- -log(u)/(lambda*exp(beta*X1+beta1*(X2)))
+
+  return(out)
+}
+
+xtrue <- seq(0, 6, 0.001)
+ytrue <- sf(
+  xtrue,
+  lambda = 0.5,
+  beta = 0.1,
+  beta1 = 0.2,
+  X1 = .5,
+  X2 = 0
+)
+
+plot(xtrue,
+     ytrue,
+     type="l",
+     xlab="Time", ylab="Survival Function")
+
+lines(seq(0,6,by=1),c(1,tmp_1$sf_xgb), col="blue",type="S")
+
 # Fit ----
 ## Learners ----
 

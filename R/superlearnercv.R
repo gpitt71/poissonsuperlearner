@@ -25,9 +25,11 @@ Superlearner.cv <- function(data,
                          add_nodes_metalearner=TRUE,
                          add_intercept_metalearner=TRUE,
                          matrix_transformation=FALSE,
+                         nested_cross_validation_meta_learner=TRUE,
                          penalise_nodes_metalearner=TRUE,
                          variable_transformation=NULL,
-                         nfold = 3) {
+                         nfold = 3,
+                         ...) {
 
 
 
@@ -92,7 +94,9 @@ Superlearner.cv <- function(data,
                                             matrix_transformation=matrix_transformation,
                                             penalise_nodes_metalearner=penalise_nodes_metalearner,
                                             variable_transformation=variable_transformation,
-                                            nfold = nfold)
+                                            nfold = nfold,
+                             nested_cross_validation_meta_learner=nested_cross_validation_meta_learner,
+                             ...)
 
 
 

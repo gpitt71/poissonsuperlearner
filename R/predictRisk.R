@@ -17,7 +17,7 @@ predictRisk.poisson_superlearner <- function(object,newdata,times,cause=1, ...){
               times = x,
               cause = cause)
 
-      p <- 1 - out$survival_function
+      p <- out$absolute_risk
 
       return(p)
 

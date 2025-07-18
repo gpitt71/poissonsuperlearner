@@ -124,6 +124,33 @@ predict.poisson_superlearner <- function(object,
 
   data_pp[,deltatime:=tij][,tij:=1]
 
+  if(length(object$learners)==1){
+
+
+    # browser()
+
+    # dt_pred <- object$learners[[1]]$predictor(
+    #   model=object$superlearner$learners_fit[[1]],
+    #   newdata = data_pp
+    #
+    # )
+
+    dt_pred <- mapply(
+      function(crisk_cause, model,superl_fit, newdata)
+        model$predictor(model = superl_fit$learners_fit, newdata = data_pp),
+      as.list(1:object$data_info$n_crisks),
+     object$superlearner,
+      MoreArgs = list(newdata = data_pp, model=object$learners[[1]]),
+     SIMPLIFY = F
+    )
+
+
+  }else{
+
+
+
+
+
   learners_predictions <- mapply(
     function(f, model, newdata)
       f$predictor(model = model, newdata = data_pp),
@@ -151,27 +178,48 @@ predict.poisson_superlearner <- function(object,
                                                             cbind(pseudo_observations_data, data_pp))
 
 
+  }
 
 
-  data_pp[['pwch']] <- dt_pred
-  data_pp <- copy(data_pp)
-  data_pp[,survival_function:=pmin(exp(-cumsum(pwch*deltatime)),1), by=.(id)]
+
+  data_pp[,paste0("pwch_",1:object$data_info$n_crisks):=dt_pred]
+
+  pwch_cols <- paste0("pwch_",1:object$data_info$n_crisks)
+
+  mapply(function(pwch, name) {
+    data_pp[, (paste0("cumulative_hazard_", name)) := cumsum(get(pwch) * deltatime), by = id]
+  }, pwch_cols, gsub("pwch_", "", pwch_cols))
 
 
-  data_pp <- data_pp[, .SD[.N], by = id][,times:=as.numeric(as.character(node))+tij]
+  hazard_terms <- paste0("cumulative_hazard_", 1:object$data_info$n_crisks)
+  sum_expr <- paste(hazard_terms, collapse = " + ")
+  survival_function_string <- paste0("data_pp[, survival_function := exp(-(", sum_expr, "))]")
+
+  eval(parse(text = survival_function_string))
+
+  absolute_risk_string <- paste0(
+    "data_pp[, absolute_risk := cumsum(survival_function * pwch_", cause, " * deltatime), by = id]"
+  )
+
+  eval(parse(text = absolute_risk_string))
+
+  # data_pp <- copy(data_pp)
+  # data_pp[,survival_function:=pmin(exp(-cumsum(pwch*deltatime)),1), by=.(id)]
+
+  data_pp <- data_pp[, .SD[.N], by = id][,times:=as.numeric(as.character(node))+deltatime]
 
 
   if(cond_zero){
 
     data_pp[time==0,
-            c('pwch',
-              'survival_function'):=list(0,1)]
+            c(pwch_cols,
+              'survival_function'):=list(rep(0,length(pwch_cols)),1)]
 
 
 
   }
 
-  columns_ss <- unique(c(colnames(newdata),object$data_info$event_time,"pwch","survival_function"))
+  columns_ss <- unique(c(colnames(newdata),object$data_info$event_time,pwch_cols,"survival_function","absolute_risk"))
 
   d <- data_pp[,..columns_ss]
 
@@ -198,8 +246,8 @@ predict.poisson_superlearner <- function(object,
     vec_dt2[, dummy := 1]
 
     d2 <- merge(tmp, vec_dt2, by = "dummy", allow.cartesian = TRUE)[, dummy := NULL]
-    d2[,c('pwch_times_tij',
-                    'survival_function'):=list(NA,NA)]
+    d2[,c(pwch_cols,
+            'survival_function'):=list(rep(NA,length(pwc_cols)),NA)]
 
 
     if (object$data_info$id %in% colnames(d)) {

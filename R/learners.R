@@ -318,6 +318,95 @@ Learner_glmnet <- setRefClass(
       return(out)
     },
 
+
+    one_learner_pwc_model = function(data,
+                             id,
+                             start_time = NULL, #
+                             end_time = NULL, #
+                             status, #
+                             event_time = NULL, #
+                             number_of_nodes = NULL, #
+                             nodes = NULL, #
+                             variable_transformation= NULL,
+                             nfold = 3,
+                             ...){
+
+
+
+
+   browser()
+
+      if (.self$cross_validation) {
+        .self$fit_arguments[['nfolds']] <- nfold
+      }
+
+   dt <- create_dicretised_data(
+          data,
+          id,
+          start_time = start_time,
+          end_time = NULL,
+          status=end_time,
+          event_time = event_time,
+          number_of_nodes = number_of_nodes,
+          nodes = nodes,
+          variable_transformation
+        )
+
+
+   out <- .self$fit(dt)
+
+   return(out)
+
+
+    },
+
+   predict_pwc_model = function(data,
+                            id,
+                            start_time = NULL, #
+                            end_time = NULL, #
+                            status, #
+                            event_time = NULL, #
+                            number_of_nodes = NULL, #
+                            nodes = NULL, #
+                            variable_transformation= NULL,
+                            nfold = 3,
+                            ...){
+
+
+
+
+     browser()
+
+     if (.self$cross_validation) {
+       .self$fit_arguments[['nfolds']] <- nfold
+     }
+
+     dt <- create_dicretised_data(
+       data,
+       id,
+       start_time = start_time,
+       end_time = NULL,
+       status=end_time,
+       event_time = event_time,
+       number_of_nodes = number_of_nodes,
+       nodes = nodes,
+       variable_transformation
+     )
+
+
+     out <- .self$fit(dt)
+
+     return(out)
+
+
+   },
+
+    update_cross_validation_argument= function(nfold){
+
+      .self$fit_arguments[['nfolds']] <- nfold
+
+    },
+
     fit = function(data, ...) {
 
       data<-data[complete.cases(data),]
@@ -421,78 +510,130 @@ Learner_glmnet <- setRefClass(
   )
 )
 
+#' \code{gam} learner class using bam
+#'
+#' @export Learner_gam
+#' @exportClass Learner_gam
+Learner_gam <- setRefClass(
+  "Learner_gam",
+  fields = list(
+    covariates = "character",
+    treatment = "character",
+    cross_validation = "logical",
+    recycle_information = "logical",
+    intercept = "logical",
+    formula = "character",
+    learner = "function",
+    add_nodes = "logical",
+    penalise_nodes = "logical",
+    fit_arguments = "list",
+    covariates_attributes_matrix = "list"
+  ),
+  methods = list(
 
-# learner_glmnet <- function(covariates,
-#                            treatment=NULL,
-#                            cross_validation=FALSE,
-#                            ...){
-#
-#   xs <- paste(covariates, collapse="+")
-#
-#   if(!is.null(treatment)){
-#
-#     xs <- paste(xs,"+",treatment)
-#   }
-#
-#   formula_string <- paste("deltaij ~", xs,"-1+node+offset(log(tij))", sep="")
-#
-#   if(cross_validation){
-#
-#     learner <- function(data,
-#                         formula=formula_string,
-#                         ...){
-#
-#       tmp <- datapp_glmnet(data, formula)
-#
-#       fit <- cv.glmnet(tmp$x,
-#                        tmp$y,
-#                        offset = tmp$offset,
-#                        family="poisson", ...)
-#
-#       return (fit)
-#     }
-#
-#   }else{
-#
-#     learner <- function(data,
-#                         formula=formula_string,
-#                         ...){
-#
-#       tmp <- datapp_glmnet(data, formula)
-#
-#       fit <- glmnet(tmp$x,
-#                     tmp$y,
-#                     offset = tmp$offset,
-#                     family="poisson", ...)
-#
-#       return (fit)
-#     }
-#
-#   }
-#
-#
-#   out <- list(learner=learner,
-#               predictor)
-#
-#
-#   class(out) <- "learner_glmnet"
-#
-#   return(out)
-#
-#
-#
-# }
+    initialize = function(covariates = NULL,
+                          treatment = NA_character_,
+                          cross_validation = FALSE,
+                          intercept = TRUE,
+                          add_nodes = TRUE,
+                          penalise_nodes = FALSE,
+                          recycle_information = FALSE,
+                          ...) {
+
+      .self$covariates <- covariates
+      .self$treatment <- treatment
+      .self$cross_validation <- cross_validation
+      .self$intercept <- intercept
+      .self$add_nodes <- add_nodes
+      .self$penalise_nodes <- penalise_nodes
+      .self$recycle_information <- recycle_information
+
+      .self$formula <- create_formula_gam(
+        covariates = .self$covariates,
+        treatment = .self$treatment,
+        intercept = .self$intercept,
+        add_nodes = .self$add_nodes
+      )
+
+      .self$learner <- mgcv::bam
+
+      .self$fit_arguments <- list(...)
+      .self$fit_arguments[['family']] <- poisson()
+    },
+
+    datapp = function(train_data = NULL, validation_data = NULL) {
+      if (!is.null(train_data)) {
+        train.mf <- model.frame(as.formula(.self$formula),
+                                rbind(train_data, validation_data),
+                                drop.unused.levels = FALSE)
+        x <- model.matrix(attr(train.mf, "terms"), data = train_data)
+        y <- train_data[['deltaij']]
+        offset <- log(train_data[['tij']])
+        .self$covariates_attributes_matrix[['train.mf']] <- train.mf
+        .self$recycle_information <- TRUE
+      } else {
+        x <- model.matrix(attr(.self$covariates_attributes_matrix[['train.mf']], "terms"),
+                          data = validation_data)
+        y <- validation_data[['deltaij']]
+        offset <- log(validation_data[['tij']])
+      }
+
+      return(list(x = x, y = y, offset = offset))
+    },
+
+    fit = function(data, ...) {
+
+      # browser()
+      data <- data[complete.cases(data), ]
+      .self$fit_arguments$formula <- as.formula(.self$formula)
+      .self$fit_arguments$data <- data
+      .self$fit_arguments$offset <- log(data[['tij']])
+      fit <- do.call(.self$learner, .self$fit_arguments)
+      return(fit)
+    },
+
+    private_fit = function(data, ...) {
+      # browser()
+      data <- data[complete.cases(data), ]
+      .self$fit_arguments$formula <- as.formula(.self$formula)
+      .self$fit_arguments$data <- data
+      .self$fit_arguments$offset <- log(data[['tij']])
+      fit <- do.call(.self$learner, .self$fit_arguments)
+      return(fit)
+    },
+
+    predictor = function(model, newdata, ...) {
+
+      # browser()
+      pred <- predict(model,
+                      newdata = newdata,
+                      type = "response",
+                      offset = log(newdata[['tij']]),
+                      ...)
+      return(pred)
+    },
+
+    private_predictor = function(model, newdata, ...) {
 
 
+      # browser()
 
+      pred <- predict(model,
+                      newdata = newdata[node %in% model$xlevels$node,],
+                      type = "response",
+                      offset = log(newdata[['tij']]),
+                      ...)
+      if(all(!(levels(newdata$node) %in% model$xlevels$node))){
 
+        newdata[node %in% model$xlevels$node,predictions_model:=pred]
 
+        return(newdata$predictions_model)
 
+      }else{
 
-
-
-
-
-
+      return(pred)}
+    }
+  )
+)
 
 

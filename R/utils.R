@@ -169,7 +169,8 @@ data_pre_processing <- function(data,
                                 id,
                                 status,
                                 event_time,
-                                nodes=NULL
+                                nodes=NULL,
+                                uncensored_01=FALSE
 ){
 
 
@@ -179,7 +180,7 @@ data_pre_processing <- function(data,
 
   # Handle competing risks ----
   ## for each of the competing risks (CR) we need to create a table
-  n_crisks <- pmax(length(unique(data[[status]])) - 1,1)
+  n_crisks <- pmax(length(unique(data[[status]])) - 1+uncensored_01,1)
   ## the CR tables are stuck on top of each other to allow for possible interactions
   dt_fit <- do.call(rbind, replicate(n_crisks, data, simplify = FALSE))
   ## we create an artificial k index. Table specific.
@@ -311,6 +312,181 @@ datapp_glmnet <- function(data, formula) {
   return(out)
 }
 
+
+
+create_dicretised_data <- function(data,
+                                   id,
+                                   start_time = NULL, #
+                                   end_time = NULL, #
+                                   status, #
+                                   event_time = NULL, #
+                                   number_of_nodes = NULL, #
+                                   nodes = NULL, #
+                                   variable_transformation){
+
+
+  check_1 <- is.null(start_time) & !is.null(end_time)
+  check_2 <- !is.null(start_time) & is.null(end_time)
+  check_3 <- (!is.null(start_time) ||
+                !is.null(end_time)) & !is.null(event_time)
+
+
+  if (check_3) {
+    stop("Either provide interval data or censored data")
+
+  }
+
+  if (!is.null(start_time) & !is.null(end_time)) {
+    interval_data_type = TRUE
+
+    maximum_followup = max(data[[end_time]])
+
+  } else{
+    interval_data_type = FALSE
+
+    maximum_followup = max(data[[event_time]])
+
+  }
+
+
+  # save some relevant values
+  n <- length(unique(data[[id]]))#nrow(data)
+  n_crisks <- length(unique(data[[status]])) - 1
+
+
+  # Pre-process the data
+
+  if (interval_data_type) {
+    # Compute here the nodes checking
+    if (!is.null(number_of_nodes)) {
+      observed_times <- c(data[[start_time]], data[[end_time]])
+      grid_nodes <- seq(min(observed_times),
+                        max(observed_times) + 1,
+                        length.out = as.integer(number_of_nodes))
+
+    } else{
+      if (is.null(nodes)) {
+        observed_times <- c(data[[start_time]], data[[end_time]])
+        grid_nodes <- sort(unique(observed_times))
+      } else {
+        grid_nodes <- sort(nodes)
+      }
+    }
+
+    if (!(0 %in% grid_nodes)) {
+      grid_nodes <- c(0, grid_nodes)
+    }
+
+    # Actual data pp
+    dt <- data_pre_processing_interval_data(
+      data = data,
+      id = id,
+      status = status,
+      start_time = start_time,
+      nodes = grid_nodes,
+      end_time = end_time
+    )
+
+
+
+
+  } else{
+    #  Handle nodes
+    ##Either the nodes are given or we take all of the realised times
+    if (!is.null(number_of_nodes)) {
+      grid_nodes <- seq(min(data[[event_time]]), max(data[[event_time]]) + 1, length.out = as.integer(number_of_nodes))
+
+    } else{
+      if (is.null(nodes)) {
+        grid_nodes <- sort(unique(data[[event_time]]))
+
+
+        # browser()
+        grid_nodes <- grid_nodes[-((length(grid_nodes) - 2):length(grid_nodes))]
+
+      } else{
+        grid_nodes <- nodes
+
+      }
+    }
+
+    # Add zero if missing
+    if (!(0 %in% grid_nodes)) {
+      grid_nodes <- c(0, grid_nodes)
+
+    }
+
+
+
+    grid_nodes <- grid_nodes[grid_nodes <= max(data[[event_time]])]
+
+    # Actual data pp
+    dt <- data_pre_processing(
+      data = data,
+      id = id,
+      status = status,
+      nodes = grid_nodes,
+      event_time = event_time
+    )
+
+
+    # browser()
+  }
+
+
+  if (matrix_transformation) {
+    # browser()
+
+    columns_of_interest <- unlist(lapply(learners, function(x) {
+      return(unique(c(x$covariates, x$treatment)))
+    }))
+
+    columns_of_interest <- unique(columns_of_interest[(complete.cases(columns_of_interest))])
+
+    # Take the variable that we transform
+
+    lhs_vars <- trimws(unlist(strsplit(
+      strsplit(variable_transformation, "~")[[1]][1], "\\+"
+    )))
+    lhs_string <- paste(lhs_vars, collapse = ", ")
+
+    # Take the transformation
+    rhs_vars <- trimws(unlist(strsplit(
+      strsplit(variable_transformation, "~")[[1]][2], "\\+"
+    )))
+    rhs_string <- paste(rhs_vars, collapse = ", ")
+
+
+    eval(parse(
+      text = paste0("
+               dt[,c('", lhs_string
+
+                    , "'):=list(", rhs_string
+                    , ")]
+               ")
+    ))
+
+
+    dt <- dt[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(unique(c(columns_of_interest, lhs_string)), "node", "k")]
+
+
+    dt[, c("id") := 1:nrow(dt)]
+
+
+
+  }
+
+
+
+
+
+  return(dt)
+
+
+
+}
+
+
 # Other utils ----
 create_formula <- function(covariates=NA_character_,
                            treatment=NA_character_,
@@ -341,6 +517,44 @@ create_formula <- function(covariates=NA_character_,
   }
 
   out <- paste("deltaij ~", xs, "+offset(log(tij))", sep =
+                 "")
+
+  return(out)
+
+
+
+
+}
+
+create_formula_gam <- function(covariates=NA_character_,
+                           treatment=NA_character_,
+                           competing_risks=FALSE,
+                           intercept=FALSE,
+                           add_nodes=TRUE){
+
+
+
+  if (!any(is.na( covariates))) {
+    xs <- paste(covariates, collapse = "+")
+  }
+
+  if (!is.na( treatment)) {
+    xs <- paste(xs, "+", treatment)
+  }
+
+  # if (competing_risks) {
+  #   xs <- paste(xs, "+ k")
+  # }
+
+  if (add_nodes) {
+    xs <- paste(xs, "+ node")
+  }
+
+  # if(!intercept){
+  #   xs <- paste(xs, "-1")
+  # }
+
+  out <- paste("deltaij ~", xs, sep =
                  "")
 
   return(out)

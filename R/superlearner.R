@@ -11,22 +11,27 @@
 #'
 #' @export
 Superlearner <- function(data,
-                         id = "id",
-                         stratified_k_fold = FALSE,
-                         start_time = NULL,
-                         end_time = NULL,
-                         status = "status",
-                         event_time = NULL,
+                         id = "id", #
+                         stratified_k_fold = FALSE, #
+                         start_time = NULL, #
+                         end_time = NULL, #
+                         status = "status", #
+                         event_time = NULL, #
                          learners,
-                         number_of_nodes = NULL,
-                         nodes = NULL,
+                         number_of_nodes = NULL, #
+                         nodes = NULL, #
                          meta_learner_algorithm = "glmnet",
                          add_nodes_metalearner = TRUE,
                          add_intercept_metalearner = TRUE,
                          matrix_transformation = FALSE,
                          penalise_nodes_metalearner = TRUE,
-                         variable_transformation = NULL,
-                         nfold = 3) {
+                         variable_transformation = NULL, #
+                         nested_cross_validation_meta_learner=TRUE,
+                         nfold = 3, #
+                         ...) {
+
+
+
   # Multiple checks about interval data
   # browser()
   check_1 <- is.null(start_time) & !is.null(end_time)
@@ -62,8 +67,25 @@ Superlearner <- function(data,
 
   # save some relevant values
   n <- length(unique(data[[id]]))#nrow(data)
-  n_crisks <- length(unique(data[[status]])) - 1
 
+
+
+
+  if (!(0 %in% data[[status]])) {
+    warning(
+      paste0(
+        "There is no value of ",
+        status,
+        " equal to zero. We will consider the data uncensored."
+      )
+    )
+    n_crisks <- length(unique(data[[status]]))
+    uncensored_01 <-TRUE
+
+  } else{
+    n_crisks <- length(unique(data[[status]])) - 1
+    uncensored_01 <-FALSE
+  }
 
   # Pre-process the data
 
@@ -112,7 +134,7 @@ Superlearner <- function(data,
         grid_nodes <- sort(unique(data[[event_time]]))
 
 
-        # browser()
+
         grid_nodes <- grid_nodes[-((length(grid_nodes) - 2):length(grid_nodes))]
 
       } else{
@@ -137,16 +159,17 @@ Superlearner <- function(data,
       id = id,
       status = status,
       nodes = grid_nodes,
-      event_time = event_time
+      event_time = event_time,
+      uncensored_01=uncensored_01
     )
 
 
-    # browser()
+
   }
 
 
   if (matrix_transformation) {
-    # browser()
+
 
     columns_of_interest <- unlist(lapply(learners, function(x) {
       return(unique(c(x$covariates, x$treatment)))
@@ -188,6 +211,13 @@ Superlearner <- function(data,
   }
 
 
+
+
+
+
+
+
+
   if (stratified_k_fold) {
     setDT(data)
 
@@ -220,10 +250,96 @@ Superlearner <- function(data,
   dt <- merge(dt, dt_id, by = "id", all.x = T)
 
 
-
   dt_z <- vector("list", n_crisks)
 
   z_covariates <- paste0("Z", 1:length(learners))
+
+
+
+  # if only one learner is present, we simply perform a CV ----
+  if (length(learners) == 1) {
+    warning("Only one learner was provided.")
+
+    if (learners[[1]]$cross_validation == TRUE) {
+
+      message("\n Cross-validated for the learner is performed on the data.")
+
+      learners[[1]]$update_cross_validation_argument(nfold)
+
+    } else{
+      warning(
+        "\n The learner was provided with given hyper-parameters. It will be applied with the given configuration."
+      )
+
+    }
+
+    # The learner on the full dataset ----
+    training_data <- split(dt, by = "k")
+    learner_fit <- mapply(function(x){
+
+      out <- learners[[1]]$fit(x)
+      return(out)
+    },
+    training_data,
+    SIMPLIFY = FALSE
+      )
+
+
+
+    #lapply(learners, function(f) f$fit(dt))
+
+    # The learner on the full dataset ----
+    fitted_values <- mapply(function(x,newdata){
+      learners[[1]]$predictor(model=x,
+                              newdata=newdata)
+    },
+    learner_fit,
+    MoreArgs = list(newdata=dt),
+    SIMPLIFY = FALSE
+    )
+
+
+    one_learner_out <- list()
+
+    for(causes in 1:n_crisks){
+
+
+      one_learner_out[[causes]] <- list(
+        model = NULL,
+        learners_fit=learner_fit[[causes]],
+        meta_learner_fit = NULL,
+        fitted_values = fitted_values[[causes]]
+      )
+
+    }
+
+    #lapply(learners, function(f) f$predictor(model= model, newdata = newdata))
+
+    out <- list(
+      learners = learners,
+      metalearner = NULL, # it does not exict in this scenario
+      superlearner = one_learner_out,
+      data_info = list(
+        id = id,
+        status = status,
+        event_time = event_time,
+        start_time = start_time,
+        end_time = end_time,
+        nodes = grid_nodes,
+        nfold = nfold,
+        maximum_followup = maximum_followup,
+        n_crisks=n_crisks,
+        matrix_transformation = matrix_transformation,
+        variable_transformation = variable_transformation,
+        interval_data_type = interval_data_type
+      )
+    )
+
+    class(out) <- "poisson_superlearner"
+
+    return(out)
+
+  }
 
 
 
@@ -268,19 +384,18 @@ Superlearner <- function(data,
   }
 
 
-  # browser()
   data_by_competing_risk <- split(dt, by = "k")
 
-  # browser()
   # We do another round of glmnet (or glm) for combining the predictors ----
   ## In the future we can add options for using any algorithm.
   if (meta_learner_algorithm == "glmnet") {
     meta_learner <- Learner_glmnet(
       covariates = z_covariates,
-      cross_validation = T,
+      cross_validation = nested_cross_validation_meta_learner,
       intercept = add_intercept_metalearner,
       add_nodes = add_nodes_metalearner,
-      penalise_nodes = penalise_nodes_metalearner
+      penalise_nodes = penalise_nodes_metalearner,
+      ...
     )
   } else{
     meta_learner <- Learner_glm(covariates = z_covariates,
@@ -324,6 +439,7 @@ Superlearner <- function(data,
       nodes = grid_nodes,
       nfold = nfold,
       maximum_followup = maximum_followup,
+      n_crisks=n_crisks,
       matrix_transformation = matrix_transformation,
       variable_transformation = variable_transformation,
       interval_data_type = interval_data_type

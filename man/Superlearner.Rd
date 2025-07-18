@@ -13,6 +13,7 @@ Superlearner(
   status = "status",
   event_time = NULL,
   learners,
+  number_of_nodes = NULL,
   nodes = NULL,
   meta_learner_algorithm = "glmnet",
   add_nodes_metalearner = TRUE,
@@ -20,7 +21,9 @@ Superlearner(
   matrix_transformation = FALSE,
   penalise_nodes_metalearner = TRUE,
   variable_transformation = NULL,
-  nfold = 3
+  nested_cross_validation_meta_learner = TRUE,
+  nfold = 3,
+  ...
 )
 }
 \arguments{
