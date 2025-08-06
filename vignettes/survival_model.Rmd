@@ -15,6 +15,7 @@ knitr::opts_chunk$set(
 ```
 
 ```{r setup}
+knitr::opts_chunk$set(eval = FALSE, include = FALSE)
 library(tmlensemble)
 library(survival)
 library(data.table)
@@ -26,7 +27,7 @@ library(rpart)
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 seed=1
 # use_condaenv("C:\\Users\\pwt887\\AppData\\Local\\anaconda3\\envs\\pytmle")
 # Sys.setenv(PYTHONHASHSEED = seed)
@@ -61,7 +62,7 @@ O_i = (L_{1,i}, L_{2,i}, \widetilde{T}_i,  {\Delta}_i),
 $$
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 sf <- function(t,lambda, beta, X1,beta1,X2){
   
@@ -80,7 +81,7 @@ inverse_sf<- function(lambda, beta, X1,beta1,X2, u){
 
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 n <- 50
 
@@ -95,7 +96,7 @@ n <- 50
 
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 
 
@@ -135,7 +136,7 @@ table(dt$status)
 
 ## Ensembles
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 tmp_05 <- data.frame(node = factor(sort(unique(seq(0,5,0.5)
 ))),
 tij = .5,
@@ -143,7 +144,7 @@ covariate = 5,
 covariate2=factor("0",levels = c("0","1")))
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 tmp_1 <- data.frame(node = factor(sort(unique(seq(0,5.4,.1)
 ))),
 tij = .1,
@@ -151,7 +152,7 @@ covariate = 5,
 covariate2=factor("0",levels = c("0","1")))
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 observed_nodes <- sort(unique(dt$time))
 
 tmp_observed <- data.frame(node = factor(c(0,observed_nodes[observed_nodes!=max(observed_nodes)])),
@@ -161,13 +162,13 @@ covariate2=factor("0",levels = c("0","1")))
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 l1 <- Learner_glm(covariates = c("covariate2"))
 
 l2 <- Learner_glm(covariates = c("covariate","covariate2"))
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 learners <- list(l1,l2)
 
@@ -185,7 +186,7 @@ sl <- Superlearner(data=dt,
 
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 sl1 <- Superlearner(data=dt,
                    learners=learners,
                    stratified_k_fold = TRUE,
@@ -200,7 +201,7 @@ sl1 <- Superlearner(data=dt,
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 cox <- coxph(formula("Surv(time, status) ~  covariate  +   covariate2"), data=dt)
 
 baseline_hazard <- basehaz(cox)
@@ -211,7 +212,7 @@ surv_fit <- survfit(cox,
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 tmp_observed[['deltaij']]<-tmp_1[['deltaij']]<-tmp_05[['deltaij']]<-0
 
 
@@ -220,14 +221,14 @@ tmp_observed[['deltaij']]<-tmp_1[['deltaij']]<-tmp_05[['deltaij']]<-0
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 preds_1 <- predict(sl1,tmp_1)
 preds_observed <- predict(sl,tmp_observed)
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 xtrue <- seq(0, 6, 0.001)
 ytrue <- sf(
   xtrue,
@@ -270,7 +271,7 @@ legend(x = "topright",
 
 ## Pammtools data set
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 library(tidyr)
 library(dplyr)
 library(ggplot2)
@@ -281,7 +282,7 @@ library(pammtools)
 Set1 <- RColorBrewer::brewer.pal(9, "Set1")
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 # raw data
 # https://socserv.mcmaster.ca/jfox/Books/Companion/scripts/appendix-cox.R
 recidivism <- read.table(
@@ -291,7 +292,7 @@ recidivism <- read.table(
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 # transform into long format
 recidivism_long <- recidivism %>%
   gather(calendar.week, employed, emp1:emp52) %>%
@@ -315,13 +316,13 @@ recidivism_long <- recidivism_long %>% select(subject, start,  stop,arrest,age,e
 
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 l2 <- Learner_glmnet(covariates = c("educ","age"),cross_validation=T)
 
 l3 <- Learner_glmnet(covariates = c("age","educ","educ:age"))
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 learners <- list(l3,l2)
 
@@ -353,7 +354,7 @@ sl_rec2 <- Superlearner(data=recidivism_long,
                    end_time="stop")
 
 ```
-```{r}
+```{r eval=FALSE, include=FALSE}
 tmp <- sort(unique(c(unique(recidivism_long$start),unique(recidivism_long$stop))))
 
 tmp<-tmp[tmp!=max(recidivism_long$stop)]
@@ -372,7 +373,7 @@ educ=3)
 
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 preds <- predict(sl_rec,
                  benchmark_dt )
 
@@ -386,7 +387,7 @@ preds1 <- predict(sl_rec2,
 
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 cox <- coxph(formula("Surv(start, stop, arrest) ~ age+educ+educ:age"), data=recidivism_long)
 
 baseline_hazard <- basehaz(cox)
@@ -399,7 +400,7 @@ surv_fit <- survfit(cox,
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 dt <- fread("C:\\Users\\pwt887\\Desktop\\readit2.txt")
 dt[,node:=as.factor(node)]
@@ -415,7 +416,7 @@ sf_1 <- exp(-cumsum(predictor1 * 1))
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 {plot(c(tmp,max(recidivism_long$stop)),
      c(1,sf_1),
      col="green",
@@ -437,7 +438,7 @@ lines(c(tmp,max(recidivism_long$stop)),
 ## Replicating the Cox model
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 cox_model <- coxph(Surv(time, status) ~ covariate+covariate2, dt)
 
@@ -474,7 +475,7 @@ In this Section we check out that we model the survival function correctly when 
 
 ### Sequence with unit distant points
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 data_pp_1 <- data_pre_processing(data=dt,
                               id="id",
                               status="status",
@@ -494,7 +495,7 @@ model_pois_1 <- glm("deltaij ~ covariate-1+factor(node)+offset(log(tij))",
 
 ### Sequence with 0.5 distant points
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 data_pp_05 <- DataPreProcessing(data=dt,
                               id="id",
                               status="status",
@@ -514,7 +515,7 @@ model_pois_05 <- glm("deltaij ~ covariate-1+factor(node)+offset(log(tij))",
 
 ## Check out the survival function behavior
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 
 if (n < 1000) {
@@ -563,7 +564,7 @@ tmp_05[, "sf_hat"] = exp(-cumsum(pw_constant_hazard_05 * 0.5))
 
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 xtrue <- seq(0,6,0.001)
 ytrue <- sf(xtrue,
             lambda=.5,
@@ -594,7 +595,7 @@ In this Section we repeat the same experiment but we fit different learners to t
 
 ### Neural Networks 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 preprocess_minmax <- function(varData) {
   X <- as.numeric(varData)
   2 * (X - min(X)) / (max(X) - min(X)) - 1
@@ -634,7 +635,7 @@ model <- keras_model(inputs = list(Design, LogVol), outputs = combined_output)
 
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 poisson_nll <- function(y_true, y_pred, ...) {
 
   out <- -sum(y_true * log(y_pred) - y_pred)
@@ -656,7 +657,7 @@ summary(model)
 
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 # set hyperparameters
 epochs <- 300
 batch_size <- 2000
@@ -665,7 +666,7 @@ verbose <- 1
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 model_fit <- model %>% fit(
     list(as.matrix.data.frame(x_nn), as.matrix(log(y_nn$tij))), as.matrix((y_nn$deltaij)),
     epochs = epochs,
@@ -675,7 +676,7 @@ model_fit <- model %>% fit(
   )
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 
 X_nn_test = tmp_1 %>%
@@ -700,7 +701,7 @@ tmp_1['sf_nn'] <- exp(-cumsum(pw_constant_hazard_1_nn*1))
 
 ### Xgboost
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 data_pp_1_xgb <- data_pp_1$data %>% mutate(node=factor(node))
                                       
@@ -717,7 +718,7 @@ setinfo(xgtrain, "base_margin", log(data_pp_1_xgb$tij))
 
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 xgb = xgb.train(
   nrounds = 800
   , params = list(objective="count:poisson",
@@ -729,7 +730,7 @@ xgb = xgb.train(
 )
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 tmp_1_xgb <-tmp_1%>% mutate(deltaij=1)
 xgtrain.mf  <- model.frame(as.formula("deltaij ~ covariate-1+node+offset(log(tij))"),tmp_1_xgb)
 xgtrain.m  <- model.matrix(attr(xgtrain.mf,"terms"),data = tmp_1_xgb)
@@ -744,7 +745,7 @@ tmp_1
 ## Glmnet
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 data_pp_1_glmnet <- data_pp_1$data %>% mutate(node=factor(node))
 
@@ -762,7 +763,7 @@ glmnet_fit <- glmnet(x_glmnet, y_glmnet, offset = offset_glmnet, family="poisson
 
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 tmp_1_glmnet <- tmp_1 %>% mutate(deltaij=1,
                                  tij=1)
 
@@ -778,7 +779,7 @@ tmp_1['sf_glmnet'] <- exp(-cumsum(pw_constant_hazard_1_glmnet*1))
 
 ### Regression trees
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 data_pp_1_rpart <- data_pp_1$data %>% mutate(node=factor(node))
 
@@ -794,7 +795,7 @@ model_rpart = rpart(cbind(offset_rpart, y_rpart) ~ covariate + node ,data=data_p
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 tmp_1_rpart <- tmp_1 %>% mutate(deltaij=1,
                                  tij=1)
 
@@ -808,7 +809,7 @@ tmp_1['sf_rpart'] <- exp(-cumsum(pw_constant_hazard_1_rpart*1))
 
 ### Check out the results
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 xtrue <- seq(0,6,0.001)
 ytrue <- sf(xtrue,
             lambda=.5,
@@ -836,7 +837,7 @@ legend(x = "topright",
 # Learners
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 tmp_05 <- data.frame(node = factor(sort(unique(seq(0,5,0.5)
 ))),
 tij = .5,
@@ -844,7 +845,7 @@ covariate = 0.5,
 covariate2=1)
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 tmp_1 <- data.frame(node = factor(sort(unique(seq(0,5,1)
 ))),
 tij = 1,
@@ -854,7 +855,7 @@ covariate2=1)
 
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 l1 <- Learner_glmnet(covariates = c("covariate2"),
                      cross_validation=TRUE)
 
@@ -866,7 +867,7 @@ l3 <- Learner_glmnet(covariates = c("covariate","covariate2"),
 
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 learners <- list(l1,l2)
 
@@ -878,7 +879,7 @@ sl <- Superlearner(data=dt,
                    event_time = "time")
 
 ```
-```{r}
+```{r eval=FALSE, include=FALSE}
 sl1 <- Superlearner(data=dt,
                    learners=learners,
                    id="id",
@@ -888,7 +889,7 @@ sl1 <- Superlearner(data=dt,
 
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 tmp_1[['deltaij']]<-tmp_05[['deltaij']]<-0
 
 
@@ -897,15 +898,15 @@ tmp_1[['deltaij']]<-tmp_05[['deltaij']]<-0
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 preds <- predict(sl,tmp_05)
 ```
-```{r}
+```{r eval=FALSE, include=FALSE}
 preds_1 <- predict(sl1,tmp_1)
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 xtrue <- seq(0,6,0.001)
 ytrue <- sf(xtrue,
             lambda=.5,
@@ -937,12 +938,12 @@ legend(x = "topright",
 
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 glmnet_fit <- l1$fit(tmp2 %>% mutate(node=as.factor(node)))
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 tmp_05 <- data.frame(node = factor(sort(unique(
   tmp2$node
 ))),
@@ -953,16 +954,16 @@ deltaij=0)
 
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 out <- l1$predictor(model=glmnet_fit,newdata=tmp_05)
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 # sl_fit <- superlearner
 ```
 
 
-<!-- ```{r} -->
+<!-- ```{r eval=FALSE, include=FALSE} -->
 
 <!-- # glmnet_test.mf  <- model.frame(as.formula("deltaij ~ covariate-1+node+offset(log(tij))"),tmp_05) -->
 
@@ -983,7 +984,7 @@ out <- l1$predictor(model=glmnet_fit,newdata=tmp_05)
 
 
 <!-- ``` -->
-<!-- ```{r} -->
+<!-- ```{r eval=FALSE, include=FALSE} -->
 <!-- xtrue <- seq(0,6,0.001) -->
 <!-- ytrue <- sf(xtrue, -->
 <!--             lambda=.5, -->

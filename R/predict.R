@@ -51,7 +51,7 @@ predict.poisson_superlearner <- function(object,
   # Merge on dummy to create Cartesian product
   data_pp <- merge(tmp, vec_dt, by = "dummy", allow.cartesian = TRUE)[, dummy := NULL]
 
-
+  # browser()
 
   # if (is.null(data_pp[[object$data_info$id]])) {
     # data_pp[[object$data_info$id]] <- 1:nrow(data_pp)
@@ -180,7 +180,7 @@ predict.poisson_superlearner <- function(object,
 
   }
 
-
+  # browser()
 
   data_pp[,paste0("pwch_",1:object$data_info$n_crisks):=dt_pred]
 
@@ -196,6 +196,12 @@ predict.poisson_superlearner <- function(object,
   survival_function_string <- paste0("data_pp[, survival_function := exp(-(", sum_expr, "))]")
 
   eval(parse(text = survival_function_string))
+
+  # data_pp[,survival_function_shift := shift(survival_function,fill=1),by=id]
+
+  # absolute_risk_string <- paste0(
+  #   "data_pp[, absolute_risk := cumsum(survival_function_shift * pwch_", cause, " * deltatime), by = id]"
+  # )
 
   absolute_risk_string <- paste0(
     "data_pp[, absolute_risk := cumsum(survival_function * pwch_", cause, " * deltatime), by = id]"
