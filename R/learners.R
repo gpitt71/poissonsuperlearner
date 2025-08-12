@@ -616,22 +616,37 @@ Learner_gam <- setRefClass(
     private_predictor = function(model, newdata, ...) {
 
 
-      # browser()
+
+
+      # if(any(!(newdata$node%in% model$xlevels$node))){
+      #   browser()
+      #
+      #
+      # }
 
       pred <- predict(model,
                       newdata = newdata[node %in% model$xlevels$node,],
                       type = "response",
                       offset = log(newdata[['tij']]),
                       ...)
-      if(all(!(levels(newdata$node) %in% model$xlevels$node))){
 
-        newdata[node %in% model$xlevels$node,predictions_model:=pred]
 
-        return(newdata$predictions_model)
+      if(all((levels(newdata$node) %in% model$xlevels$node))){
+
+        return(pred)
 
       }else{
 
-      return(pred)}
+
+        #
+        newdata[node %in% model$xlevels$node,predictions_model:=pred]
+
+        return(as.array(newdata$predictions_model))
+
+
+
+
+        }
     }
   )
 )

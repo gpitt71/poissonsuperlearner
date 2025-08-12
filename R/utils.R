@@ -577,6 +577,7 @@ create_pseudo_observations <- function(#data,
 
   "
 
+
   # browser()
   train_list <- lapply(learners, function(f) f$private_fit(training_data))
 
@@ -590,6 +591,7 @@ create_pseudo_observations <- function(#data,
     MoreArgs = list(newdata = validation_data)
   )
 
+  # browser()
 
   val_list<- apply(as.matrix(val_list),
                    MARGIN = 2,
@@ -619,8 +621,6 @@ fit_meta_learner <- function(dt,
   # setorder(dt, id, "folder")
   #
 
-
-  # browser()
   dt_z <- merge(dt_z,dt,by=c("id","folder","node"))
 
   # dt_z[, virtual_seq := seq_len(.N), by = .(id, folder)]
@@ -637,6 +637,7 @@ fit_meta_learner <- function(dt,
                                           dt_z)
 
   # learners on the full dataset ----
+  # browser()
   full_train_list <- lapply(learners, function(f) f$fit(dt))
 
   # step_0_predictions <- mapply(
@@ -698,7 +699,7 @@ cv_subject_specific_hazard <- function(cause,
                                        newdata,
                                        ...) {
 
-  # browser()
+
   setDT(newdata)
 
   tmp <- copy(newdata)
@@ -762,10 +763,9 @@ cv_subject_specific_hazard <- function(cause,
 
 
 
-    # browser()
+
     if(object$data_info$matrix_transformation){
 
-      # browser()
 
       columns_of_interest <- unlist(lapply(object$learners, function(x){return(unique(c(x$covariates,x$treatment)))}))
 
@@ -807,8 +807,6 @@ cv_subject_specific_hazard <- function(cause,
 
 
     # Predict on the validation set your pseudo-observations ----
-    # browser()
-
     # data_pp[,deltatime:=tij][,tij:=1]
 
     learners_predictions <- mapply(
@@ -888,33 +886,21 @@ cv_subject_specific_hazard <- function(cause,
 
 }
 
+learners_hat <- function(crisk_cause,superlearner,newdata,learners){
+  # browser()
+  learners_predictions <- mapply(
+    function(f, model, newdata)
+      f$predictor(model = model, newdata = newdata),
+    learners,
+    superlearner$learners_fit,
+    MoreArgs = list(newdata = newdata)
+  )
+
+  return(learners_predictions)
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+}
 
 
 

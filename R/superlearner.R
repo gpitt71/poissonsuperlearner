@@ -22,9 +22,9 @@ Superlearner <- function(data,
                          nodes = NULL, #
                          meta_learner_algorithm = "glmnet",
                          add_nodes_metalearner = TRUE,
-                         add_intercept_metalearner = TRUE,
+                         add_intercept_metalearner = FALSE,
                          matrix_transformation = FALSE,
-                         penalise_nodes_metalearner = TRUE,
+                         penalise_nodes_metalearner = FALSE,
                          variable_transformation = NULL, #
                          nested_cross_validation_meta_learner=TRUE,
                          nfold = 3, #
@@ -33,7 +33,7 @@ Superlearner <- function(data,
 
 
   # Multiple checks about interval data
-  # browser()
+
   check_1 <- is.null(start_time) & !is.null(end_time)
   check_2 <- !is.null(start_time) & is.null(end_time)
   check_3 <- (!is.null(start_time) ||
@@ -244,9 +244,6 @@ Superlearner <- function(data,
   }
 
 
-
-
-  # browser()
   dt <- merge(dt, dt_id, by = "id", all.x = T)
 
 
@@ -299,6 +296,7 @@ Superlearner <- function(data,
     )
 
 
+
     one_learner_out <- list()
 
     for(causes in 1:n_crisks){
@@ -345,6 +343,8 @@ Superlearner <- function(data,
 
   # Train your models in the training set ----
   for (ix in 1:nfold) {
+
+
     # Training data for each competing risk ----
     tmp_train <- dt[folder != ix, ]
     training_data <- split(tmp_train, by = "k")
@@ -353,8 +353,8 @@ Superlearner <- function(data,
     validation_data <- split(tmp_val, by = "k")
 
     # dt[, train_01:=folder != ix]
-    fd <- split(dt, by = "k")
-    # browser()
+    # fd <- split(dt, by = "k")
+
     # we find the pseudo observations for each fold ----
     pseudo_observations <- mapply(
       function(training_data,
@@ -386,6 +386,8 @@ Superlearner <- function(data,
 
   data_by_competing_risk <- split(dt, by = "k")
 
+
+
   # We do another round of glmnet (or glm) for combining the predictors ----
   ## In the future we can add options for using any algorithm.
   if (meta_learner_algorithm == "glmnet") {
@@ -398,12 +400,19 @@ Superlearner <- function(data,
       ...
     )
   } else{
-    meta_learner <- Learner_glm(covariates = z_covariates,
-                                add_nodes = add_nodes_metalearner,
-                                intercept = add_intercept_metalearner)
+    # meta_learner <- Learner_glm(covariates = z_covariates,
+    #                             add_nodes = add_nodes_metalearner,
+    #                             intercept = add_intercept_metalearner)
+    meta_learner <- Learner_glmnet(
+      covariates = z_covariates,
+      cross_validation = FALSE,
+      lambda=0,
+      intercept = add_intercept_metalearner,
+      add_nodes = add_nodes_metalearner,
+      penalise_nodes = penalise_nodes_metalearner
+    )
 
   }
-
 
   meta_learner_fits <- mapply(
     function(dt,
@@ -424,8 +433,6 @@ Superlearner <- function(data,
 
   )
 
-
-  # browser()
   out <- list(
     learners = learners,
     metalearner = meta_learner,

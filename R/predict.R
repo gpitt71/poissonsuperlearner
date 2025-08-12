@@ -127,7 +127,7 @@ predict.poisson_superlearner <- function(object,
   if(length(object$learners)==1){
 
 
-    # browser()
+    #
 
     # dt_pred <- object$learners[[1]]$predictor(
     #   model=object$superlearner$learners_fit[[1]],
@@ -148,48 +148,69 @@ predict.poisson_superlearner <- function(object,
   }else{
 
 
+    # browser()
+
+    learners_predictions <- mapply(
+      function(crisk_cause,superlearner,newdata,learners)
+        learners_hat(crisk_cause,superlearner,newdata,learners),
+      crisk_cause=as.list(1:object$data_info$n_crisks),
+      superlearner=object$superlearner,
+      MoreArgs = list(newdata = data_pp,
+                      learners=object$learners),
+      SIMPLIFY = FALSE
+    )
 
 
+    pseudo_observations_data <- lapply(
+      learners_predictions,
+      function(mx){
+        out <- matrix(apply(
+        as.matrix(mx, nrow=nrow(newdata), ncol=length(z_covariates)), MARGIN = 2, log),
+        nrow=nrow(data_pp),
+        ncol=length(z_covariates))
+        # out <-as.matrix(mx)
+        colnames(out) <- z_covariates # Name the columns
+        as.data.table(as.data.frame.matrix(out))}
+    )
 
-  learners_predictions <- mapply(
-    function(f, model, newdata)
-      f$predictor(model = model, newdata = data_pp),
-    object$learners,
-    object$superlearner[[cause]]$learners_fit,
-    MoreArgs = list(newdata = data_pp)
+
+  dt_pred <- mapply(
+    function(crisk_cause,superlearner,pseudo_observations_data){
+      superlearner$model$predictor(superlearner$meta_learner_fit,newdata =cbind(pseudo_observations_data, data_pp))},
+    as.list(1:object$data_info$n_crisks),
+    object$superlearner,
+    pseudo_observations_data,
+    SIMPLIFY = F
   )
-
-  # browser()
-
-  pseudo_observations_data <- matrix(apply(as.matrix(learners_predictions, nrow=nrow(newdata), ncol=length(z_covariates)), MARGIN = 2, log),
-                                     nrow=nrow(data_pp),
-                                     ncol=length(z_covariates))
-
-
-
-  # Name the columns
-
-  colnames(pseudo_observations_data) <- z_covariates
-
-  setDT(as.data.frame.matrix(pseudo_observations_data))
-
-  dt_pred <- object$superlearner[[cause]]$model$predictor(object$superlearner[[cause]]$meta_learner_fit,
-                                                          newdata =
-                                                            cbind(pseudo_observations_data, data_pp))
 
 
   }
 
   # browser()
 
+  # save casue-specific pwch
+
   data_pp[,paste0("pwch_",1:object$data_info$n_crisks):=dt_pred]
 
   pwch_cols <- paste0("pwch_",1:object$data_info$n_crisks)
+
+  # save sum of pwch
+
+  sum_of_hazards <- paste(pwch_cols, collapse = " + ")
+
+  pwch_dot_string <- paste0("data_pp[, pwch_dot :=",sum_of_hazards,"]")
+
+  eval(parse(text = pwch_dot_string))
+
+
+  # compute cumulative hazard
 
   mapply(function(pwch, name) {
     data_pp[, (paste0("cumulative_hazard_", name)) := cumsum(get(pwch) * deltatime), by = id]
   }, pwch_cols, gsub("pwch_", "", pwch_cols))
 
+
+  # compute survival function
 
   hazard_terms <- paste0("cumulative_hazard_", 1:object$data_info$n_crisks)
   sum_expr <- paste(hazard_terms, collapse = " + ")
@@ -197,15 +218,17 @@ predict.poisson_superlearner <- function(object,
 
   eval(parse(text = survival_function_string))
 
-  # data_pp[,survival_function_shift := shift(survival_function,fill=1),by=id]
+  # shift survival function
 
-  # absolute_risk_string <- paste0(
-  #   "data_pp[, absolute_risk := cumsum(survival_function_shift * pwch_", cause, " * deltatime), by = id]"
-  # )
+  data_pp[,survival_function_shift := shift(survival_function,fill=1),by=id]
 
   absolute_risk_string <- paste0(
-    "data_pp[, absolute_risk := cumsum(survival_function * pwch_", cause, " * deltatime), by = id]"
+    "data_pp[, absolute_risk := cumsum(survival_function_shift * pwch_", cause, "/pwch_dot * (1-exp(-pwch_dot*deltatime))), by = id]"
   )
+
+  # absolute_risk_string <- paste0(
+  #   "data_pp[, absolute_risk := cumsum(survival_function * pwch_", cause, " * deltatime), by = id]"
+  # )
 
   eval(parse(text = absolute_risk_string))
 
