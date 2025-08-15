@@ -165,7 +165,8 @@ predict.poisson_superlearner <- function(object,
       learners_predictions,
       function(mx){
         out <- matrix(apply(
-        as.matrix(mx, nrow=nrow(newdata), ncol=length(z_covariates)), MARGIN = 2, log),
+        as.matrix(
+          mx, nrow=nrow(newdata), ncol=length(z_covariates)), MARGIN = 2, log),
         nrow=nrow(data_pp),
         ncol=length(z_covariates))
         # out <-as.matrix(mx)

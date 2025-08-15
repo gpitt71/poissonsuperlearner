@@ -120,17 +120,14 @@ Learner_glm <- setRefClass(
 
     private_fit = function(data, ...) {
 
-      # browser()
-      # ss <- data[['train_01']]
+
       out <- glm.fit(x=sparse.model.matrix(formula(.self$formula),
                                            data),#[ss,],
                      y=data[['deltaij']],#[ss],
                      offset = log(data[['tij']]),#[ss]),
                      family = poisson())
 
-      # out<- .self$learner(.self$formula,
-      #                     data=data[train_01==TRUE,],
-      #                     family = "poisson", ...)
+
 
       return(out)
 
@@ -146,17 +143,11 @@ Learner_glm <- setRefClass(
 
       newoffset = log(newdata[['tij']])
 
-      # browser()
-
       out <-exp(newx %*% model$coefficients + newoffset)
 
-      # out <- predict(model,
-      #                ...,
-      #                newdata=newdata,
-      #                type = "response")
 
       return(as.numeric(out))
-      # return(out)
+
 
 
     },
@@ -167,24 +158,12 @@ Learner_glm <- setRefClass(
 
       newdata<-newdata[complete.cases(newdata),]
 
-      # ss <- !newdata[['train_01']]
-
-
-      # out <- predict(model,
-      #                ...,
-      #                newdata=newdata[train_01==FALSE,],
-      #                type = "response")
-
-      # return(out)
-
-
 
       newx=sparse.model.matrix(formula(.self$formula),
                                newdata)#[ss,]
 
       newoffset = log(newdata[['tij']])#[ss])
 
-      # browser()
 
       out <-exp(newx %*% model$coefficients + newoffset)
 
@@ -333,9 +312,6 @@ Learner_glmnet <- setRefClass(
 
 
 
-
-   browser()
-
       if (.self$cross_validation) {
         .self$fit_arguments[['nfolds']] <- nfold
       }
@@ -375,7 +351,7 @@ Learner_glmnet <- setRefClass(
 
 
 
-     browser()
+
 
      if (.self$cross_validation) {
        .self$fit_arguments[['nfolds']] <- nfold
@@ -409,6 +385,7 @@ Learner_glmnet <- setRefClass(
 
     fit = function(data, ...) {
 
+
       data<-data[complete.cases(data),]
 
       x = sparse.model.matrix(formula(.self$formula),
@@ -421,7 +398,7 @@ Learner_glmnet <- setRefClass(
 
       if(!.self$penalise_nodes){
 
-        .self$fit_arguments[['penalty.factor']] <- 1- grepl("node",colnames(x))
+        .self$fit_arguments[['penalty.factor']] <- 1- (grepl("node",colnames(x))& !grepl("node:", colnames(x))& !grepl(":node", colnames(x)))
 
       }
 
@@ -436,12 +413,8 @@ Learner_glmnet <- setRefClass(
 
     private_fit = function(data, ...) {
 
-
-      # browser()
-
-      # ss <- data[['train_01']]
       x = sparse.model.matrix(formula(.self$formula),
-                              data)#[ss,]
+                              data)
 
       if(!.self$penalise_nodes){
 
@@ -468,17 +441,6 @@ Learner_glmnet <- setRefClass(
     predictor = function(model, newdata, ...) {
 
 
-      # if(.self$recycle_information){
-      #
-      #   tmp <- .self$datapp(validation_data = newdata)
-      #
-      #   }else{
-      #
-      #     tmp <- datapp_glmnet(newdata, .self$formula)
-      #
-      #   }
-
-      # browser()
       out <- predict(model,
                      ...,
                    newx=sparse.model.matrix(formula(.self$formula),
@@ -509,6 +471,300 @@ Learner_glmnet <- setRefClass(
 
   )
 )
+
+#' \code{hal} learner class
+#'
+#' @export Learner_hal
+#' @exportClass Learner_hal
+Learner_hal <- setRefClass(
+  "Learner_hal",
+  fields = list(
+    covariates = "character",
+    treatment = "character",
+    cross_validation = "logical",
+    recycle_information = "logical",
+    intercept="logical",
+    formula ="character",
+    learner="function",
+    add_nodes="logical",
+    penalise_nodes= "logical",
+    fit_arguments = "list",
+    covariates_attributes_matrix= "list"
+  ),
+  methods = list(
+
+    initialize = function(covariates = NULL,
+                          treatment = NA_character_,
+                          cross_validation = FALSE,
+                          intercept=FALSE,
+                          add_nodes = TRUE,
+                          penalise_nodes=FALSE,
+                          recycle_information =FALSE,
+
+                          ...) {
+      .self$covariates <- covariates
+
+      .self$treatment <- treatment
+
+      .self$cross_validation <- cross_validation
+
+      .self$intercept <- intercept
+
+      .self$add_nodes <- add_nodes
+
+      .self$penalise_nodes <- penalise_nodes
+
+      .self$recycle_information <- recycle_information
+
+      # create formula for competing risks. It is correct in the fit method if survival.
+      .self$formula <- create_formula_hal(covariates = .self$covariates,
+                                      treatment = .self$treatment,
+                                      intercept =FALSE, #in the glmnet case, intercept is handled separately.
+                                      add_nodes=.self$add_nodes)
+
+
+      if (.self$cross_validation) {
+        .self$learner = cv.glmnet
+
+      } else{
+        .self$learner = glmnet
+      }
+
+      .self$fit_arguments <- list(...)
+
+      .self$covariates_attributes_matrix <- list(...)
+
+      .self$fit_arguments[['family']] <- "poisson"
+
+      .self$fit_arguments[['intercept']] <- .self$intercept
+
+
+
+
+    },
+
+
+    datapp = function(train_data=NULL,
+                      validation_data=NULL) {
+
+
+
+
+
+      if(!is.null(train_data)){
+
+
+        train.mf  <- model.frame(as.formula(.self$formula),
+                                 rbind(train_data,
+                                       validation_data),
+                                 drop.unused.levels = FALSE)
+
+        x  <- model.matrix(attr(train.mf, "terms"), data = train_data)
+
+        y  <- train_data[['deltaij']]
+
+        offset <- log(train_data[['tij']])
+
+        .self$recycle_information <- TRUE
+
+        .self$covariates_attributes_matrix[['train.mf']] <- train.mf
+
+
+
+      }else{
+
+        x  <- model.matrix(attr(.self$covariates_attributes_matrix[['train.mf']], "terms"), data = validation_data)
+        y  <- validation_data[['deltaij']]
+        offset <- log(validation_data[['tij']])
+
+
+      }
+
+
+      out <- list(x = x, y = y, offset = offset)
+
+
+      return(out)
+    },
+
+
+    one_learner_pwc_model = function(data,
+                                     id,
+                                     start_time = NULL, #
+                                     end_time = NULL, #
+                                     status, #
+                                     event_time = NULL, #
+                                     number_of_nodes = NULL, #
+                                     nodes = NULL, #
+                                     variable_transformation= NULL,
+                                     nfold = 3,
+                                     ...){
+
+
+
+      if (.self$cross_validation) {
+        .self$fit_arguments[['nfolds']] <- nfold
+      }
+
+      dt <- create_dicretised_data(
+        data,
+        id,
+        start_time = start_time,
+        end_time = NULL,
+        status=end_time,
+        event_time = event_time,
+        number_of_nodes = number_of_nodes,
+        nodes = nodes,
+        variable_transformation
+      )
+
+
+      out <- .self$fit(dt)
+
+      return(out)
+
+
+    },
+
+    predict_pwc_model = function(data,
+                                 id,
+                                 start_time = NULL, #
+                                 end_time = NULL, #
+                                 status, #
+                                 event_time = NULL, #
+                                 number_of_nodes = NULL, #
+                                 nodes = NULL, #
+                                 variable_transformation= NULL,
+                                 nfold = 3,
+                                 ...){
+
+
+
+
+
+
+      if (.self$cross_validation) {
+        .self$fit_arguments[['nfolds']] <- nfold
+      }
+
+      dt <- create_dicretised_data(
+        data,
+        id,
+        start_time = start_time,
+        end_time = NULL,
+        status=end_time,
+        event_time = event_time,
+        number_of_nodes = number_of_nodes,
+        nodes = nodes,
+        variable_transformation
+      )
+
+
+      out <- .self$fit(dt)
+
+      return(out)
+
+
+    },
+
+    update_cross_validation_argument= function(nfold){
+
+      .self$fit_arguments[['nfolds']] <- nfold
+
+    },
+
+    fit = function(data, ...) {
+
+
+
+      data<-data[complete.cases(data),]
+
+      x = sparse.model.matrix(formula(.self$formula),
+                              data)
+
+      .self$fit_arguments[['y']] <- as.numeric(data[['deltaij']])
+
+      .self$fit_arguments[['offset']] <-  log(data[['tij']])
+
+
+      if(!.self$penalise_nodes){
+
+        .self$fit_arguments[['penalty.factor']] <- 1- (grepl("node",colnames(x))& !grepl("node:", colnames(x))& !grepl(":node", colnames(x)))
+
+      }
+
+      .self$fit_arguments[['x']] <- x
+
+      out <- do.call(.self$learner,
+                     .self$fit_arguments)
+
+      return(out)
+
+    },
+
+    private_fit = function(data, ...) {
+
+
+      x = sparse.model.matrix(formula(.self$formula),
+                              data)#[ss,]
+
+      if(!.self$penalise_nodes){
+
+        .self$fit_arguments[['penalty.factor']] <- 1- grepl("node",colnames(x))
+
+      }
+
+
+
+
+      .self$fit_arguments[['x']] <- x
+      .self$fit_arguments[['y']] <- data[['deltaij']]#[ss]
+      .self$fit_arguments[['offset']] <- log(data[['tij']])#[ss])
+
+
+      out <- do.call(.self$learner,
+                     .self$fit_arguments)
+
+
+      return(out)
+
+    },
+
+    predictor = function(model, newdata, ...) {
+
+
+
+      out <- predict(model,
+                     ...,
+                     newx=sparse.model.matrix(formula(.self$formula),
+                                              newdata),
+                     newoffset = log(newdata[['tij']]),
+                     type = "response")
+
+      return(out)
+
+
+    },
+
+    private_predictor = function(model, newdata, ...) {
+
+      out <- predict(model,
+                     ...,
+                     newx=sparse.model.matrix(formula(.self$formula),
+                                              newdata),#[ss,],
+                     newoffset = log(newdata[['tij']]),#[ss]),
+                     type = "response")
+
+      return(out)
+
+
+    }
+
+
+
+  )
+)
+
 
 #' \code{gam} learner class using bam
 #'
@@ -583,7 +839,6 @@ Learner_gam <- setRefClass(
 
     fit = function(data, ...) {
 
-      # browser()
       data <- data[complete.cases(data), ]
       .self$fit_arguments$formula <- as.formula(.self$formula)
       .self$fit_arguments$data <- data
@@ -593,7 +848,7 @@ Learner_gam <- setRefClass(
     },
 
     private_fit = function(data, ...) {
-      # browser()
+
       data <- data[complete.cases(data), ]
       .self$fit_arguments$formula <- as.formula(.self$formula)
       .self$fit_arguments$data <- data
@@ -604,7 +859,6 @@ Learner_gam <- setRefClass(
 
     predictor = function(model, newdata, ...) {
 
-      # browser()
       pred <- predict(model,
                       newdata = newdata,
                       type = "response",
@@ -615,14 +869,6 @@ Learner_gam <- setRefClass(
 
     private_predictor = function(model, newdata, ...) {
 
-
-
-
-      # if(any(!(newdata$node%in% model$xlevels$node))){
-      #   browser()
-      #
-      #
-      # }
 
       pred <- predict(model,
                       newdata = newdata[node %in% model$xlevels$node,],
@@ -648,6 +894,468 @@ Learner_gam <- setRefClass(
 
         }
     }
+  )
+)
+
+#' \code{glmnet} metalearner class
+#'
+#' @export Metalearner_glmnet
+#' @exportClass Metalearner_glmnet
+Metalearner_glmnet <- setRefClass(
+  "Metalearner_glmnet",
+  fields = list(
+    covariates = "character",
+    treatment = "character",
+    cross_validation = "logical",
+    recycle_information = "logical",
+    intercept="logical",
+    formula ="character",
+    learner="function",
+    add_nodes="logical",
+    penalise_nodes= "logical",
+    fit_arguments = "list",
+    covariates_attributes_matrix= "list"
+  ),
+  methods = list(
+
+    initialize = function(covariates = NULL,
+                          treatment = NA_character_,
+                          cross_validation = FALSE,
+                          intercept=FALSE,
+                          add_nodes = TRUE,
+                          penalise_nodes=FALSE,
+                          recycle_information =FALSE,
+
+                          ...) {
+      .self$covariates <- covariates
+
+      .self$treatment <- treatment
+
+      .self$cross_validation <- cross_validation
+
+      .self$intercept <- intercept
+
+      .self$add_nodes <- add_nodes
+
+      .self$penalise_nodes <- penalise_nodes
+
+      .self$recycle_information <- recycle_information
+
+      # create formula for competing risks. It is correct in the fit method if survival.
+      .self$formula <- create_formula(covariates = .self$covariates,
+                                      treatment = .self$treatment,
+                                      intercept =FALSE, #in the glmnet case, intercept is handled separately.
+                                      add_nodes=.self$add_nodes)
+
+
+      if (.self$cross_validation) {
+        .self$learner = cv.glmnet
+
+      } else{
+        .self$learner = glmnet
+      }
+
+      .self$fit_arguments <- list(...)
+
+      .self$covariates_attributes_matrix <- list(...)
+
+      .self$fit_arguments[['family']] <- poisson(link = "identity")
+
+      .self$fit_arguments[['intercept']] <- .self$intercept
+
+
+
+
+    },
+
+
+    datapp = function(train_data=NULL,
+                      validation_data=NULL) {
+
+
+
+
+
+      if(!is.null(train_data)){
+
+
+        train.mf  <- model.frame(as.formula(.self$formula),
+                                 rbind(train_data,
+                                       validation_data),
+                                 drop.unused.levels = FALSE)
+
+        x  <- model.matrix(attr(train.mf, "terms"), data = train_data)
+
+        y  <- train_data[['deltaij']]
+
+        offset <- log(train_data[['tij']])
+
+        .self$recycle_information <- TRUE
+
+        .self$covariates_attributes_matrix[['train.mf']] <- train.mf
+
+
+
+      }else{
+
+        x  <- model.matrix(attr(.self$covariates_attributes_matrix[['train.mf']], "terms"), data = validation_data)
+        y  <- validation_data[['deltaij']]
+        offset <- log(validation_data[['tij']])
+
+
+      }
+
+
+      out <- list(x = x, y = y, offset = offset)
+
+
+      return(out)
+    },
+
+
+    one_learner_pwc_model = function(data,
+                                     id,
+                                     start_time = NULL, #
+                                     end_time = NULL, #
+                                     status, #
+                                     event_time = NULL, #
+                                     number_of_nodes = NULL, #
+                                     nodes = NULL, #
+                                     variable_transformation= NULL,
+                                     nfold = 3,
+                                     ...){
+
+
+      if (.self$cross_validation) {
+        .self$fit_arguments[['nfolds']] <- nfold
+      }
+
+      dt <- create_dicretised_data(
+        data,
+        id,
+        start_time = start_time,
+        end_time = NULL,
+        status=end_time,
+        event_time = event_time,
+        number_of_nodes = number_of_nodes,
+        nodes = nodes,
+        variable_transformation
+      )
+
+
+      out <- .self$fit(dt)
+
+      return(out)
+
+
+    },
+
+    predict_pwc_model = function(data,
+                                 id,
+                                 start_time = NULL, #
+                                 end_time = NULL, #
+                                 status, #
+                                 event_time = NULL, #
+                                 number_of_nodes = NULL, #
+                                 nodes = NULL, #
+                                 variable_transformation= NULL,
+                                 nfold = 3,
+                                 ...){
+
+
+
+      if (.self$cross_validation) {
+        .self$fit_arguments[['nfolds']] <- nfold
+      }
+
+      dt <- create_dicretised_data(
+        data,
+        id,
+        start_time = start_time,
+        end_time = NULL,
+        status=end_time,
+        event_time = event_time,
+        number_of_nodes = number_of_nodes,
+        nodes = nodes,
+        variable_transformation
+      )
+
+
+      out <- .self$fit(dt)
+
+      return(out)
+
+
+    },
+
+    update_cross_validation_argument= function(nfold){
+
+      .self$fit_arguments[['nfolds']] <- nfold
+
+    },
+
+    fit = function(data, ...) {
+
+      data<-data[complete.cases(data),]
+
+      x = sparse.model.matrix(formula(.self$formula),
+                              data)
+
+      .self$fit_arguments[['y']] <- as.numeric(data[['deltaij']])
+
+      .self$fit_arguments[['offset']] <-  log(data[['tij']])
+
+
+      if(!.self$penalise_nodes){
+
+        .self$fit_arguments[['penalty.factor']] <- 1- (grepl("node",colnames(x))& !grepl(":", colnames(x)))
+
+      }
+
+      .self$fit_arguments[['x']] <- x
+
+      out <- do.call(.self$learner,
+                     .self$fit_arguments)
+
+      return(out)
+
+    },
+
+    private_fit = function(data, ...) {
+
+
+
+      x = sparse.model.matrix(formula(.self$formula),
+                              data)#[ss,]
+
+      if(!.self$penalise_nodes){
+
+        .self$fit_arguments[['penalty.factor']] <- 1- grepl("node",colnames(x))
+
+      }
+
+
+
+
+      .self$fit_arguments[['x']] <- x
+      .self$fit_arguments[['y']] <- data[['deltaij']]#[ss]
+      .self$fit_arguments[['offset']] <- log(data[['tij']])#[ss])
+
+
+      out <- do.call(.self$learner,
+                     .self$fit_arguments)
+
+
+      return(out)
+
+    },
+
+    predictor = function(model, newdata, ...) {
+
+
+      # if(.self$recycle_information){
+      #
+      #   tmp <- .self$datapp(validation_data = newdata)
+      #
+      #   }else{
+      #
+      #     tmp <- datapp_glmnet(newdata, .self$formula)
+      #
+      #   }
+
+
+      out <- predict(model,
+                     ...,
+                     newx=sparse.model.matrix(formula(.self$formula),
+                                              newdata),
+                     newoffset = log(newdata[['tij']]),
+                     type = "response")
+
+      return(out)
+
+
+    },
+
+    private_predictor = function(model, newdata, ...) {
+
+      out <- predict(model,
+                     ...,
+                     newx=sparse.model.matrix(formula(.self$formula),
+                                              newdata),#[ss,],
+                     newoffset = log(newdata[['tij']]),#[ss]),
+                     type = "response")
+
+      return(out)
+
+
+    }
+
+
+
+  )
+)
+
+
+#' \code{glm} metalearner class
+#'
+#' @export Metalearner_glm
+#' @exportClass Metalearner_glm
+Metalearner_glm <- setRefClass(
+  "Metalearner_glm",
+  fields = list(
+    covariates = "character",
+    treatment = "character",
+    cross_validation = "logical",
+    intercept ="logical",
+    formula ="character",
+    learner="function",
+    add_nodes="logical"
+  ),
+  methods = list(
+    initialize = function(covariates = NULL,
+                          treatment = NA_character_,
+                          cross_validation = FALSE,
+                          intercept = TRUE,
+                          add_nodes= TRUE,
+                          ...) {
+      .self$covariates <- covariates
+
+      .self$treatment <- treatment
+
+      .self$cross_validation <- cross_validation
+
+      .self$add_nodes <- add_nodes
+
+      .self$intercept<-intercept
+
+      # create formula for competing risks. It is correct in the fit method if survival.
+      .self$formula <- create_formula(covariates = .self$covariates,
+                                      treatment = .self$treatment,
+                                      intercept = .self$intercept,
+                                      add_nodes=.self$add_nodes)
+
+
+      if (.self$cross_validation) {
+        .self$learner = glm
+        warning("There is no cross-validation procedure for a glm model. This learner is a simple glm.")
+
+      } else{
+        .self$learner = glm
+      }
+    },
+
+    # fit = function(data, validation_data=NULL, ...) {
+
+    # survival_01 <- length(unique(data[['k']])) < 2
+
+
+    # practical correction in case it is a survival problem
+    # if(survival_01){
+    #
+    #   .self$formula <- create_formula(covariates = .self$covariates,
+    #                                   treatment = .self$treatment,
+    #                                   competing_risks =FALSE,
+    #                                   add_nodes=.self$add_nodes)
+    #
+    # }
+
+
+
+
+    #   out<- .self$learner(.self$formula,
+    #                       data=rbind(data,
+    #                                  validation_data),
+    #                       family = "poisson",
+    #                       subset = rep(TRUE,dim(data)[1]))
+    #
+    #   return(out)
+    #
+    # },
+
+
+    fit = function(data, ...) {
+
+
+      x=sparse.model.matrix(formula(.self$formula),
+                            data)
+
+      out <- glm.fit(x=sparse.model.matrix(formula(.self$formula),
+                                           data),#[ss,]
+                     y=data[['deltaij']], #[ss]
+                     weights = data[['tij']], #[ss]
+                     offset = (data[['Z2']]),
+                     start=rep(0,ncol(x)),
+                     family = poisson(link="identity"))
+
+      return(out)
+
+    },
+
+
+    private_fit = function(data, ...) {
+
+
+      out <- glm.fit(x=sparse.model.matrix(formula(.self$formula),
+                                           data),#[ss,],
+                     y=data[['deltaij']],#[ss],
+                     offset = log(data[['tij']]),#[ss]),
+                     family = poisson())
+
+      # out<- .self$learner(.self$formula,
+      #                     data=data[train_01==TRUE,],
+      #                     family = "poisson", ...)
+
+      return(out)
+
+
+    },
+
+    predictor = function(model, newdata,...) {
+
+      newdata<-newdata[complete.cases(newdata),]
+
+      newx=sparse.model.matrix(formula(.self$formula),
+                               newdata)
+
+      newoffset = log(newdata[['tij']])
+
+
+      out <-exp(newx %*% model$coefficients + newoffset)
+
+
+      return(as.numeric(out))
+
+
+
+    },
+
+    private_predictor = function(model, newdata, ...) {
+
+
+
+      newdata<-newdata[complete.cases(newdata),]
+
+
+
+      newx=sparse.model.matrix(formula(.self$formula),
+                               newdata)#[ss,]
+
+      newoffset = log(newdata[['tij']])#[ss])
+
+
+
+      out <-exp(newx %*% model$coefficients + newoffset)
+
+
+      return(as.numeric(out))
+
+
+
+
+
+
+    }
+
   )
 )
 

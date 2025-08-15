@@ -287,7 +287,6 @@ data_pre_processing_interval_data <- function(data, id, status, start_time, end_
 
 
 ## Matrix transformation ----
-
 sl_cut <- function(x, breaks, include.lowest = TRUE, right = TRUE) {
 
   labels <- paste0(head(breaks, -1), "-", tail(breaks, -1) - if (right) 1 else 0)
@@ -564,6 +563,44 @@ create_formula_gam <- function(covariates=NA_character_,
 
 }
 
+create_formula_hal <- function(covariates=NA_character_,
+                           treatment=NA_character_,
+                           competing_risks=FALSE,
+                           intercept=FALSE,
+                           add_nodes=TRUE){
+
+
+
+  if (!any(is.na( covariates))) {
+    xs <- paste(covariates, collapse = "*")
+  }
+
+  if (!is.na( treatment)) {
+    xs <- paste(xs, "*", treatment)
+  }
+
+  # if (competing_risks) {
+  #   xs <- paste(xs, "+ k")
+  # }
+
+  if (add_nodes) {
+    xs <- paste(c(xs, "node"), collapse = "*")
+  }
+
+  if(!intercept){
+    xs <- paste(xs, "-1")
+  }
+
+  out <- paste("deltaij ~", xs, "+offset(log(tij))", sep =
+                 "")
+
+  return(out)
+
+
+
+
+}
+
 
 
 create_pseudo_observations <- function(#data,
@@ -593,9 +630,12 @@ create_pseudo_observations <- function(#data,
 
   # browser()
 
+  # val_list<- as.matrix(val_list)
+
+
   val_list<- apply(as.matrix(val_list),
-                   MARGIN = 2,
-                   log)
+                 MARGIN = 2,
+                 log)
 
 
   # Name the columns
@@ -622,6 +662,8 @@ fit_meta_learner <- function(dt,
   #
 
   dt_z <- merge(dt_z,dt,by=c("id","folder","node"))
+
+  # browser()
 
   # dt_z[, virtual_seq := seq_len(.N), by = .(id, folder)]
   # dt[, virtual_seq := seq_len(.N), by = .(id, folder)]

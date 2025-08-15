@@ -391,11 +391,12 @@ Superlearner <- function(data,
   # We do another round of glmnet (or glm) for combining the predictors ----
   ## In the future we can add options for using any algorithm.
   if (meta_learner_algorithm == "glmnet") {
+
     meta_learner <- Learner_glmnet(
-      covariates = z_covariates,
+      covariates = c("0",z_covariates,paste0(z_covariates,":node")),
       cross_validation = nested_cross_validation_meta_learner,
       intercept = add_intercept_metalearner,
-      add_nodes = add_nodes_metalearner,
+      add_nodes = FALSE,#add_nodes_metalearner,
       penalise_nodes = penalise_nodes_metalearner,
       ...
     )
@@ -403,16 +404,16 @@ Superlearner <- function(data,
     # meta_learner <- Learner_glm(covariates = z_covariates,
     #                             add_nodes = add_nodes_metalearner,
     #                             intercept = add_intercept_metalearner)
-    meta_learner <- Learner_glmnet(
-      covariates = z_covariates,
-      cross_validation = FALSE,
-      lambda=0,
+    meta_learner <- Metalearner_glm(
+      covariates = "node:I(Z1-Z2)", #c(z_covariates,paste0(z_covariates,":node")),
       intercept = add_intercept_metalearner,
-      add_nodes = add_nodes_metalearner,
-      penalise_nodes = penalise_nodes_metalearner
+      add_nodes = add_nodes_metalearner
+
     )
 
   }
+
+  # browser()
 
   meta_learner_fits <- mapply(
     function(dt,
