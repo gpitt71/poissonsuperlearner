@@ -13,43 +13,52 @@ predict.poisson_superlearner <- function(object,
                                          ...) {
   setDT(newdata)
 
-  tmp <- copy(newdata)
-
-  # here we disregard the event_time column if present in the newdata
-  tmp <- tmp[, setdiff(names(tmp), object$data_info$event_time), with = FALSE]
-
-
-  cond_zero <- 0 %in% times
-
-  cond_times_larger_than_max <- times > object$data_info$maximum_followup
+  if (type != "loss") {
+    tmp <- copy(newdata)
+    # here we disregard the event_time column if present in the newdata
+    tmp <- tmp[, setdiff(names(tmp), object$data_info$event_time), with = FALSE]
 
 
-  if(all(cond_times_larger_than_max)){
+    cond_zero <- 0 %in% times
 
-    warning(paste0("All the entries in the input times are larger than the maximum follow-up: ",
-                   as.character(object$data_info$maximum_followup)))
-    d <- NULL
+    cond_times_larger_than_max <- times > object$data_info$maximum_followup
 
-  }else{
 
-  eval(parse(
-    text = paste0(
-      "
+    if (all(cond_times_larger_than_max)) {
+      warning(
+        paste0(
+          "All the entries in the input times are larger than the maximum follow-up: ",
+          as.character(object$data_info$maximum_followup)
+        )
+      )
+      d <- NULL
+
+      return(d)
+
+    } else{
+      eval(parse(
+        text = paste0(
+          "
     vec_dt <- data.table(
 
     ",
-      object$data_info$event_time,
-      " = times[times <= object$data_info$maximum_followup]
+          object$data_info$event_time,
+          " = times[times <= object$data_info$maximum_followup]
   )
     "
-    )
-  ))
+        )
+      ))
 
-  tmp[, dummy := 1]
-  vec_dt[, dummy := 1]
+      tmp[, dummy := 1]
+      vec_dt[, dummy := 1]
 
-  # Merge on dummy to create Cartesian product
-  data_pp <- merge(tmp, vec_dt, by = "dummy", allow.cartesian = TRUE)[, dummy := NULL]
+      # Merge on dummy to create Cartesian product
+      data_pp <- merge(tmp, vec_dt, by = "dummy", allow.cartesian = TRUE)[, dummy := NULL]
+    }
+  } else{
+    data_pp <- copy(newdata)
+
+  }
 
   # browser()
 
@@ -58,12 +67,13 @@ predict.poisson_superlearner <- function(object,
   # }
 
   # no problem writing over id
-  data_pp[[object$data_info$id]] <- 1:nrow(data_pp)
+  if (is.null(data_pp[[object$data_info$id]])) {
+    data_pp[[object$data_info$id]] <- 1:nrow(data_pp)
+  }
 
-
-  # if (is.null(data_pp[[object$data_info$status]])) {
+  if (is.null(data_pp[[object$data_info$status]])) {
     data_pp[[object$data_info$status]] <- 0
-  # }
+  }
 
   data_pp <- data_pre_processing(
     data_pp,
@@ -233,6 +243,46 @@ predict.poisson_superlearner <- function(object,
 
   eval(parse(text = absolute_risk_string))
 
+
+  # this is essentially the likelihood computation
+  if(type=="loss"){
+
+  # browser()
+  lkh_dt <- copy(data_pp)
+
+  mapply(function(pwch, name) {
+    lkh_dt[, (paste0("hazard_times_time_", name)) := (get(pwch) * deltatime)]
+  }, pwch_cols, gsub("pwch_", "", pwch_cols))
+
+  lkh_dt[,paste0("delta_",cause):=deltaij]
+
+  lkh_dt[,paste0("cr_contribution_",cause):=deltaij*log(get(paste0("hazard_times_time_", cause)))-get(paste0("hazard_times_time_", cause))]
+
+
+  other_causes <- gsub("pwch_", "", pwch_cols)
+  other_causes <- other_causes[other_causes != cause]
+
+
+  mapply(function(name) {
+    lkh_dt[, (paste0("delta_", name)) := 0][,paste0("cr_contribution_",name):=get(paste0("delta_", name))*log(get(paste0("hazard_times_time_", name)))-get(paste0("hazard_times_time_", name))]
+  }, other_causes)
+
+
+
+  crc_terms <- paste0("cr_contribution_", 1:object$data_info$n_crisks)
+  sum_expr <- paste(crc_terms, collapse = " + ")
+  crc_string <- paste0("lkh_dt[, cr_contribution_tot := ",sum_expr,"]")
+
+  eval(parse(text = crc_string))
+
+
+  lkh_dt<-lkh_dt[,.(log_likelihood_i=sum(cr_contribution_tot)),by=id]
+
+  return(lkh_dt)
+
+}
+
+
   # data_pp <- copy(data_pp)
   # data_pp[,survival_function:=pmin(exp(-cumsum(pwch*deltatime)),1), by=.(id)]
 
@@ -253,7 +303,7 @@ predict.poisson_superlearner <- function(object,
 
   d <- data_pp[,..columns_ss]
 
-  }
+
 
 
 
