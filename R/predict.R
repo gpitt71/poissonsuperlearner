@@ -56,7 +56,11 @@ predict.poisson_superlearner <- function(object,
       data_pp <- merge(tmp, vec_dt, by = "dummy", allow.cartesian = TRUE)[, dummy := NULL]
     }
   } else{
+
     data_pp <- copy(newdata)
+
+    status_per_id <- newdata[, .(status = max(get(object$data_info$status))), by = c(object$data_info$id)]
+
 
   }
 
@@ -237,9 +241,6 @@ predict.poisson_superlearner <- function(object,
     "data_pp[, absolute_risk := cumsum(survival_function_shift * pwch_", cause, "/pwch_dot * (1-exp(-pwch_dot*deltatime))), by = id]"
   )
 
-  # absolute_risk_string <- paste0(
-  #   "data_pp[, absolute_risk := cumsum(survival_function * pwch_", cause, " * deltatime), by = id]"
-  # )
 
   eval(parse(text = absolute_risk_string))
 
@@ -247,14 +248,28 @@ predict.poisson_superlearner <- function(object,
   # this is essentially the likelihood computation
   if(type=="loss"){
 
-  # browser()
   lkh_dt <- copy(data_pp)
+
+  lkh_dt <- merge(lkh_dt, status_per_id, by = "id", all.x = TRUE)
+
+  cols_delta <- paste0("delta_", 1:object$data_info$n_crisks)
+
+  lkh_dt<-lkh_dt[, (cols_delta) := lapply(seq_along(cols_delta), function(j) {
+    # j corresponds to delta_j
+    if (unique(status) == j) {
+      # only the column matching status gets last row = 1
+      out <- rep(0L, .N)
+      out[.N] <- 1L
+      out
+    } else {
+      # all other columns are zeros
+      rep(0L, .N)
+    }
+  }), by = id]
 
   mapply(function(pwch, name) {
     lkh_dt[, (paste0("hazard_times_time_", name)) := (get(pwch) * deltatime)]
   }, pwch_cols, gsub("pwch_", "", pwch_cols))
-
-  lkh_dt[,paste0("delta_",cause):=deltaij]
 
   lkh_dt[,paste0("cr_contribution_",cause):=deltaij*log(get(paste0("hazard_times_time_", cause)))-get(paste0("hazard_times_time_", cause))]
 
@@ -264,7 +279,7 @@ predict.poisson_superlearner <- function(object,
 
 
   mapply(function(name) {
-    lkh_dt[, (paste0("delta_", name)) := 0][,paste0("cr_contribution_",name):=get(paste0("delta_", name))*log(get(paste0("hazard_times_time_", name)))-get(paste0("hazard_times_time_", name))]
+    lkh_dt[,paste0("cr_contribution_",name):=get(paste0("delta_", name))*log(get(paste0("hazard_times_time_", name)))-get(paste0("hazard_times_time_", name))]
   }, other_causes)
 
 

@@ -721,6 +721,53 @@ fit_meta_learner <- function(dt,
 
 # super-learner hyper parameters cross-validation ----
 
+
+meta_learner_cross_validation <- function(dt,
+                             dt_z,
+                             cr_ix,
+                             nfold,
+                             meta_learner){
+
+
+
+
+
+  # model output ---
+  out<-NULL
+
+  dt_z <- merge(dt_z,dt,by=c("id","folder","node"))
+
+
+  for(v_fold_id in 1:nfold){
+
+  meta_learner_fit <- meta_learner$fit(dt_z[folder!=v_fold_id,])
+
+  oos_data <- copy(dt_z[folder == v_fold_id, ])
+
+  # forced tij to be one
+  oos_data[,tij:=1]
+
+
+  fitted_hazard = data.table(
+    oos_data[['id']],
+    oos_data[['node']],
+    oos_data[['deltaij']],
+    v_fold_id,
+    as.vector(meta_learner$predictor(meta_learner_fit, oos_data))
+  )
+
+  setnames(fitted_hazard,c("id","node",paste0("delta_",cr_ix),"folder",paste0("pwch_", cr_ix)))
+
+  out <- rbind(out,fitted_hazard)
+
+  }
+
+  return(out)
+
+
+}
+
+
 evaluate_lkh_cv <- function(data,
                             object){
 
