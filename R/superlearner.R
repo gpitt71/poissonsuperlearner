@@ -19,19 +19,10 @@ Superlearner <- function(data,
                          event_time = NULL, #
                          learners,
                          number_of_nodes = NULL, #
-                         nodes = NULL, #
-                         meta_learners=NULL,
-                         meta_learner_algorithm = "glmnet",
-                         meta_learner_covariates=c("Z1",
-                                                   "Z2",
-                                                   "Z1:node",
-                                                   "Z2:node"),
-                         add_nodes_metalearner = TRUE,
-                         add_intercept_metalearner = FALSE,
+                         nodes = NULL,
+                         meta_learner_algorithms = c("glm","glmnet"),
                          matrix_transformation = FALSE,
-                         penalise_nodes_metalearner = FALSE,
-                         variable_transformation = NULL, #
-                         nested_cross_validation_meta_learner=TRUE,
+                         variable_transformation = NULL,
                          nfold = 3, #
                          ...) {
 
@@ -43,6 +34,12 @@ Superlearner <- function(data,
   check_2 <- !is.null(start_time) & is.null(end_time)
   check_3 <- (!is.null(start_time) ||
                 !is.null(end_time)) & !is.null(event_time)
+
+  # give names to the learners
+  if(is.null(names(learners))){
+
+    names(learners) <- paste0("learner_",1:length(learners))
+  }
 
 
   if (check_1 || check_2) {
@@ -396,7 +393,7 @@ Superlearner <- function(data,
 
   # We do another round of glmnet (or glm) for combining the predictors ----
   ## In the future we can add options for using any algorithm.
-  # if (meta_learner_algorithm == "glmnet") {
+  # if (meta_learner_algorithms == "glmnet") {
   #
     # meta_learner <- Learner_glmnet(
     #   covariates = meta_learner_covariates,
@@ -420,23 +417,20 @@ Superlearner <- function(data,
   # }
 
 
-  if(length(meta_learners)==1){
+  # if(length(meta_learners)==1){
+  #
+  #   warning('Only one meta_learner was supplied. Cross-validation on the pseudo-observations will not be performed.')
+  #
+  #   meta_learner <- meta_learners[[1]]
+  #
+  #   dt_cv_out <- NULL
+  #
+  # }else{}
 
-    warning('Only one meta_learner was supplied. Cross-validation on the pseudo-observations will not be performed.')
-
-    meta_learner <- meta_learners[[1]]
-
-    dt_cv_out <- NULL
-
-  }else{
+    meta_learners <- meta_learners_candidates(meta_learner_algorithms,
+                                              z_covariates)
 
     # A second round of cross-validation
-
-    if(!is.null(names(meta_learners))){
-
-      names(meta_learners) <- paste0("meta_learner_",seq_along(meta_learners))
-
-      }
 
     id_fold <- sample(1:nfold,
                       n,
@@ -478,6 +472,7 @@ Superlearner <- function(data,
         ),
         SIMPLIFY = FALSE
       )
+
 
       # Compute the log-likelihood ----
       tmp_cv[[1]][, rn := seq_len(.N), by=.(id, folder,node)]
@@ -523,9 +518,18 @@ Superlearner <- function(data,
       }, pwch_cols, gsub("pwch_", "", pwch_cols))
 
 
+      # browser()
+
+      #first term
+
       mapply(function(name) {
-        tmp_cv[,paste0("cr_contribution_",name):=get(paste0("delta_", name))*log(get(paste0("hazard_times_time_", name)))-get(paste0("hazard_times_time_", name))]
+        tmp_cv[,paste0("cr_contribution_",name):=get(paste0("delta_", name))*log(get(paste0("delta_", name))/get(paste0("hazard_times_time_", name)))]
+        tmp_cv[,paste0("cr_contribution_",name):=fifelse(is.nan(get(paste0("cr_contribution_",name))),0,get(paste0("cr_contribution_",name)))]
+        tmp_cv[,paste0("cr_contribution_",name):=get(paste0("cr_contribution_",name))-(get(paste0("delta_", name))-get(paste0("hazard_times_time_", name)))]
+
       }, as.list(1:n_crisks))
+
+      # second term
 
       crc_terms <- paste0("cr_contribution_", 1:n_crisks)
       sum_expr <- paste(crc_terms, collapse = " + ")
@@ -534,15 +538,15 @@ Superlearner <- function(data,
       eval(parse(text = crc_string))
 
 
-      tmp_cv<-tmp_cv[,.(log_likelihood_i=sum(cr_contribution_tot)),by=id]
+      tmp_cv<-tmp_cv[,.(deviance_i=sum(cr_contribution_tot)),by=id]
 
 
       tmp_cv <- merge(tmp_cv,dt_id,by="id")
 
       setkey(tmp_cv,NULL)
 
-      # browser()
-      tmp_cv<-tmp_cv[, .(average_log_likelihood_v = mean(log_likelihood_i, na.rm = TRUE)), by = folder][,.(average_log_likelihood=mean(average_log_likelihood_v))]
+
+      tmp_cv<-tmp_cv[, .(deviance_v = 2*sum(deviance_i, na.rm = TRUE)), by = folder][,.(deviance=mean(deviance_v))]
 
       tmp_cv[['meta_learner']] <- names(meta_learners)[meta_l_ix]
 
@@ -554,10 +558,10 @@ Superlearner <- function(data,
     }
 
 
-    meta_learner <- dt_cv_out[which.max(average_log_likelihood)][['meta_learner']]
+    meta_learner <- dt_cv_out[which.min(deviance)][['meta_learner']]
 
     meta_learner <- meta_learners[[meta_learner]]
-  }
+
 
   meta_learner_fits <- mapply(
     function(dt,

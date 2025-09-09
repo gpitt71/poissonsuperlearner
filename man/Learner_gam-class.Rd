@@ -4,8 +4,8 @@
 \name{Learner_gam-class}
 \alias{Learner_gam-class}
 \alias{Learner_gam}
-\title{\code{gam} learner class using bam}
+\title{\code{gam} learner class using mgcv bam}
 \description{
-\code{gam} learner class using bam
+\code{gam} learner class using mgcv bam
 }
 

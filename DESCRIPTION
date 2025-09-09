@@ -15,7 +15,8 @@ Depends:
     riskRegression,
     Matrix,
     glmnet,
-    mgcv
+    mgcv,
+    xgboost
 Suggests: 
     knitr,
     rmarkdown,

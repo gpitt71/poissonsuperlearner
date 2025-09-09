@@ -15,15 +15,9 @@ Superlearner(
   learners,
   number_of_nodes = NULL,
   nodes = NULL,
-  meta_learners = NULL,
-  meta_learner_algorithm = "glmnet",
-  meta_learner_covariates = c("Z1", "Z2", "Z1:node", "Z2:node"),
-  add_nodes_metalearner = TRUE,
-  add_intercept_metalearner = FALSE,
+  meta_learner_algorithms = c("glm", "glmnet"),
   matrix_transformation = FALSE,
-  penalise_nodes_metalearner = FALSE,
   variable_transformation = NULL,
-  nested_cross_validation_meta_learner = TRUE,
   nfold = 3,
   ...
 )

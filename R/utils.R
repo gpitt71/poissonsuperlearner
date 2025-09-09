@@ -102,7 +102,7 @@ preprocess_catdummy <- function(varData, prefix) {
 poisson_nll <- function(y_true, y_pred, ...) {
 
   # K        <- backend()
-  # browser()
+
   # y_true   <- K$eval(y_true)
   # y_pred   <- K$eval(y_pred)
 
@@ -114,7 +114,8 @@ poisson_nll <- function(y_true, y_pred, ...) {
 
 
 create_response_variable_c_risks <- function(nodes, time_to_event, delta, event_type){
-  # browser()
+
+
   p_holder <- ifelse(delta == event_type, 1, 0)
 
   l <- sum(nodes < time_to_event)
@@ -127,7 +128,7 @@ create_response_variable_c_risks <- function(nodes, time_to_event, delta, event_
 
 create_offset_variable <- function(nodes, delta, time_to_event){
 
-  # browser()
+
   tmp <- c(nodes[nodes < time_to_event],
            first(nodes[nodes >= time_to_event]))
 
@@ -174,7 +175,6 @@ data_pre_processing <- function(data,
 ){
 
 
-  # browser()
 
   setDT(data)
 
@@ -218,7 +218,7 @@ data_pre_processing <- function(data,
                        as.factor(k))]
 
 
-  # browser()
+
   dt_fit[,node:=relevel(node,ref=as.character(last(nodes)))]
 
   return(dt_fit)
@@ -272,7 +272,7 @@ data_pre_processing_interval_data <- function(data, id, status, start_time, end_
 
 
   dt_fit <- rbindlist(output_list)
-  # browser()
+
   # Encode node as N1, N2, ..., based on ordering
   # unique_nodes <- sort(unique(dt_fit$node))
   # node_labels <- paste0("N", seq_along(unique_nodes))
@@ -400,7 +400,7 @@ create_dicretised_data <- function(data,
         grid_nodes <- sort(unique(data[[event_time]]))
 
 
-        # browser()
+
         grid_nodes <- grid_nodes[-((length(grid_nodes) - 2):length(grid_nodes))]
 
       } else{
@@ -429,12 +429,12 @@ create_dicretised_data <- function(data,
     )
 
 
-    # browser()
+
   }
 
 
   if (matrix_transformation) {
-    # browser()
+
 
     columns_of_interest <- unlist(lapply(learners, function(x) {
       return(unique(c(x$covariates, x$treatment)))
@@ -615,8 +615,8 @@ create_pseudo_observations <- function(#data,
   "
 
 
-  # browser()
-  train_list <- lapply(learners, function(f) f$private_fit(training_data))
+
+  train_list <- lapply(learners, function(f) f$fit(training_data))
 
 
   # Predict on the validation set your pseudo-observations ----
@@ -628,7 +628,7 @@ create_pseudo_observations <- function(#data,
     MoreArgs = list(newdata = validation_data)
   )
 
-  # browser()
+
 
   # val_list<- as.matrix(val_list)
 
@@ -650,6 +650,252 @@ create_pseudo_observations <- function(#data,
 }
 
 
+
+## Meta learning ----
+
+meta_learners_candidates <- function(meta_learner_algorithms,
+                                     z_covariates){
+
+  out <- list()
+
+  if("glm_ml_1"%in% meta_learner_algorithms){
+
+    glm_ml_1 =  Learner_glmnet(
+      covariates = z_covariates,
+      cross_validation = FALSE,
+      intercept = FALSE,
+      add_nodes = FALSE,
+      penalise_nodes = TRUE,
+      lambda=0
+    )
+
+  }
+
+  if("glmnet_ml_1"%in% meta_learner_algorithms){
+
+    glmnet_ml_1 =  Learner_glmnet(
+      covariates = z_covariates,
+      cross_validation = TRUE,
+      intercept = FALSE,
+      add_nodes = FALSE,
+      penalise_nodes = TRUE
+    )
+
+  }
+
+  if("glm_ml_2"%in% meta_learner_algorithms){
+
+    glm_ml_2 =  Learner_glmnet(
+      covariates = c(z_covariates, paste0(z_covariates,":node")),
+      cross_validation = FALSE,
+      intercept = FALSE,
+      add_nodes = TRUE,
+      penalise_nodes = TRUE,
+      lambda=0
+    )
+
+  }
+
+  if("glmnet_ml_2"%in% meta_learner_algorithms){
+
+    glmnet_ml_2 =  Learner_glmnet(
+      covariates = c(z_covariates, paste0(z_covariates,":node")),
+      cross_validation = TRUE,
+      intercept = FALSE,
+      add_nodes = TRUE,
+      penalise_nodes = TRUE
+    )
+
+  }
+
+  if("glm_ml_3"%in% meta_learner_algorithms){
+
+    glm_ml_3 =  Learner_glmnet(
+      covariates = z_covariates,
+      cross_validation = FALSE,
+      intercept = FALSE,
+      add_nodes = TRUE,
+      penalise_nodes = TRUE,
+      lambda=0
+    )
+
+  }
+
+  if("glmnet_ml_3"%in% meta_learner_algorithms){
+
+    glmnet_ml_3 =  Learner_glmnet(
+      covariates =  c(z_covariates, paste0(z_covariates,":node")),
+      cross_validation = TRUE,
+      intercept = FALSE,
+      add_nodes = TRUE,
+      penalise_nodes = FALSE
+    )
+
+  }
+
+  if("glm_ml_4"%in% meta_learner_algorithms){
+
+    glm_ml_4 =  Learner_glmnet(
+      covariates =c(z_covariates, paste0(z_covariates,":node")),
+      cross_validation = FALSE,
+      intercept = FALSE,
+      lambda=0,
+      add_nodes = FALSE,
+      penalise_nodes = TRUE
+    )
+
+  }
+
+  if("glmnet_ml_4"%in% meta_learner_algorithms){
+
+    glmnet_ml_4 =  Learner_glmnet(
+      covariates = z_covariates,
+      cross_validation = TRUE,
+      intercept = FALSE,
+      add_nodes = TRUE,
+      penalise_nodes = TRUE
+    )
+
+  }
+
+  if("glmnet_ml_5"%in% meta_learner_algorithms){
+
+    glmnet_ml_5 =  Learner_glmnet(
+      covariates = z_covariates,
+      cross_validation = TRUE,
+      intercept = FALSE,
+      add_nodes = TRUE,
+      penalise_nodes = FALSE
+    )
+
+  }
+
+  if("glmnet_ml_6"%in% meta_learner_algorithms){
+
+    glmnet_ml_6 =  Learner_glmnet(
+      covariates =c(z_covariates, paste0(z_covariates,":node")),
+      cross_validation = TRUE,
+      intercept = FALSE,
+      add_nodes = FALSE,
+      penalise_nodes = TRUE
+    )
+
+  }
+
+  if("glmnet" %in% meta_learner_algorithms){
+
+
+    glmnet_meta_learners <- list(
+
+      # Z1 + Z2
+      glmnet_ml_1 =  Learner_glmnet(
+        covariates = z_covariates,
+        cross_validation = TRUE,
+        intercept = FALSE,
+        add_nodes = FALSE,
+        penalise_nodes = TRUE
+      ),
+      ## Z1*Z2*node
+      glmnet_ml_2 =  Learner_glmnet(
+        covariates = c(z_covariates, paste0(z_covariates,":node")),
+        cross_validation = TRUE,
+        intercept = FALSE,
+        add_nodes = TRUE,
+        penalise_nodes = TRUE
+      ),
+      ## Z1*Z2*node - not penalised
+      glmnet_ml_3 =  Learner_glmnet(
+        covariates =  c(z_covariates, paste0(z_covariates,":node")),
+        cross_validation = TRUE,
+        intercept = FALSE,
+        add_nodes = TRUE,
+        penalise_nodes = FALSE
+      ),
+      ## Z1+Z2+node
+      glmnet_ml_4 =  Learner_glmnet(
+        covariates = z_covariates,
+        cross_validation = TRUE,
+        intercept = FALSE,
+        add_nodes = TRUE,
+        penalise_nodes = TRUE
+      ),
+      ## Z1+Z2+node - not penalised
+      glmnet_ml_5 =  Learner_glmnet(
+        covariates = z_covariates,
+        cross_validation = TRUE,
+        intercept = FALSE,
+        add_nodes = TRUE,
+        penalise_nodes = FALSE
+      ),
+      ## Z1+Z2+Z1:node+Z2:node
+      glmnet_ml_6 =  Learner_glmnet(
+        covariates =c(z_covariates, paste0(z_covariates,":node")),
+        cross_validation = TRUE,
+        intercept = FALSE,
+        add_nodes = FALSE,
+        penalise_nodes = TRUE
+      ))
+
+    out <- c(out,glmnet_meta_learners)
+
+
+  }
+
+
+  if("glm" %in% meta_learner_algorithms){
+
+
+    glm_meta_learners <- list(
+
+      # Z1 + Z2
+      glm_ml_1 =  Learner_glmnet(
+        covariates = z_covariates,
+        cross_validation = FALSE,
+        intercept = FALSE,
+        add_nodes = FALSE,
+        penalise_nodes = TRUE,
+        lambda=0
+      ),
+      ## Z1*Z2*node
+      glm_ml_2 =  Learner_glmnet(
+        covariates = c(z_covariates, paste0(z_covariates,":node")),
+        cross_validation = FALSE,
+        intercept = FALSE,
+        add_nodes = TRUE,
+        penalise_nodes = TRUE,
+        lambda=0
+      ),
+      ## Z1+Z2+node
+      glm_ml_3 =  Learner_glmnet(
+        covariates = z_covariates,
+        cross_validation = FALSE,
+        intercept = FALSE,
+        add_nodes = TRUE,
+        penalise_nodes = TRUE,
+        lambda=0
+      ),
+      ## Z1+Z2+Z1:node+Z2:node
+      glm_ml_4 =  Learner_glmnet(
+        covariates =c(z_covariates, paste0(z_covariates,":node")),
+        cross_validation = FALSE,
+        intercept = FALSE,
+        lambda=0,
+        add_nodes = FALSE,
+        penalise_nodes = TRUE
+      )
+
+      )
+
+    out <- c(out,glm_meta_learners)
+
+
+  }
+
+  return(out)
+
+}
+
+
 fit_meta_learner <- function(dt,
                              dt_z,
                              meta_learner,
@@ -663,7 +909,7 @@ fit_meta_learner <- function(dt,
 
   dt_z <- merge(dt_z,dt,by=c("id","folder","node"))
 
-  # browser()
+
 
   # dt_z[, virtual_seq := seq_len(.N), by = .(id, folder)]
   # dt[, virtual_seq := seq_len(.N), by = .(id, folder)]
@@ -679,7 +925,7 @@ fit_meta_learner <- function(dt,
                                           dt_z)
 
   # learners on the full dataset ----
-  # browser()
+
   full_train_list <- lapply(learners, function(f) f$fit(dt))
 
   # step_0_predictions <- mapply(
@@ -906,7 +1152,7 @@ cv_subject_specific_hazard <- function(cause,
       MoreArgs = list(newdata = data_pp)
     )
 
-    # browser()
+
 
     pseudo_observations_data <- matrix(apply(as.matrix(learners_predictions, nrow=nrow(newdata), ncol=length(z_covariates)), MARGIN = 2, log),
                                        nrow=nrow(data_pp),
@@ -957,7 +1203,7 @@ cv_subject_specific_hazard <- function(cause,
 
 
     if(any(cond_times_larger_than_max)){
-      # browser()
+
 
       d[times > object$data_info$maximum_followup ,c('pwch','survival_function'):=list(NA,NA)]
 
@@ -976,7 +1222,7 @@ cv_subject_specific_hazard <- function(cause,
 }
 
 learners_hat <- function(crisk_cause,superlearner,newdata,learners){
-  # browser()
+
   learners_predictions <- mapply(
     function(f, model, newdata)
       f$predictor(model = model, newdata = newdata),
