@@ -416,16 +416,19 @@ Superlearner <- function(data,
   #
   # }
 
+#### THIS will also be removed for production version of the package
+  if(length(meta_learner_algorithms)==1&meta_learner_algorithms!="glmnet"&meta_learner_algorithms!="glm"){
 
-  # if(length(meta_learners)==1){
-  #
-  #   warning('Only one meta_learner was supplied. Cross-validation on the pseudo-observations will not be performed.')
-  #
-  #   meta_learner <- meta_learners[[1]]
-  #
-  #   dt_cv_out <- NULL
-  #
-  # }else{}
+    warning('Only one meta_learner was supplied. Cross-validation on the pseudo-observations will not be performed.')
+
+    meta_learner <- meta_learner_algorithms
+
+    meta_learners <- meta_learners_candidates(meta_learner_algorithms,
+                                              z_covariates)
+
+    dt_cv_out <- NULL
+
+  }else{
 
     meta_learners <- meta_learners_candidates(meta_learner_algorithms,
                                               z_covariates)
@@ -555,14 +558,16 @@ Superlearner <- function(data,
 
 
 
+
+
     }
 
 
     meta_learner <- dt_cv_out[which.min(deviance)][['meta_learner']]
 
-    meta_learner <- meta_learners[[meta_learner]]
+    }
 
-
+  meta_learner <- meta_learners[[meta_learner]]
   meta_learner_fits <- mapply(
     function(dt,
              dt_z,

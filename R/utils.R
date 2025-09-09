@@ -658,129 +658,153 @@ meta_learners_candidates <- function(meta_learner_algorithms,
 
   out <- list()
 
+  ## this should be removed from the production version of the package!!!
   if("glm_ml_1"%in% meta_learner_algorithms){
 
-    glm_ml_1 =  Learner_glmnet(
+    one_time_learner=list(glm_ml_1 =  Learner_glmnet(
       covariates = z_covariates,
       cross_validation = FALSE,
       intercept = FALSE,
       add_nodes = FALSE,
       penalise_nodes = TRUE,
       lambda=0
-    )
+    ))
+
+    out <- c(out,one_time_learner)
 
   }
 
   if("glmnet_ml_1"%in% meta_learner_algorithms){
 
-    glmnet_ml_1 =  Learner_glmnet(
+    one_time_learner=list(glmnet_ml_1 =  Learner_glmnet(
       covariates = z_covariates,
       cross_validation = TRUE,
       intercept = FALSE,
       add_nodes = FALSE,
       penalise_nodes = TRUE
-    )
+    ))
+
+out <- c(out,one_time_learner)
 
   }
 
   if("glm_ml_2"%in% meta_learner_algorithms){
 
-    glm_ml_2 =  Learner_glmnet(
+    one_time_learner=list(glm_ml_2 =  Learner_glmnet(
       covariates = c(z_covariates, paste0(z_covariates,":node")),
       cross_validation = FALSE,
       intercept = FALSE,
       add_nodes = TRUE,
       penalise_nodes = TRUE,
       lambda=0
-    )
+    ))
+
+    out <- c(out,one_time_learner)
 
   }
 
   if("glmnet_ml_2"%in% meta_learner_algorithms){
 
-    glmnet_ml_2 =  Learner_glmnet(
+    one_time_learner=list(glmnet_ml_2 =  Learner_glmnet(
       covariates = c(z_covariates, paste0(z_covariates,":node")),
       cross_validation = TRUE,
       intercept = FALSE,
       add_nodes = TRUE,
       penalise_nodes = TRUE
-    )
+    ))
+
+    out <- c(out,one_time_learner)
 
   }
 
   if("glm_ml_3"%in% meta_learner_algorithms){
 
-    glm_ml_3 =  Learner_glmnet(
+    one_time_learner=list(glm_ml_3 =  Learner_glmnet(
       covariates = z_covariates,
       cross_validation = FALSE,
       intercept = FALSE,
       add_nodes = TRUE,
       penalise_nodes = TRUE,
       lambda=0
-    )
+    ))
+
+    out <- c(out,one_time_learner)
 
   }
 
   if("glmnet_ml_3"%in% meta_learner_algorithms){
 
-    glmnet_ml_3 =  Learner_glmnet(
+    one_time_learner=list(glmnet_ml_3 =  Learner_glmnet(
       covariates =  c(z_covariates, paste0(z_covariates,":node")),
       cross_validation = TRUE,
       intercept = FALSE,
       add_nodes = TRUE,
       penalise_nodes = FALSE
-    )
+    ))
+
+    out <- c(out,one_time_learner)
 
   }
 
   if("glm_ml_4"%in% meta_learner_algorithms){
 
-    glm_ml_4 =  Learner_glmnet(
+    one_time_learner=list(glm_ml_4 =  Learner_glmnet(
       covariates =c(z_covariates, paste0(z_covariates,":node")),
       cross_validation = FALSE,
       intercept = FALSE,
       lambda=0,
       add_nodes = FALSE,
       penalise_nodes = TRUE
-    )
+    ))
+
+    out <- c(out,one_time_learner)
 
   }
 
   if("glmnet_ml_4"%in% meta_learner_algorithms){
 
-    glmnet_ml_4 =  Learner_glmnet(
+    one_time_learner=list(glmnet_ml_4 =  Learner_glmnet(
       covariates = z_covariates,
       cross_validation = TRUE,
       intercept = FALSE,
       add_nodes = TRUE,
       penalise_nodes = TRUE
-    )
+    ))
+
+    out <- c(out,one_time_learner)
 
   }
 
   if("glmnet_ml_5"%in% meta_learner_algorithms){
 
-    glmnet_ml_5 =  Learner_glmnet(
+    one_time_learner=list(glmnet_ml_5 =  Learner_glmnet(
       covariates = z_covariates,
       cross_validation = TRUE,
       intercept = FALSE,
       add_nodes = TRUE,
       penalise_nodes = FALSE
-    )
+    ))
+
+    out <- c(out,one_time_learner)
 
   }
 
   if("glmnet_ml_6"%in% meta_learner_algorithms){
 
-    glmnet_ml_6 =  Learner_glmnet(
+    one_time_learner=list(glmnet_ml_6 =  Learner_glmnet(
       covariates =c(z_covariates, paste0(z_covariates,":node")),
       cross_validation = TRUE,
       intercept = FALSE,
       add_nodes = FALSE,
       penalise_nodes = TRUE
-    )
+    ))
+
+    out <- c(out,one_time_learner)
 
   }
+
+  #########################################################
+
 
   if("glmnet" %in% meta_learner_algorithms){
 
