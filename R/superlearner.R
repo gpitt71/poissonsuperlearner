@@ -20,16 +20,17 @@ Superlearner <- function(data,
                          learners,
                          number_of_nodes = NULL, #
                          nodes = NULL,
+                         min_depth=2,
                          meta_learner_algorithms = c("glm","glmnet"),
-                         matrix_transformation = FALSE,
                          variable_transformation = NULL,
                          nfold = 3, #
                          ...) {
 
 
 
-  # Multiple checks about interval data
+  # Multiple checks about the input ----
 
+  ############
   check_1 <- is.null(start_time) & !is.null(end_time)
   check_2 <- !is.null(start_time) & is.null(end_time)
   check_3 <- (!is.null(start_time) ||
@@ -64,8 +65,15 @@ Superlearner <- function(data,
 
   }
 
+  if (min_depth < 2) {
+    warning("The minimum number of learners to build an ensemble is two: min_depth will be set to two.")
+
+  }
+
+  ############
 
 
+  # Data pre-processing ----
 
   # save some relevant values
   n <- length(unique(data[[id]]))#nrow(data)
@@ -170,14 +178,12 @@ Superlearner <- function(data,
   }
 
 
-  if (matrix_transformation) {
 
+  lhs_string = NULL
 
-    columns_of_interest <- unlist(lapply(learners, function(x) {
-      return(unique(c(x$covariates, x$treatment)))
-    }))
+  ## Transform the variables if needed ----
 
-    columns_of_interest <- unique(columns_of_interest[(complete.cases(columns_of_interest))])
+  if (!is.null(variable_transformation)) {
 
     # Take the variable that we transform
 
@@ -203,22 +209,38 @@ Superlearner <- function(data,
     ))
 
 
-    dt <- dt[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(unique(c(columns_of_interest, lhs_string)), "node", "k")]
-
-
-    dt[, c("id") := 1:nrow(dt)]
-
-
 
   }
 
 
+  ## Exploit Poisson likelihood and try to simplify (where possible) the covariates combinations to make the implementation faster ----
+
+  columns_of_interest <- unlist(lapply(learners, function(x) {
+    vars <- unique(c(x$covariates, x$treatment))
+
+    # Extract bare variable names from expressions like s(age), log(income)
+    vars_clean <- gsub(".*\\(([^)]+)\\).*", "\\1", vars)
+    return(vars_clean)
+  }))
+
+
+  columns_of_interest <- unique(columns_of_interest[(complete.cases(columns_of_interest))])
+
+
+  dt <- dt[, .(tij = sum(tij), deltaij = sum(deltaij),number_of_observations_tmp=.N,id=max(id)), by = c(unique(c(columns_of_interest, lhs_string)), "node", "k")]
+
+
+  if(!dt[,all(number_of_observations_tmp==1)]){
+
+      dt[,id:=1:nrow(dt)]
+
+  }
+
+  dt[,number_of_observations_tmp:=NULL]
 
 
 
-
-
-
+  ## Splitting in folds ----
 
   if (stratified_k_fold) {
     setDT(data)
@@ -329,7 +351,6 @@ Superlearner <- function(data,
         nfold = nfold,
         maximum_followup = maximum_followup,
         n_crisks=n_crisks,
-        matrix_transformation = matrix_transformation,
         variable_transformation = variable_transformation,
         interval_data_type = interval_data_type
       )
@@ -361,15 +382,16 @@ Superlearner <- function(data,
     pseudo_observations <- mapply(
       function(training_data,
                validation_data,
-               #data,
+               competing_risk,
                learners,
                z_covariates,
                ix)
-        create_pseudo_observations(training_data, validation_data, learners, z_covariates, ix),
+        create_pseudo_observations(training_data, validation_data, competing_risk, learners, z_covariates, ix),
       # create_pseudo_observations(data, learners, z_covariates, ix),
       # fd,
       training_data = training_data,
       validation_data = validation_data,
+      competing_risk=as.list(1:n_crisks),
       MoreArgs = list(
         learners = learners,
         ix = ix,
@@ -386,8 +408,128 @@ Superlearner <- function(data,
   }
 
 
-
   data_by_competing_risk <- split(dt, by = "k")
+
+  # Compute oos deviance scores for the learners ----
+
+  dt_learners <- rbindlist(
+    lapply(seq_along(dt_z), function(i) {
+      DT <- copy(dt_z[[i]])
+      # detect all Z* columns (flexible: Z1, Z_2, Zabc3, etc.)
+      zcols <- grep("^Z", names(DT), value = TRUE)
+      melt(
+        DT,
+        id.vars = c("id", "folder", "node"),
+        measure.vars = zcols,
+        variable.name = "learner",
+        value.name = "pwch"
+      )[, which := paste0("pwch_", i)]
+    }),
+    use.names = TRUE, fill = TRUE
+  )
+
+  # transform back to exponential
+  dt_learners[,pwch:=exp(pwch)]
+
+  dt_learners[, learner_idx := fifelse(
+    grepl("\\d+", learner),
+    as.integer(gsub("\\D+", "", learner)),
+    match(learner, unique(learner))  # stable ordering for non-numeric suffixes
+  )]
+  dt_learners[, learner := paste0("learner_", learner_idx)][, learner_idx := NULL]
+
+  dt_learners <- dcast(
+    dt_learners,
+    id + folder + node + learner ~ which,
+    value.var = "pwch"
+    # , fun.aggregate = mean  # uncomment if duplicates exist within a cell
+  )
+
+  dt_learners[,node:=factor(node,levels = sort(as.numeric(levels(node))),ordered=TRUE)]
+
+  setorder(dt_learners, id, node, learner)
+
+
+  # Actual deviance computation
+
+  pwch_cols <- paste0("pwch_",1:n_crisks)
+
+  # save sum of pwch
+
+  sum_of_hazards <- paste(pwch_cols, collapse = " + ")
+
+  pwch_dot_string <- paste0("dt_learners[, pwch_dot :=",sum_of_hazards,"]")
+
+  eval(parse(text = pwch_dot_string))
+
+  dt_learners<- merge(dt_learners, dt[k==1,.(id,node,tij)], by = c("id", "node"))
+
+  # compute cumulative hazard
+
+  mapply(function(pwch, name) {
+    dt_learners[, (paste0("cumulative_hazard_", name)) := cumsum(get(pwch) * tij), by = .(id,learner)]
+  }, pwch_cols, gsub("pwch_", "", pwch_cols))
+
+
+  # compute survival function
+
+  hazard_terms <- paste0("cumulative_hazard_", 1:n_crisks)
+  sum_expr <- paste(hazard_terms, collapse = " + ")
+  survival_function_string <- paste0("dt_learners[, survival_function := exp(-(", sum_expr, "))]")
+
+  eval(parse(text = survival_function_string))
+
+  mapply(function(pwch, name) {
+    dt_learners[, (paste0("hazard_times_time_", name)) := (get(pwch) * tij)]
+  }, pwch_cols, gsub("pwch_", "", pwch_cols))
+
+
+  # get the deltas
+  delta_list =mapply(function(risk,data){data[k==risk,][,c("id","node",paste0("delta_",risk)):=list(id,node,deltaij)][,.SD,.SDcols=c("id","node",paste0("delta_",risk))]},as.list(1:n_crisks),MoreArgs=list(data=dt),SIMPLIFY = F)
+
+  delta_list <- merge_deltas(delta_list)
+
+  delta_list[,node:=factor(node,levels = sort(as.numeric(levels(node))),ordered=TRUE)]
+
+  dt_learners<- merge(dt_learners,
+                      delta_list,
+                      by=c("id","node"),
+                      all.x = T)
+
+
+  #first term
+
+  mapply(function(name) {
+    dt_learners[,paste0("cr_contribution_",name):=get(paste0("delta_", name))*log(get(paste0("delta_", name))/get(paste0("hazard_times_time_", name)))]
+    dt_learners[,paste0("cr_contribution_",name):=fifelse(is.nan(get(paste0("cr_contribution_",name))),0,get(paste0("cr_contribution_",name)))]
+    dt_learners[,paste0("cr_contribution_",name):=get(paste0("cr_contribution_",name))-(get(paste0("delta_", name))-get(paste0("hazard_times_time_", name)))]
+
+  }, as.list(1:n_crisks))
+
+
+  # second term
+
+  crc_terms <- paste0("cr_contribution_", 1:n_crisks)
+  sum_expr <- paste(crc_terms, collapse = " + ")
+  crc_string <- paste0("dt_learners[, cr_contribution_tot := ",sum_expr,"]")
+
+  eval(parse(text = crc_string))
+
+
+  dt_learners<-dt_learners[,.(deviance_i=sum(cr_contribution_tot)),by=.(id,learner)]
+
+  dt_learners <- merge(dt_learners,dt_id,by="id")
+
+  setkey(dt_learners,NULL)
+
+  dt_learners<-dt_learners[, .(deviance_v = 2*sum(deviance_i, na.rm = TRUE)), by = .(learner,folder)]
+
+  dt_learners<-dt_learners[,.(deviance=mean(deviance_v)),by =learner]
+
+  browser()
+
+  z_covariates_list <- select_covariate_path(dt_learners, z_covariates, min_depth = min_depth)
+
 
 
 
@@ -416,8 +558,13 @@ Superlearner <- function(data,
   #
   # }
 
-#### THIS will also be removed for production version of the package
-  if(length(meta_learner_algorithms)==1&meta_learner_algorithms!="glmnet"&meta_learner_algorithms!="glm"){
+
+
+
+
+
+#### THIS if-else cycle will be removed for production version of the package: we will only keep the else part.
+  if(length(meta_learner_algorithms)==1&!("glmnet"%in%meta_learner_algorithms)&!("glm"%in%meta_learner_algorithms)){
 
     warning('Only one meta_learner was supplied. Cross-validation on the pseudo-observations will not be performed.')
 
@@ -430,8 +577,10 @@ Superlearner <- function(data,
 
   }else{
 
-    meta_learners <- meta_learners_candidates(meta_learner_algorithms,
-                                              z_covariates)
+
+    meta_learners <- lapply(z_covariates_list, function(x) meta_learners_candidates(meta_learner_algorithms,z_covariates))
+
+    meta_learners <- unlist(meta_learners, recursive=FALSE)
 
     # A second round of cross-validation
 
@@ -448,9 +597,164 @@ Superlearner <- function(data,
     }
 
 
+    ## Learners nested cross-validation  ----
+    dt_learners <- vector("list", n_crisks)
+    for (ix in 1:nfold) {
+
+      dt[dt_id, on = .(id), folder := i.folder]
+      # Training data for each competing risk ----
+      tmp_train <- dt[folder != ix, ]
+      training_data <- split(tmp_train, by = "k")
+      # Validation data for each competing risk ----
+      tmp_val <- dt[folder == ix, ]
+      validation_data <- split(tmp_val, by = "k")
+
+      # we find the pseudo observations for each fold ----
+      learners_predictions <- mapply(
+        function(training_data,
+                 validation_data,
+                 competing_risk,
+                 learners,
+                 z_covariates,
+                 ix,
+                 meta_learners)
+          learners_second_layer_cross_validation(training_data, validation_data,competing_risk, learners, z_covariates, ix),
+        training_data = training_data,
+        validation_data = validation_data,
+        competing_risk=as.list(1:n_crisks),
+        MoreArgs = list(
+          learners = learners,
+          ix = ix,
+          z_covariates =z_covariates
+        ),
+        SIMPLIFY = FALSE
+      )
+
+
+      dt_learners <- mapply(function(x, y)
+        rbind(x, y), dt_learners, learners_predictions, SIMPLIFY = FALSE)
+
+    }
+
+
+
+    dt_learners <- rbindlist(
+      lapply(seq_along(dt_learners), function(i) {
+        DT <- copy(dt_learners[[i]])
+        # detect all Z* columns (flexible: Z1, Z_2, Zabc3, etc.)
+        zcols <- grep("^Z", names(DT), value = TRUE)
+        if (length(zcols) == 0L) stop(sprintf("No Z* columns found in dt_learners[[%d]]", i))
+        melt(
+          DT,
+          id.vars = c("id", "folder", "node"),
+          measure.vars = zcols,
+          variable.name = "learner",
+          value.name = "pwch"
+        )[, which := paste0("pwch_", i)]
+      }),
+      use.names = TRUE, fill = TRUE
+    )
+
+    dt_learners[, learner_idx := fifelse(
+      grepl("\\d+", learner),
+      as.integer(gsub("\\D+", "", learner)),
+      match(learner, unique(learner))  # stable ordering for non-numeric suffixes
+    )]
+    dt_learners[, learner := paste0("learner_", learner_idx)][, learner_idx := NULL]
+
+    dt_learners <- dcast(
+      dt_learners,
+      id + folder + node + learner ~ which,
+      value.var = "pwch"
+      # , fun.aggregate = mean  # uncomment if duplicates exist within a cell
+    )
+
+    dt_learners[,node:=factor(node,levels = sort(as.numeric(levels(node))),ordered=TRUE)]
+
+    setorder(dt_learners, id, node, learner)
+
+
+    # Actual deviance computation
+
+    pwch_cols <- paste0("pwch_",1:n_crisks)
+
+    # save sum of pwch
+
+    sum_of_hazards <- paste(pwch_cols, collapse = " + ")
+
+    pwch_dot_string <- paste0("dt_learners[, pwch_dot :=",sum_of_hazards,"]")
+
+    eval(parse(text = pwch_dot_string))
+
+    dt_learners<- merge(dt_learners, dt[k==1,.(id,node,tij)], by = c("id", "node"))
+
+    # compute cumulative hazard
+
+    mapply(function(pwch, name) {
+      dt_learners[, (paste0("cumulative_hazard_", name)) := cumsum(get(pwch) * tij), by = .(id,learner)]
+    }, pwch_cols, gsub("pwch_", "", pwch_cols))
+
+
+    # compute survival function
+
+    hazard_terms <- paste0("cumulative_hazard_", 1:n_crisks)
+    sum_expr <- paste(hazard_terms, collapse = " + ")
+    survival_function_string <- paste0("dt_learners[, survival_function := exp(-(", sum_expr, "))]")
+
+    eval(parse(text = survival_function_string))
+
+    mapply(function(pwch, name) {
+      dt_learners[, (paste0("hazard_times_time_", name)) := (get(pwch) * tij)]
+    }, pwch_cols, gsub("pwch_", "", pwch_cols))
+
+
+    # get the deltas
+    delta_list =mapply(function(risk,data){data[k==risk,][,c("id","node",paste0("delta_",risk)):=list(id,node,deltaij)][,.SD,.SDcols=c("id","node",paste0("delta_",risk))]},as.list(1:n_crisks),MoreArgs=list(data=dt),SIMPLIFY = F)
+
+    delta_list <- merge_deltas(delta_list)
+
+    delta_list[,node:=factor(node,levels = sort(as.numeric(levels(node))),ordered=TRUE)]
+
+    dt_learners<- merge(dt_learners,
+          delta_list,
+          by=c("id","node"),
+          all.x = T)
+
+
+    #first term
+
+    mapply(function(name) {
+      dt_learners[,paste0("cr_contribution_",name):=get(paste0("delta_", name))*log(get(paste0("delta_", name))/get(paste0("hazard_times_time_", name)))]
+      dt_learners[,paste0("cr_contribution_",name):=fifelse(is.nan(get(paste0("cr_contribution_",name))),0,get(paste0("cr_contribution_",name)))]
+      dt_learners[,paste0("cr_contribution_",name):=get(paste0("cr_contribution_",name))-(get(paste0("delta_", name))-get(paste0("hazard_times_time_", name)))]
+
+    }, as.list(1:n_crisks))
+
+
+    # second term
+
+    crc_terms <- paste0("cr_contribution_", 1:n_crisks)
+    sum_expr <- paste(crc_terms, collapse = " + ")
+    crc_string <- paste0("dt_learners[, cr_contribution_tot := ",sum_expr,"]")
+
+    eval(parse(text = crc_string))
+
+
+    dt_learners<-dt_learners[,.(deviance_i=sum(cr_contribution_tot)),by=.(id,learner)]
+
+    dt_learners <- merge(dt_learners,dt_id,by="id")
+
+    setkey(dt_learners,NULL)
+
+    dt_learners<-dt_learners[, .(deviance_v = 2*sum(deviance_i, na.rm = TRUE)), by = .(learner,folder)]
+
+    dt_learners<-dt_learners[,.(deviance=mean(deviance_v)),by =learner]
+
+
     # Fast mapply used for the cr index. The cycle is on the meta learners and the folders (cannot avoid these two).
     ## output data.table
     dt_cv_out <- NULL
+
 
     for(meta_l_ix in seq_along(meta_learners)){
 
@@ -478,12 +782,13 @@ Superlearner <- function(data,
 
 
       # Compute the log-likelihood ----
+      ## !!!!!!!!!! This needs to be automated!! Now only for two CR ----
       tmp_cv[[1]][, rn := seq_len(.N), by=.(id, folder,node)]
       tmp_cv[[2]][, rn := seq_len(.N), by=.(id, folder,node)]
 
       tmp_cv <- merge(tmp_cv[[1]], tmp_cv[[2]], by = c("id", "folder", "node","rn"))[
         , rn := NULL][]
-
+      ## !!!!!!!!!!
 
       tmp_cv[,node:=factor(node,levels = sort(as.numeric(levels(node))),ordered=TRUE)]
 
@@ -521,7 +826,6 @@ Superlearner <- function(data,
       }, pwch_cols, gsub("pwch_", "", pwch_cols))
 
 
-      # browser()
 
       #first term
 
@@ -587,11 +891,16 @@ Superlearner <- function(data,
 
   )
 
+
+  setnames(dt_cv_out,"meta_learner","model")
+  setnames(dt_learners,"learner","model")
+
   out <- list(
     learners = learners,
     metalearner = meta_learner,
     superlearner = meta_learner_fits,
-    meta_learner_cross_validation=dt_cv_out,
+    meta_learner_cross_validation=rbind(dt_cv_out,
+                                        dt_learners),
     data_info = list(
       id = id,
       status = status,
@@ -602,7 +911,6 @@ Superlearner <- function(data,
       nfold = nfold,
       maximum_followup = maximum_followup,
       n_crisks=n_crisks,
-      matrix_transformation = matrix_transformation,
       variable_transformation = variable_transformation,
       interval_data_type = interval_data_type
     )

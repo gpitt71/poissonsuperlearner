@@ -115,36 +115,6 @@ Learner_xgboost <- setRefClass(
       return(out)
 
     },
-    private_fit = function(data, ...) {
-
-      x = sparse.model.matrix(formula(.self$formula),
-                              data)
-
-      # browser()
-      if( .self$cross_validation){
-
-
-      }else{
-
-
-        xgb.mx <- xgb.DMatrix(data = x,
-                              label = data[['deltaij']])
-
-        setinfo(xgb.mx,
-                "base_margin",
-                log(data[['tij']]))
-
-        .self$fit_arguments[['data']] <-xgb.mx
-
-        out <- do.call(xgb.train,
-                       .self$fit_arguments)
-
-      }
-
-
-      return(out)
-
-    },
     predictor = function(model, newdata, ...) {
 
 
@@ -297,22 +267,6 @@ Learner_glm <- setRefClass(
 
     },
 
-
-    private_fit = function(data, ...) {
-
-
-      out <- glm.fit(x=sparse.model.matrix(formula(.self$formula),
-                                           data),#[ss,],
-                     y=data[['deltaij']],#[ss],
-                     offset = log(data[['tij']]),#[ss]),
-                     family = poisson())
-
-
-
-      return(out)
-
-
-    },
 
     predictor = function(model, newdata,...) {
 
@@ -478,84 +432,7 @@ Learner_glmnet <- setRefClass(
     },
 
 
-    one_learner_pwc_model = function(data,
-                             id,
-                             start_time = NULL, #
-                             end_time = NULL, #
-                             status, #
-                             event_time = NULL, #
-                             number_of_nodes = NULL, #
-                             nodes = NULL, #
-                             variable_transformation= NULL,
-                             nfold = 3,
-                             ...){
 
-
-
-      if (.self$cross_validation) {
-        .self$fit_arguments[['nfolds']] <- nfold
-      }
-
-   dt <- create_dicretised_data(
-          data,
-          id,
-          start_time = start_time,
-          end_time = NULL,
-          status=end_time,
-          event_time = event_time,
-          number_of_nodes = number_of_nodes,
-          nodes = nodes,
-          variable_transformation
-        )
-
-
-   out <- .self$fit(dt)
-
-   return(out)
-
-
-    },
-
-   predict_pwc_model = function(data,
-                            id,
-                            start_time = NULL, #
-                            end_time = NULL, #
-                            status, #
-                            event_time = NULL, #
-                            number_of_nodes = NULL, #
-                            nodes = NULL, #
-                            variable_transformation= NULL,
-                            nfold = 3,
-                            ...){
-
-
-
-
-
-
-     if (.self$cross_validation) {
-       .self$fit_arguments[['nfolds']] <- nfold
-     }
-
-     dt <- create_dicretised_data(
-       data,
-       id,
-       start_time = start_time,
-       end_time = NULL,
-       status=end_time,
-       event_time = event_time,
-       number_of_nodes = number_of_nodes,
-       nodes = nodes,
-       variable_transformation
-     )
-
-
-     out <- .self$fit(dt)
-
-     return(out)
-
-
-   },
 
     update_cross_validation_argument= function(nfold){
 
@@ -591,32 +468,6 @@ Learner_glmnet <- setRefClass(
 
     },
 
-    private_fit = function(data, ...) {
-
-      x = sparse.model.matrix(formula(.self$formula),
-                              data)
-
-      if(!.self$penalise_nodes){
-
-        .self$fit_arguments[['penalty.factor']] <- 1- (grepl("node",colnames(x))& !grepl("node:", colnames(x))& !grepl(":node", colnames(x)))
-
-      }
-
-
-
-
-      .self$fit_arguments[['x']] <- x
-      .self$fit_arguments[['y']] <- data[['deltaij']]#[ss]
-      .self$fit_arguments[['offset']] <- log(data[['tij']])#[ss])
-
-
-      out <- do.call(.self$learner,
-                     .self$fit_arguments)
-
-
-      return(out)
-
-    },
 
     predictor = function(model, newdata, ...) {
 
@@ -768,84 +619,6 @@ Learner_hal <- setRefClass(
     },
 
 
-    one_learner_pwc_model = function(data,
-                                     id,
-                                     start_time = NULL, #
-                                     end_time = NULL, #
-                                     status, #
-                                     event_time = NULL, #
-                                     number_of_nodes = NULL, #
-                                     nodes = NULL, #
-                                     variable_transformation= NULL,
-                                     nfold = 3,
-                                     ...){
-
-
-
-      if (.self$cross_validation) {
-        .self$fit_arguments[['nfolds']] <- nfold
-      }
-
-      dt <- create_dicretised_data(
-        data,
-        id,
-        start_time = start_time,
-        end_time = NULL,
-        status=end_time,
-        event_time = event_time,
-        number_of_nodes = number_of_nodes,
-        nodes = nodes,
-        variable_transformation
-      )
-
-
-      out <- .self$fit(dt)
-
-      return(out)
-
-
-    },
-
-    predict_pwc_model = function(data,
-                                 id,
-                                 start_time = NULL, #
-                                 end_time = NULL, #
-                                 status, #
-                                 event_time = NULL, #
-                                 number_of_nodes = NULL, #
-                                 nodes = NULL, #
-                                 variable_transformation= NULL,
-                                 nfold = 3,
-                                 ...){
-
-
-
-
-
-
-      if (.self$cross_validation) {
-        .self$fit_arguments[['nfolds']] <- nfold
-      }
-
-      dt <- create_dicretised_data(
-        data,
-        id,
-        start_time = start_time,
-        end_time = NULL,
-        status=end_time,
-        event_time = event_time,
-        number_of_nodes = number_of_nodes,
-        nodes = nodes,
-        variable_transformation
-      )
-
-
-      out <- .self$fit(dt)
-
-      return(out)
-
-
-    },
 
     update_cross_validation_argument= function(nfold){
 
@@ -855,7 +628,7 @@ Learner_hal <- setRefClass(
 
     fit = function(data, ...) {
 
-
+      data <- data[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(c(covariates,treatment), "node", "k")]
 
       data<-data[complete.cases(data),]
 
@@ -882,33 +655,6 @@ Learner_hal <- setRefClass(
 
     },
 
-    private_fit = function(data, ...) {
-
-
-      x = sparse.model.matrix(formula(.self$formula),
-                              data)#[ss,]
-
-      if(!.self$penalise_nodes){
-
-        .self$fit_arguments[['penalty.factor']] <- 1- (grepl("node",colnames(x))& !grepl("node:", colnames(x))& !grepl(":node", colnames(x)))
-
-      }
-
-
-
-
-      .self$fit_arguments[['x']] <- x
-      .self$fit_arguments[['y']] <- data[['deltaij']]#[ss]
-      .self$fit_arguments[['offset']] <- log(data[['tij']])#[ss])
-
-
-      out <- do.call(.self$learner,
-                     .self$fit_arguments)
-
-
-      return(out)
-
-    },
 
     predictor = function(model, newdata, ...) {
 
@@ -1027,15 +773,6 @@ Learner_gam <- setRefClass(
       return(fit)
     },
 
-    private_fit = function(data, ...) {
-
-      data <- data[complete.cases(data), ]
-      .self$fit_arguments$formula <- as.formula(.self$formula)
-      .self$fit_arguments$data <- data
-      .self$fit_arguments$offset <- log(data[['tij']])
-      fit <- do.call(.self$learner, .self$fit_arguments)
-      return(fit)
-    },
 
     predictor = function(model, newdata, ...) {
 

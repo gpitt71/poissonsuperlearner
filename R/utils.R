@@ -603,9 +603,9 @@ create_formula_hal <- function(covariates=NA_character_,
 
 
 
-create_pseudo_observations <- function(#data,
-                                       training_data,
+create_pseudo_observations <- function(training_data,
                                        validation_data,
+                                       competing_risk,
                                        learners,
                                        z_covariates,
                                        ix){
@@ -643,12 +643,95 @@ create_pseudo_observations <- function(#data,
   colnames(val_list) <- z_covariates
 
 
-  dt_z <-  data.table(val_list)[, c("id", "folder","node") := validation_data[,.(id,folder,node)]] #
+  dt_z <-  data.table(val_list)[, c("id", "folder","node",paste0("delta_",competing_risk)) := validation_data[,.(id,folder,node,deltaij)]] #
+
+  dt_z[,competing_risk:= competing_risk]
 
   return(dt_z)
 
 }
 
+
+learners_second_layer_cross_validation <- function(training_data,
+                                          validation_data,
+                                          competing_risk,
+                                          learners,
+                                          z_covariates,
+                                          ix
+                                          ){
+
+  "
+  Nested cross-validation for the learners.
+  "
+  browser()
+  train_list <- lapply(learners, function(f) f$fit(training_data))
+
+
+  # Predict on the validation set your pseudo-observations ----
+  val_list <- mapply(
+    function(f, model, newdata)
+      f$private_predictor(model = model, newdata = newdata),
+    learners,
+    train_list,
+    MoreArgs = list(newdata = validation_data)
+  )
+
+
+
+  val_list<- as.matrix(val_list)
+
+
+  # Name the columns
+
+  colnames(val_list) <- z_covariates
+
+
+  dt_z <-  data.table(val_list)[, c("id", "folder","node",paste0("delta_",competing_risk)) := validation_data[,.(id,folder,node,deltaij)]] #
+
+  dt_z[,competing_risk:= competing_risk]
+
+  return(dt_z)
+
+
+}
+
+
+select_covariate_path <- function(dt, z_covariates, min_depth) {
+  # add covariates column
+  dt[, covariate := z_covariates]
+
+  # order by deviance
+  ordered_cov <- dt[order(deviance), covariate]
+
+  # build list from min_depth up to full length
+  lapply(min_depth:length(ordered_cov), function(k) ordered_cov[1:k])
+}
+
+
+
+merge_deltas <- function(lst) {
+  if (length(lst) == 0L) return(data.table(id = integer(), node = integer()))
+
+  # Keep only id, node, and delta_* columns from each table
+  cleaned <- lapply(lst, function(DT) {
+    DT <- as.data.table(copy(DT))
+    dcols <- grep("^delta_", names(DT), value = TRUE)
+    if (length(dcols) == 0L) stop("Each element must contain at least one delta_* column.")
+    DT <- DT[, c("id", "node", dcols), with = FALSE]
+    setkey(DT, id, node)
+    DT
+  })
+
+  # Full outer merge across the list on id+node
+  out <- Reduce(function(x, y) merge(x, y, by = c("id", "node"), all = TRUE), cleaned)
+
+  # Order columns: id, node, then delta_* in natural order (by numeric suffix if present)
+  deltas <- grep("^delta_", names(out), value = TRUE)
+  ord <- order(suppressWarnings(as.integer(sub(".*?(\\d+)$", "\\1", deltas))), deltas)
+  setcolorder(out, c("id", "node", deltas[ord]))
+
+  out[]
+}
 
 
 ## Meta learning ----
@@ -914,6 +997,9 @@ out <- c(out,one_time_learner)
 
 
   }
+
+
+  names(out) <- paste(names(out),paste0(z_covariates, collapse = ""),sep = "_")
 
   return(out)
 

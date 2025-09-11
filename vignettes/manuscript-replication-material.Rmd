@@ -1,0 +1,31 @@
+---
+title: "Manuscript Replication Material"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Manuscript Replication Material}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(tmlensemble)
+```
+
+
+# Absolute Risk Predictions with Age covariate
+
+
+
+
+
+
+
+
+

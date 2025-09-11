@@ -90,13 +90,13 @@ predict.poisson_superlearner <- function(object,
 
 
   # browser()
-  if(object$data_info$matrix_transformation){
+  if(!is.null(object$data_info$variable_transformation)){
 
     # browser()
 
-    columns_of_interest <- unlist(lapply(object$learners, function(x){return(unique(c(x$covariates,x$treatment)))}))
+    # columns_of_interest <- unlist(lapply(object$learners, function(x){return(unique(c(x$covariates,x$treatment)))}))
 
-    columns_of_interest <- unique(columns_of_interest[(complete.cases(columns_of_interest))])
+    # columns_of_interest <- unique(columns_of_interest[(complete.cases(columns_of_interest))])
 
     # Take the variable that we transform
 
