@@ -128,7 +128,11 @@ create_response_variable_c_risks <- function(nodes, time_to_event, delta, event_
 
 create_offset_variable <- function(nodes, delta, time_to_event){
 
-
+  # if(time_to_event==0){
+  #
+  #   return(cbind(0,0))
+  #
+  # }else{
   tmp <- c(nodes[nodes < time_to_event],
            first(nodes[nodes >= time_to_event]))
 
@@ -146,6 +150,9 @@ create_offset_variable <- function(nodes, delta, time_to_event){
   grid_nodes <- c(nodes[nodes < time_to_event])
 
   return(cbind(grid_nodes,tij))
+
+
+  # }
 }
 
 create_offset_variable_interval_data <- function(nodes, start_time, end_time) {
@@ -173,7 +180,6 @@ data_pre_processing <- function(data,
                                 nodes=NULL,
                                 uncensored_01=FALSE
 ){
-
 
 
   setDT(data)
@@ -614,8 +620,6 @@ create_pseudo_observations <- function(training_data,
 
   "
 
-
-
   train_list <- lapply(learners, function(f) f$fit(training_data))
 
 
@@ -648,50 +652,6 @@ create_pseudo_observations <- function(training_data,
   dt_z[,competing_risk:= competing_risk]
 
   return(dt_z)
-
-}
-
-
-learners_second_layer_cross_validation <- function(training_data,
-                                          validation_data,
-                                          competing_risk,
-                                          learners,
-                                          z_covariates,
-                                          ix
-                                          ){
-
-  "
-  Nested cross-validation for the learners.
-  "
-  browser()
-  train_list <- lapply(learners, function(f) f$fit(training_data))
-
-
-  # Predict on the validation set your pseudo-observations ----
-  val_list <- mapply(
-    function(f, model, newdata)
-      f$private_predictor(model = model, newdata = newdata),
-    learners,
-    train_list,
-    MoreArgs = list(newdata = validation_data)
-  )
-
-
-
-  val_list<- as.matrix(val_list)
-
-
-  # Name the columns
-
-  colnames(val_list) <- z_covariates
-
-
-  dt_z <-  data.table(val_list)[, c("id", "folder","node",paste0("delta_",competing_risk)) := validation_data[,.(id,folder,node,deltaij)]] #
-
-  dt_z[,competing_risk:= competing_risk]
-
-  return(dt_z)
-
 
 }
 
@@ -997,7 +957,6 @@ out <- c(out,one_time_learner)
 
 
   }
-
 
   names(out) <- paste(names(out),paste0(z_covariates, collapse = ""),sep = "_")
 

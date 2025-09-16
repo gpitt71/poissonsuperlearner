@@ -29,7 +29,11 @@ Learner_xgboost <- setRefClass(
     learner="function",
     add_nodes="logical",
     fit_arguments = "list",
-    grid_of_hyperparameters = "list"
+    cv_hyperparameters_grid = "data.frame",
+    grid_of_hyperparameters = "list",
+    nrounds_cv = "integer",
+    nfold_cv = "integer",
+    fit_arguments_cv = "list"
   ),
   methods = list(
     initialize = function(covariates = NULL,
@@ -38,6 +42,8 @@ Learner_xgboost <- setRefClass(
                           intercept = FALSE,
                           add_nodes= TRUE,
                           nrounds = NA_integer_,
+                          nfold_cv = 5L,
+                          nrounds_cv = 100L,
                           grid_of_hyperparameters=NULL,
                           ...) {
       .self$covariates <- covariates
@@ -70,7 +76,15 @@ Learner_xgboost <- setRefClass(
       # handle hyperparamters grid if necessary
 
       if (.self$cross_validation) {
-        .self$grid_of_hyperparameters <- expand.grid(grid_of_hyperparameters)
+
+        .self$fit_arguments_cv <- list(params=list(objective="count:poisson"))
+        .self$fit_arguments_cv[['nrounds']] <-  nrounds_cv
+        .self$fit_arguments_cv[['nfold']] <-  nfold_cv
+        .self$fit_arguments_cv[['verbose']] <-  FALSE
+
+        .self$grid_of_hyperparameters <- grid_of_hyperparameters
+        .self$cv_hyperparameters_grid  <- expand.grid(grid_of_hyperparameters)
+
       } else{
 
         .self$grid_of_hyperparameters <-grid_of_hyperparameters
@@ -86,39 +100,68 @@ Learner_xgboost <- setRefClass(
 
     },
 
+    update_cross_validation_argument= function(nfold){
+
+      .self$fit_arguments_cv[['nfold']] <- nfold
+
+    },
+
     fit = function(data, ...) {
 
       x = sparse.model.matrix(formula(.self$formula),
                               data)
 
+
+      xgb.mx <- xgb.DMatrix(data = x,
+                            label = data[['deltaij']])
+
+      setinfo(xgb.mx,
+              "base_margin",
+              log(data[['tij']]))
+
+      .self$fit_arguments[['data']] <-xgb.mx
+
+
+
       if( .self$cross_validation){
 
+        .self$fit_arguments_cv[['data']] <-xgb.mx
 
-      }else{
+        best_nll <- Inf
 
+        for(i in 1:nrow(.self$cv_hyperparameters_grid)){
 
-        xgb.mx <- xgb.DMatrix(data = x,
-                              label = data[['deltaij']])
+          .self$fit_arguments_cv[['params']] <- c(as.list(.self$cv_hyperparameters_grid[i,]))
 
-        setinfo(xgb.mx,
-                        "base_margin",
-                        log(data[['tij']]))
+          out_cv <- do.call(xgb.cv,
+                     .self$fit_arguments_cv)
 
-        .self$fit_arguments[['data']] <-xgb.mx
+          current_nll <- min(out_cv$evaluation_log$test_poisson_nloglik_mean)
 
-        out <- do.call(xgb.train,
-                       .self$fit_arguments)
-
+          if (current_nll < best_nll) {
+            best_nll <- current_nll
+            best_params <- .self$fit_arguments_cv[['params']]
+          }
         }
+
+
+        .self$fit_arguments[['params']][names(best_params)]<-NULL
+        .self$fit_arguments[['params']] <-c(.self$fit_arguments[['params']],
+                                            best_params)
+
+      }
+
+      out <- do.call(xgb.train,
+                     .self$fit_arguments)
 
 
       return(out)
 
     },
+
     predictor = function(model, newdata, ...) {
 
 
-      # browser()
       x = sparse.model.matrix(formula(.self$formula),
                               newdata)
 
@@ -628,7 +671,9 @@ Learner_hal <- setRefClass(
 
     fit = function(data, ...) {
 
-      data <- data[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(c(covariates,treatment), "node", "k")]
+      group_cols <- c(covariates,treatment)[complete.cases(c(covariates,treatment))]
+
+      data <- data[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(group_cols, "node", "k")]
 
       data<-data[complete.cases(data),]
 
@@ -741,6 +786,12 @@ Learner_gam <- setRefClass(
 
       .self$fit_arguments <- list(...)
       .self$fit_arguments[['family']] <- poisson()
+    },
+
+    update_cross_validation_argument= function(nfold){
+
+
+
     },
 
     datapp = function(train_data = NULL, validation_data = NULL) {

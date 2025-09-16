@@ -15,8 +15,8 @@ Superlearner(
   learners,
   number_of_nodes = NULL,
   nodes = NULL,
+  min_depth = 2,
   meta_learner_algorithms = c("glm", "glmnet"),
-  matrix_transformation = FALSE,
   variable_transformation = NULL,
   nfold = 3,
   ...
