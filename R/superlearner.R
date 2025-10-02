@@ -145,7 +145,7 @@ Superlearner <- function(data,
 
 
 
-        grid_nodes <- grid_nodes[-((length(grid_nodes) - 2):length(grid_nodes))]
+        # grid_nodes <- grid_nodes[-((length(grid_nodes) - 2):length(grid_nodes))]
 
       } else{
         grid_nodes <- nodes
@@ -183,31 +183,34 @@ Superlearner <- function(data,
 
 
   ## Transform the variables if needed ----
-
   if (!is.null(variable_transformation)) {
 
+
+    apply_transformations(dt,variable_transformation)
+
+
     # Take the variable that we transform
-
-    lhs_vars <- trimws(unlist(strsplit(
-      strsplit(variable_transformation, "~")[[1]][1], "\\+"
-    )))
-    lhs_string <- paste(lhs_vars, collapse = ", ")
-
-    # Take the transformation
-    rhs_vars <- trimws(unlist(strsplit(
-      strsplit(variable_transformation, "~")[[1]][2], "\\+"
-    )))
-    rhs_string <- paste(rhs_vars, collapse = ", ")
-
-
-    eval(parse(
-      text = paste0("
-               dt[,c('", lhs_string
-
-                    , "'):=list(", rhs_string
-                    , ")]
-               ")
-    ))
+#
+#     lhs_vars <- trimws(unlist(strsplit(
+#       strsplit(variable_transformation, "~")[[1]][1], "\\+"
+#     )))
+#     lhs_string <- paste(lhs_vars, collapse = ", ")
+#
+#     # Take the transformation
+#     rhs_vars <- trimws(unlist(strsplit(
+#       strsplit(variable_transformation, "~")[[1]][2], "\\+"
+#     )))
+#     rhs_string <- paste(rhs_vars, collapse = ", ")
+#
+#
+#     eval(parse(
+#       text = paste0("
+#                dt[,c('", lhs_string
+#
+#                     , "'):=list(", rhs_string
+#                     , ")]
+#                ")
+#     ))
 
 
 
@@ -242,6 +245,8 @@ Superlearner <- function(data,
   dt <- dt[, .(tij = sum(tij), deltaij = sum(deltaij),number_of_observations_tmp=.N,id=max(id)), by = c(unique(c(columns_of_interest, lhs_string)), "node", "k")]
 
   dt[,number_of_observations_tmp:=NULL]
+
+  #### fino a qui.
 
   ## Splitting in folds ----
 
@@ -340,6 +345,7 @@ Superlearner <- function(data,
 
     #lapply(learners, function(f) f$predictor(model= model, newdata = newdata))
 
+
     out <- list(
       learners = learners,
       metalearner = NULL, # it does not exict in this scenario
@@ -350,7 +356,7 @@ Superlearner <- function(data,
         event_time = event_time,
         start_time = start_time,
         end_time = end_time,
-        nodes = grid_nodes,
+        nodes = sort(unique(as.numeric(levels(dt$node)))),
         nfold = nfold,
         maximum_followup = maximum_followup,
         n_crisks=n_crisks,
@@ -570,11 +576,12 @@ Superlearner <- function(data,
 
     warning('Only one meta_learner was supplied. Cross-validation on the pseudo-observations will not be performed.')
 
-    meta_learner <- meta_learner_algorithms
+    # meta_learner <- meta_learner_algorithms
 
-    meta_learners <- meta_learners_candidates(meta_learner_algorithms,
+    meta_learner <- meta_learners_candidates(meta_learner_algorithms,
                                               z_covariates)
 
+    meta_learner<-meta_learner[[1]]
     dt_cv_out <- NULL
 
   }else{
@@ -583,6 +590,8 @@ Superlearner <- function(data,
     meta_learners <- lapply(z_covariates_list, function(x) meta_learners_candidates(meta_learner_algorithms,x))
 
     meta_learners <- unlist(meta_learners, recursive=FALSE)
+
+    # meta_learners <- meta_learners_candidates(meta_learner_algorithms,z_covariates)
 
     # A second round of cross-validation
 
@@ -715,9 +724,14 @@ Superlearner <- function(data,
 
     meta_learner <- dt_cv_out[which.min(deviance)][['meta_learner']]
 
+
+    meta_learner <- meta_learners[[meta_learner]]
+
+
+    setnames(dt_cv_out,"meta_learner","model")
+
     }
 
-  meta_learner <- meta_learners[[meta_learner]]
   meta_learner_fits <- mapply(
     function(dt,
              dt_z,
@@ -738,7 +752,7 @@ Superlearner <- function(data,
   )
 
 
-  setnames(dt_cv_out,"meta_learner","model")
+
   setnames(dt_learners,"learner","model")
 
   dt_learners[,covariate:=NULL]
@@ -755,7 +769,7 @@ Superlearner <- function(data,
       event_time = event_time,
       start_time = start_time,
       end_time = end_time,
-      nodes = grid_nodes,
+      nodes = sort(unique(as.numeric(levels(dt$node)))),
       nfold = nfold,
       maximum_followup = maximum_followup,
       n_crisks=n_crisks,

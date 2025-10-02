@@ -219,13 +219,89 @@ data_pre_processing <- function(data,
 
   setnames(dt_fit, c(id),c("id"))
 
+  maxn <- max(dt_fit$node)
+  lvls <- as.character(sort(unique(dt_fit$node)))
+
   dt_fit[,c("node",
-            "k"):=list(factor(node,levels=as.character(nodes)),
+            "k"):=list(factor(node, levels=lvls),
                        as.factor(k))]
 
 
+  dt_fit[,node:=relevel(node,ref=as.character(maxn))]
+  # dt_fit[,node:=relevel(node,ref=as.character(last(nodes)))]
 
-  dt_fit[,node:=relevel(node,ref=as.character(last(nodes)))]
+  return(dt_fit)
+
+}
+
+
+data_pre_processing <- function(data,
+                                id,
+                                status,
+                                event_time,
+                                nodes=NULL,
+                                predictions=FALSE,
+                                uncensored_01=FALSE
+){
+
+
+  setDT(data)
+
+  # Handle competing risks ----
+  ## for each of the competing risks (CR) we need to create a table
+  n_crisks <- pmax(length(unique(data[[status]])) - 1+uncensored_01,1)
+  ## the CR tables are stuck on top of each other to allow for possible interactions
+  dt_fit <- do.call(rbind, replicate(n_crisks, data, simplify = FALSE))
+  ## we create an artificial k index. Table specific.
+  dt_fit <- dt_fit[, k := rep(1:n_crisks, each = dim(data)[1])]
+
+
+  # Data Transformation ----
+  tmp <- c(id, "k")
+
+  dt_fit <- eval(parse(text = paste("dt_fit[, .(node = create_offset_variable(nodes, time_to_event = ",
+                                    event_time,
+                                    ")[, 1]",
+                                    ", tij = create_offset_variable(nodes, time_to_event = ",
+                                    event_time,
+                                    ")[,2]",
+                                    ", deltaij = create_response_variable_c_risks(nodes,time_to_event = ",
+                                    event_time,
+                                    ", delta=",
+                                    status,
+                                    ", event_type = k)",
+                                    ")",
+                                    ", by = .(",
+                                    id,
+                                    ", k)",
+                                    "]")))
+
+  ## Retrieve covariates
+
+  dt_fit <- merge(dt_fit, data, by = id, all.x = TRUE)
+
+  setnames(dt_fit, c(id),c("id"))
+
+  if(predictions){
+    maxn <-last(nodes)
+    lvls <- as.character(sort(unique(nodes)))
+
+
+  }else{
+
+    maxn <- max(dt_fit$node)
+    lvls <- as.character(sort(unique(dt_fit$node)))
+  }
+
+
+
+  dt_fit[,c("node",
+            "k"):=list(factor(node, levels=lvls),
+                       as.factor(k))]
+
+
+  dt_fit[,node:=relevel(node,ref=as.character(maxn))]
+  # dt_fit[,node:=relevel(node,ref=as.character(last(nodes)))]
 
   return(dt_fit)
 
@@ -293,6 +369,64 @@ data_pre_processing_interval_data <- function(data, id, status, start_time, end_
 
 
 ## Matrix transformation ----
+
+apply_transformations <- function(dt, variable_transformation) {
+  stopifnot(data.table::is.data.table(dt))
+
+  if (is.null(variable_transformation)) return(invisible(dt))
+
+  # Normalize to a list of items (strings or formulas)
+  items <- variable_transformation
+  if (inherits(items, "formula")) items <- list(items)
+  else if (is.character(items))    items <- as.list(items)
+  else if (is.list(items))         items <- items
+  else stop("Unsupported 'variable_transformation' type.")
+
+  # Collect all (lhs name, rhs expression) pairs
+  lhs_all  <- character()
+  rhs_all  <- vector("list", 0L)
+
+  for (it in items) {
+    if (inherits(it, "formula")) {
+      # formula: lhs ~ rhs
+      lhs_raw <- paste(deparse(it[[2L]]), collapse = "")
+      rhs_raw <- paste(deparse(it[[3L]]), collapse = "")
+    } else if (is.character(it) && length(it) == 1L) {
+      parts <- strsplit(it, "~", fixed = TRUE)[[1L]]
+      if (length(parts) != 2L) stop("Each transformation must contain a single '~'.")
+      lhs_raw <- parts[1L]
+      rhs_raw <- parts[2L]
+    } else {
+      stop("List elements must be formulas or single strings of the form 'lhs ~ rhs'.")
+    }
+
+    lhs_vec <- trimws(strsplit(lhs_raw, "\\+")[[1L]])
+    rhs_vec <- trimws(strsplit(rhs_raw, "\\+")[[1L]])
+
+    if (length(lhs_vec) != length(rhs_vec)) {
+      stop(
+        sprintf("LHS and RHS have different lengths in '%s ~ %s' (%d vs %d).",
+                lhs_raw, rhs_raw, length(lhs_vec), length(rhs_vec))
+      )
+    }
+
+    # Parse each RHS into an expression
+    rhs_exprs <- lapply(rhs_vec, function(s) parse(text = s)[[1L]])
+
+    lhs_all <- c(lhs_all, lhs_vec)
+    rhs_all <- c(rhs_all, rhs_exprs)
+  }
+
+  # Evaluate and assign each transformation.
+  # Using one-by-one assignment keeps evaluation within data.table's environment
+  # so column names are visible and functions come from the calling env.
+  for (i in seq_along(lhs_all)) {
+    dt[, (lhs_all[i]) := eval(rhs_all[[i]])]
+  }
+
+  invisible(dt)
+}
+
 sl_cut <- function(x, breaks, include.lowest = TRUE, right = TRUE) {
 
   labels <- paste0(head(breaks, -1), "-", tail(breaks, -1) - if (right) 1 else 0)
@@ -976,6 +1110,8 @@ fit_meta_learner <- function(dt,
   # setorder(dt, id, "folder")
   #
 
+  # browser()
+
   dt_z <- merge(dt_z,dt,by=c("id","folder","node"))
 
 
@@ -1294,7 +1430,7 @@ learners_hat <- function(crisk_cause,superlearner,newdata,learners){
 
   learners_predictions <- mapply(
     function(f, model, newdata)
-      f$predictor(model = model, newdata = newdata),
+      f$private_predictor(model = model, newdata = newdata),
     learners,
     superlearner$learners_fit,
     MoreArgs = list(newdata = newdata)
@@ -1305,7 +1441,4 @@ learners_hat <- function(crisk_cause,superlearner,newdata,learners){
 
 
 }
-
-
-
 

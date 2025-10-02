@@ -7,32 +7,35 @@
 #' @export
 predictRisk.poisson_superlearner <- function(object,newdata,times,cause=1, ...){
 
-    # rr_output <- matrix(nrow=nrow(newdata),
-    #                     ncol=length(times))
+    rr_output <- matrix(NA_real_,
+                        nrow=nrow(newdata),
+                        ncol=length(times))
 
 
-    rr_output <- sapply(times, function(x){
-      out <- predict(object,
-              newdata = newdata,
-              times = x,
-              cause = cause)
+  for(ix in seq_along(times)){
 
-      p <- out$absolute_risk
 
-      return(p)
+    rr_output[,ix]<- predict(object,
+            newdata = newdata,
+            times = times[ix],
+            cause = cause)$absolute_risk
 
-    })
+  }
 
-    # out <- predict(object,
-    #                newdata=newdata,
-    #                times=times,
-    #                cause=cause)
+  # rr_output <- sapply(times, function(x){
+  #     out <- predict(object,
+  #             newdata = newdata,
+  #             times = x,
+  #             cause = cause)
+  #
+  #     p <- out$absolute_risk
+  #
+  #     return(p)
+  #
+  #   })
 
-    # p <- 1 - out$survival_function
-    #
-    # return(p)
+    # rr_output <- matrix(rr_output, nrow(newdata), ncol=length(times))
 
-    rr_output <- matrix(rr_output, nrow(newdata), ncol=length(times))
 
     return(rr_output)
 
