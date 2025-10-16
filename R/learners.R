@@ -36,7 +36,7 @@ Learner_xgboost <- setRefClass(
     fit_arguments_cv = "list"
   ),
   methods = list(
-    initialize = function(covariates = NULL,
+    initialize = function(covariates = NA_character_,
                           treatment = NA_character_,
                           cross_validation = FALSE,
                           intercept = FALSE,
@@ -219,7 +219,7 @@ Learner_glm <- setRefClass(
     add_nodes="logical"
   ),
   methods = list(
-    initialize = function(covariates = NULL,
+    initialize = function(covariates = NA_character_,
                           treatment = NA_character_,
                           cross_validation = FALSE,
                           intercept = TRUE,
@@ -380,7 +380,7 @@ Learner_glmnet <- setRefClass(
   ),
   methods = list(
 
-    initialize = function(covariates = NULL,
+    initialize = function(covariates = NA_character_,
                           treatment = NA_character_,
                           cross_validation = FALSE,
                           intercept=FALSE,
@@ -485,6 +485,30 @@ Learner_glmnet <- setRefClass(
 
     fit = function(data, ...) {
 
+      .extract_symbols <- function(term) {
+        # try as a bare expression, then as a RHS of a formula
+        out <- tryCatch(
+          all.vars(str2lang(term)),
+          error = function(e) {
+            tryCatch(
+              all.vars(stats::terms(stats::as.formula(paste("~", term)))),
+              error = function(e2) character(0)
+            )
+          }
+        )
+        out
+      }
+
+
+      group_cols <- c(.self$covariates,.self$treatment)[complete.cases(c(.self$covariates,.self$treatment))]
+
+
+      group_cols <- group_cols[is.character(group_cols) & !is.na(group_cols) & nzchar(group_cols)]
+      group_cols <- unlist(lapply(group_cols, .extract_symbols), use.names = FALSE)
+
+      group_cols <- unique(group_cols)
+
+      data <- data[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(group_cols, "node", "k")]
 
       data<-data[complete.cases(data),]
 
@@ -499,7 +523,7 @@ Learner_glmnet <- setRefClass(
 
       if(!.self$penalise_nodes){
 
-        .self$fit_arguments[['penalty.factor']] <- 1- (grepl("node",colnames(x))& !grepl("node:", colnames(x))& !grepl(":node", colnames(x)))
+        .self$fit_arguments[['penalty.factor']] <- 1- (grepl("node",colnames(x)))#& !grepl("node:", colnames(x))& !grepl(":node", colnames(x)))
 
       }
 
@@ -586,7 +610,7 @@ Learner_hal <- setRefClass(
   ),
   methods = list(
 
-    initialize = function(covariates = NULL,
+    initialize = function(covariates = NA_character_,
                           treatment = NA_character_,
                           cross_validation = FALSE,
                           intercept=FALSE,
@@ -835,6 +859,31 @@ Learner_gam <- setRefClass(
 
     fit = function(data, ...) {
 
+      .extract_symbols <- function(term) {
+        # try as a bare expression, then as a RHS of a formula
+        out <- tryCatch(
+          all.vars(str2lang(term)),
+          error = function(e) {
+            tryCatch(
+              all.vars(stats::terms(stats::as.formula(paste("~", term)))),
+              error = function(e2) character(0)
+            )
+          }
+        )
+        out
+      }
+
+
+      group_cols <- c(.self$covariates,.self$treatment)[complete.cases(c(.self$covariates,.self$treatment))]
+
+
+      group_cols <- group_cols[is.character(group_cols) & !is.na(group_cols) & nzchar(group_cols)]
+      group_cols <- unlist(lapply(group_cols, .extract_symbols), use.names = FALSE)
+
+      group_cols <- unique(group_cols)
+
+      data <- data[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(group_cols, "node", "k")]
+
       data <- data[complete.cases(data), ]
       .self$fit_arguments$formula <- as.formula(.self$formula)
       .self$fit_arguments$data <- data
@@ -907,7 +956,7 @@ Learner_hal <- setRefClass(
   ),
   methods = list(
 
-    initialize = function(covariates = NULL,
+    initialize = function(covariates = NA_character_,
                           treatment = NA_character_,
                           cross_validation = FALSE,
                           intercept=FALSE,

@@ -137,7 +137,9 @@ Superlearner <- function(data,
     #  Handle nodes
     ##Either the nodes are given or we take all of the realised times
     if (!is.null(number_of_nodes)) {
-      grid_nodes <- seq(min(data[[event_time]]), max(data[[event_time]]) + 1, length.out = as.integer(number_of_nodes))
+      # grid_nodes <- seq(min(data[[event_time]]), max(data[[event_time]]) + 1, length.out = as.integer(number_of_nodes))
+      grid_nodes <- unique(sort(sample(data[[event_time]],
+                           as.integer(number_of_nodes))))
 
     } else{
       if (is.null(nodes)) {
@@ -178,7 +180,6 @@ Superlearner <- function(data,
   }
 
 
-
   lhs_string = NULL
 
 
@@ -217,34 +218,54 @@ Superlearner <- function(data,
   }
 
 
-  .extract_symbols <- function(term) {
-    # try as a bare expression, then as a RHS of a formula
-    out <- tryCatch(
-      all.vars(str2lang(term)),
-      error = function(e) {
-        tryCatch(
-          all.vars(stats::terms(stats::as.formula(paste("~", term)))),
-          error = function(e2) character(0)
-        )
-      }
-    )
-    out
-  }
+  # .extract_symbols <- function(term) {
+  #   # try as a bare expression, then as a RHS of a formula
+  #   out <- tryCatch(
+  #     all.vars(str2lang(term)),
+  #     error = function(e) {
+  #       tryCatch(
+  #         all.vars(stats::terms(stats::as.formula(paste("~", term)))),
+  #         error = function(e2) character(0)
+  #       )
+  #     }
+  #   )
+  #   out
+  # }
 
-  ## Exploit Poisson likelihood and try to simplify (where possible) the covariates combinations to make the implementation faster ----
+  ## Exploit Poisson likelihood and try to simplify (where possible) the covariates combinations to make the implementation faster
 
-  columns_of_interest <- unlist(lapply(learners, function(x) {
-    vars <- unique(c(x$covariates, x$treatment))
-    vars <- vars[is.character(vars) & !is.na(vars) & nzchar(vars)]
-    unlist(lapply(vars, .extract_symbols), use.names = FALSE)
-  }), use.names = FALSE)
-
-
-  columns_of_interest <- unique(columns_of_interest[(complete.cases(columns_of_interest))])
-
-  dt <- dt[, .(tij = sum(tij), deltaij = sum(deltaij),number_of_observations_tmp=.N,id=max(id)), by = c(unique(c(columns_of_interest, lhs_string)), "node", "k")]
-
-  dt[,number_of_observations_tmp:=NULL]
+  # columns_of_interest <- unlist(lapply(learners, function(x) {
+  #   vars <- unique(c(x$covariates, x$treatment))
+  #   vars <- vars[is.character(vars) & !is.na(vars) & nzchar(vars)]
+  #   unlist(lapply(vars, .extract_symbols), use.names = FALSE)
+  # }), use.names = FALSE)
+  #
+  #
+  # # if(!is.null(columns_of_interest)){
+  # # columns_of_interest <- unique(columns_of_interest[(complete.cases(columns_of_interest))])
+  # # }
+  #
+  # base_cols <- unique(c(columns_of_interest, lhs_string))
+  # grp_cols  <- c(base_cols, "node", "k")
+  #
+  # dt <- dt[, .(tij = sum(tij), deltaij = sum(deltaij),number_of_observations_tmp=.N,id=max(id)), by =grp_cols  ]
+  #
+  #
+  # if (dt[, any(number_of_observations_tmp > 1L)]) {
+  #   start <- suppressWarnings(max(dt$id, na.rm = TRUE))
+  #   if (!is.finite(start)) start <- 0L
+  #
+  #   # mapping: one new id per unique base_cols combo
+  #   map <- unique(dt[, ..base_cols])
+  #   setorderv(map, base_cols)
+  #   map[, id := start + seq_len(.N)]
+  #
+  #
+  #   dt[, id := NULL]
+  #   dt <- map[dt, on = base_cols]
+  # }
+  #
+  # dt[,number_of_observations_tmp:=NULL]
 
   #### fino a qui.
 
@@ -420,7 +441,6 @@ Superlearner <- function(data,
   data_by_competing_risk <- split(dt, by = "k")
 
   # Compute oos deviance scores for the learners ----
-
   dt_learners <- rbindlist(
     lapply(seq_along(dt_z), function(i) {
       DT <- copy(dt_z[[i]])
@@ -457,7 +477,7 @@ Superlearner <- function(data,
   dt_learners[,node:=factor(node,levels = sort(as.numeric(levels(node))),ordered=TRUE)]
 
   setorder(dt_learners, id, node, learner)
-
+  dt_learners <- dt_learners[complete.cases(dt_learners),]
 
   # Actual deviance computation
 
@@ -639,7 +659,7 @@ Superlearner <- function(data,
       )
 
 
-      # Compute the log-likelihood ----
+      # Compute the deviance ----
       ## !!!!!!!!!! This needs to be automated!! Now only for two CR ----
       tmp_cv[[1]][, rn := seq_len(.N), by=.(id, folder,node)]
       tmp_cv[[2]][, rn := seq_len(.N), by=.(id, folder,node)]
@@ -673,6 +693,7 @@ Superlearner <- function(data,
 
       # compute survival function
 
+      tmp_cv<- tmp_cv[complete.cases(tmp_cv),]
       hazard_terms <- paste0("cumulative_hazard_", 1:n_crisks)
       sum_expr <- paste(hazard_terms, collapse = " + ")
       survival_function_string <- paste0("tmp_cv[, survival_function := exp(-(", sum_expr, "))]")

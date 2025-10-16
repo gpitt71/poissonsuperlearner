@@ -15,12 +15,13 @@ knitr::opts_chunk$set(
 ```
 
 ```{r setup}
+knitr::opts_chunk$set(eval = FALSE, include = FALSE)
 library(tmlensemble)
 library(survival)
 library(prodlim)
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 # load the simulator 
 
 synthesize_TD1_riskengine_data <- function(n,keep = NULL){
@@ -95,21 +96,20 @@ synthesize_TD1_riskengine_data <- function(n,keep = NULL){
 
 ```
 
-# Model application on one simulated data set 
 
-```{r}
+# Replicating Cox 
+
+```{r eval=FALSE, include=FALSE}
 
 {
   set.seed(42)
-  sample_size=1000
+  sample_size=200
   d <- synthesize_TD1_riskengine_data(sample_size)}
 
 ```
 
 
-Simple data pre-processing. 
-
-```{r}
+```{r eval=FALSE, include=FALSE}
 # create id
 d[,id:=1:nrow(d)]
 
@@ -123,96 +123,42 @@ d[,c("sex",
 ```
 
 
-We define the models that we are using. 
+```{r}
+lglm <- Learner_gam(covariates = c("age"),
+                    intercept=FALSE)
+```
 
 ```{r}
+ out <- Superlearner(d,
+                        id="id",
+                        status="status_cvd",
+                        stratified_k_fold=FALSE,
+                        event_time = "time_cvd",
+                        learners=list(lglm),
+                        # number_of_nodes = 15,
+                        meta_learner_algorithms = c("glm","glmnet"),
+                        nfold = 20
+    )
+```
 
+```{r}
+cox.fit  <- CSC(Hist(time_cvd,status_cvd)~age,data=d)
 
-lgam <- Learner_gam(
-  covariates = c(
-    "sex"
-  ),
-  intercept = FALSE
-)
-
-
-lglm <- Learner_glmnet(
-  covariates = c(
-    "age"
-  ),
-  cross_validation = FALSE,
-  lambda = 0,
-  intercept = FALSE,
-  penalise_nodes = TRUE
-)
-
-lhal <- Learner_glmnet(
-  covariates = c(
-    "sex", "value_Smoking", "value_Motion", "value_Albuminuria"
-  ),
-  cross_validation = TRUE,
-  # lambda = 0,
-  intercept = FALSE,
-  penalise_nodes = TRUE
-)
-
+cph_age <- coxph(Surv(time_cvd, status_cvd==1) ~ age, data = d,x=TRUE)
 ```
 
 
 ```{r}
-
-# nodes <- unique(sort(sample(d$time_cvd,600)))
-
-# nodes <- unique(sort(c(nodes, d$time_cvd[d$time_cvd>max(nodes)])))
-
-outgam <- Superlearner(d,
-                    id="id",
-                    status="status_cvd",
-                    stratified_k_fold=FALSE,
-                    event_time = "time_cvd",
-                    learners=list(lgam),
-                    # nodes =  nodes,
-                    meta_learner_algorithms = c("glm_ml_1"),
-                    # variable_transformation=variable_transformations,
-                    nfold = 3
-)
-```
+coef(out$superlearner[[1]]$learners_fit)
+#0.05508513
 
 
-```{r}
-outglm <- Superlearner(d,
-                    id="id",
-                    status="status_cvd",
-                    stratified_k_fold=FALSE,
-                    event_time = "time_cvd",
-                    learners=list(lglm),
-                    nodes =  sort(nodes),
-                    meta_learner_algorithms = c("glm_ml_1"),
-                    
-                    # variable_transformation=variable_transformations,
-                    nfold = 20
-)
-```
+coef(cph_age)
+#0.05508513 
 
-```{r}
-out <- Superlearner(d,
-                    id="id",
-                    status="status_cvd",
-                    stratified_k_fold=FALSE,
-                    event_time = "time_cvd",
-                    learners=list(lgam,lglm),
-                    meta_learner_algorithms = c("glm"),
-                    # variable_transformation=variable_transformations,
-                    nfold = 3
-)
+coef(cox.fit)
+#0.05508513
 
-```
-```{r}
-coef(out$superlearner[[1]]$meta_learner_fit)
-```
-
-```{r}
-out$meta_learner_cross_validation
 ```
 
 ```{r}
@@ -228,23 +174,290 @@ d_test[,c("sex",
         "value_Motion"):=lapply(.SD,as.factor),.SDcols=c("sex",
         "value_Smoking",
         "value_Motion")]
+
+
+
+# This is different for unobserved times
+predictRisk(out,newdata=d_test[1:2,],times = c(5,10),cause=1)
+predictRisk(cph_age,newdata=d_test[1:2,],times = c(5,10),cause=1)
+predictRisk(cox.fit,newdata=d_test[1:2,],times = c(5,10),cause=1)
+
+# This is different for observed times
+tmp=sample(d$time_cvd,2)
+predictRisk(out,newdata=d_test[1:2,],times = tmp,cause=1)
+predictRisk(cph_age,newdata=d_test[1:2,],times = tmp,cause=1)
+predictRisk(cox.fit,newdata=d_test[1:2,],times = tmp,cause=1)
+
+comparables <- list("glm"=out,"survival.cox"=cph_age,"cox"=cox.fit)
+
+# the two cox score similar and the pwch scores differently. 
+
+b_score_1 = Score(comparables, #
+    formula=Hist(time_cvd,status_cvd)~ 1,data=d_test,times=c(5,10), cause=1)
 ```
 
-```{r}
+
+
+
+# Model application on one simulated data set 
+
+```{r eval=FALSE, include=FALSE}
+
+{
+  set.seed(42)
+  sample_size=5000
+  d <- synthesize_TD1_riskengine_data(sample_size)}
+
+```
+
+
+
+
+Simple data pre-processing. 
+
+```{r eval=FALSE, include=FALSE}
+# create id
+d[,id:=1:nrow(d)]
+
+#make factors factors
+d[,c("sex",
+        "value_Smoking",
+        "value_Motion"):=lapply(.SD,as.factor),.SDcols=c("sex",
+        "value_Smoking",
+        "value_Motion")]
+
+```
+
+```{r eval=FALSE, include=FALSE}
+  ## HAL(s) transformations -----
+
+    # helper: 15 interior breakpoints from lbound to ubound
+    mk_mid_breaks <- function(lbound, ubound, k = 15) {
+      if (!is.finite(lbound) || !is.finite(ubound) || lbound >= ubound) {
+        stop("Invalid bounds")
+      }
+      paste(format(seq(lbound, ubound, length.out = k), trim = TRUE), collapse = ",")
+    }
+
+    lbound_1 <- ceiling(mean(d$age) - 2*sd(d$age))
+    ubound_1 <- ceiling(mean(d$age) + 2*sd(d$age))
+    age_transform <- paste0(
+      "age_cut ~ sl_cut(age,breaks=c(0,",
+      mk_mid_breaks(lbound_1, ubound_1, 15),
+      ",100))"
+    )
+
+    lbound_2 <- ceiling(mean(d$value_SBP) - 2*sd(d$value_SBP))
+    ubound_2 <- ceiling(mean(d$value_SBP) + 2*sd(d$value_SBP))
+    value_SBP_transform <- paste0(
+      "value_SBP_cut ~ sl_cut(value_SBP,breaks=c(0,",
+      mk_mid_breaks(lbound_2, ubound_2, 15),
+      ",160))"
+    )
+
+    lbound_3 <- ceiling(mean(d$value_HBA1C) - 2*sd(d$value_HBA1C))
+    ubound_3 <- ceiling(mean(d$value_HBA1C) + 2*sd(d$value_HBA1C))
+    value_HBA1C_transform <- paste0(
+      "value_HBA1C_cut ~ sl_cut(value_HBA1C,breaks=c(0,",
+      mk_mid_breaks(lbound_3, ubound_3, 15),
+      ",100))"
+    )
+
+    lbound_4 <- ceiling(mean(d$value_LDL) - 2*sd(d$value_LDL))
+    ubound_4 <- ceiling(mean(d$value_LDL) + 2*sd(d$value_LDL))
+    value_LDL_transform <- paste0(
+      "value_LDL_cut ~ sl_cut(value_LDL,breaks=c(-2,",
+      mk_mid_breaks(lbound_4, ubound_4, 15),
+      ",10))"
+    )
+
+    lbound_5 <- ceiling(mean(log(d$eGFR)) - 2*sd(log(d$eGFR)))
+    ubound_5 <- ceiling(mean(log(d$eGFR)) + 2*sd(log(d$eGFR)))
+    value_egfr_transform <- paste0(
+      "log_eGFR_cut ~ sl_cut(log(eGFR),breaks=c(-5,",
+      mk_mid_breaks(lbound_5, ubound_5, 15),
+      ",10))"
+    )
+
+    lbound_6 <- ceiling(mean(d$diabetes_duration) - 2*sd(d$diabetes_duration))
+    ubound_6 <- ceiling(mean(d$diabetes_duration) + 2*sd(d$diabetes_duration))
+    value_diabetes_transform <- paste0(
+      "diabetes_duration_cut ~ sl_cut(diabetes_duration,breaks=c(0,",
+      mk_mid_breaks(lbound_6, ubound_6, 15),
+      ",80))"
+    )
+
+    variable_transformations <- c(
+      age_transform,#
+      value_SBP_transform,#
+      value_HBA1C_transform,#
+      value_LDL_transform,#
+      value_egfr_transform,#
+      value_diabetes_transform#
+    )
+```
+
+We define the models that we are using. 
+
+```{r eval=FALSE, include=FALSE}
+
+  lgam <- Learner_gam(covariates = c("s(age)",
+                                     "s(diabetes_duration)",
+                                      "s(value_LDL)",
+                                     "s(value_SBP)",
+                                     "s(value_HBA1C)",
+                                      "s(eGFR)"),
+                        intercept=FALSE)
+
+    lglm <- Learner_glmnet(covariates = c("sex",
+              "value_Smoking", "value_Motion", "value_Albuminuria"),
+                         cross_validation=FALSE,
+                         lambda=0,
+                         intercept=FALSE,
+                         penalise_nodes=TRUE)
+
+
+    lhal_1 <- Learner_hal(covariates = c("age_cut"),
+                        cross_validation=FALSE,
+                        lambda=0.1,
+                        intercept=FALSE,
+                        penalise_nodes=FALSE)
+
+    lhal_2 <- Learner_hal(covariates = c("diabetes_duration_cut"),
+                          cross_validation=FALSE,
+                          lambda=0.1,
+                          intercept=FALSE,
+                          penalise_nodes=FALSE)
+
+    lhal_3 <- Learner_hal(covariates = c("value_LDL_cut"),
+                          cross_validation=FALSE,
+                          lambda=0.1,
+                          intercept=FALSE,
+                          penalise_nodes=FALSE)
+
+    lhal_4 <- Learner_hal(covariates = c("log_eGFR_cut"),
+                          cross_validation=FALSE,
+                          lambda=0.1,
+                          intercept=FALSE,
+                          penalise_nodes=FALSE)
+
+    lhal_5 <- Learner_hal(covariates = c("value_SBP_cut"),
+                          cross_validation=FALSE,
+                          lambda=0.1,
+                          intercept=FALSE,
+                          penalise_nodes=FALSE)
+
+    lhal_6 <- Learner_hal(covariates = c("value_HBA1C_cut"),
+                          cross_validation=FALSE,
+                          lambda=0.1,
+                          intercept=FALSE,
+                          penalise_nodes=FALSE)
+
+
+
+    null_model <- Learner_glmnet(
+      cross_validation=FALSE,
+      lambda=0,
+      intercept=FALSE,
+      penalise_nodes=TRUE)
+```
+
+```{r eval=FALSE, include=FALSE}
+
+learners_list = list(lglm, lgam, lhal_1, lhal_2, lhal_3, lhal_4, lhal_5, lhal_6)
+
+ out <- Superlearner(d,
+                        id="id",
+                        status="status_cvd",
+                        stratified_k_fold=FALSE,
+                        event_time = "time_cvd",
+                        learners=learners_list,
+                        number_of_nodes = 15,
+                        min_depth=length(learners_list),
+                        meta_learner_algorithms = c("glm","glmnet"),
+                        variable_transformation=variable_transformations,
+                        nfold = 20
+    )
+
+```
+
+```{r eval=FALSE, include=FALSE}
+
+# nodes <- unique(sort(sample(d$time_cvd,600)))
+
+# nodes <- unique(sort(c(nodes, d$time_cvd[d$time_cvd>max(nodes)])))
+
+outgam <- Superlearner(d,
+                    id="id",
+                    status="status_cvd",
+                    stratified_k_fold=FALSE,
+                    event_time = "time_cvd",
+                    learners=list(lgam),
+                    number_of_nodes = 15,
+                    # nodes =  nodes,
+                    meta_learner_algorithms = c("glm_ml_1"),
+                    # variable_transformation=variable_transformations,
+                    nfold = 3
+)
+```
+
+
+```{r eval=FALSE, include=FALSE}
+outglm <- Superlearner(d,
+                    id="id",
+                    status="status_cvd",
+                    stratified_k_fold=FALSE,
+                    event_time = "time_cvd",
+                    learners=list(lglm),
+                    number_of_nodes =  15,
+                    meta_learner_algorithms = c("glm_ml_2"),
+                    
+                    # variable_transformation=variable_transformations,
+                    nfold = 5
+)
+```
+
+```{r eval=FALSE, include=FALSE}
+coef(out$superlearner[[1]]$meta_learner_fit)
+```
+
+```{r eval=FALSE, include=FALSE}
+out$meta_learner_cross_validation
+```
+
+```{r eval=FALSE, include=FALSE}
+
+d_test <- synthesize_TD1_riskengine_data(floor(sample_size*30/70))
+
+# create id
+# d_test[,id:=1:nrow(d_test)]
+
+#make factors factors
+d_test[,c("sex",
+        "value_Smoking",
+        "value_Motion"):=lapply(.SD,as.factor),.SDcols=c("sex",
+        "value_Smoking",
+        "value_Motion")]
+```
+
+```{r eval=FALSE, include=FALSE}
     # cox.fit  <- CSC(Hist(time_cvd,status_cvd)~value_Motion+value_Smoking+eGFR+value_Albuminuria+value_HBA1C+value_LDL+value_SBP+diabetes_duration+age+sex,data=d,cause=1)
 
 
-    bchm.fit  <- CSC(Hist(time_cvd,status_cvd)~sex,data=d)
-    bchm.fit1  <- coxph(Surv(time_cvd,status_cvd==1)~sex,data=d,x=TRUE)
-    comparables <- list(bchm.fit,bchm.fit1,"gam"=outgam)
+    cox.fit  <- CSC(Hist(time_cvd,status_cvd)~1,data=d,cause=1)
+
+    comparables <- list("sl"=out,"glm"=outglm,"gam"=outgam,"cox"=cox.fit)
     
-    b_score = Score(comparables, #
-    formula=Hist(time_cvd,status_cvd)~ 1,data=d_test,times=sample(d$time_cvd, 3), cause=1)
+    b_score_1 = Score(comparables, #
+    formula=Hist(time_cvd,status_cvd)~ 1,data=d_test,times=c(5,10), cause=1)
+    
+    b_score_2 = Score(comparables, #
+    formula=Hist(time_cvd,status_cvd)~ 1,data=d_test,times=c(5,10), cause=2)
 
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 p1 <- predict(bchm.fit,newdata=d_test[1:2,],
         times=sort(d$time_cvd)[1],cause =1,type="survival")
 
@@ -272,7 +485,7 @@ p4 <- predictRisk(outgam,newdata=d_test1:9,,
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 b_score$Brier$score[,.SD,.SDcols=c("model","Brier")]
 ```
 
@@ -281,7 +494,7 @@ The hyper-parameters tuning suggested that for applying the HAL, we should try t
 
 We gain this type of knowledge from the simulations but a practitioner would know about this.
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 lbound_1 = ceiling(mean(d$age)-2*sd(d$age))
 ubound_1 = ceiling(mean(d$age)+2*sd(d$age))
@@ -332,7 +545,7 @@ variable_transformations <- c(
 
 We now define the super-learner.
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 out <- Superlearner(d,
                     id="id",
@@ -347,10 +560,10 @@ out <- Superlearner(d,
 )
 
 ```
-```{r}
+```{r eval=FALSE, include=FALSE}
 coef(out$superlearner[[1]]$meta_learner_fit)
 ```
-```{r}
+```{r eval=FALSE, include=FALSE}
 out1 <- Superlearner(d,
                     id="id",
                     status="status_cvd",
@@ -364,7 +577,7 @@ out1 <- Superlearner(d,
 )
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 out2 <- Superlearner(d,
                     id="id",
                     status="status_cvd",
@@ -378,7 +591,7 @@ out2 <- Superlearner(d,
 )
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 out3 <- Superlearner(d,
                     id="id",
                     status="status_cvd",
@@ -392,7 +605,7 @@ out3 <- Superlearner(d,
 )
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 d_test <- synthesize_TD1_riskengine_data(1000)
 
@@ -407,7 +620,7 @@ d_test[,c("sex",
         "value_Motion")]
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
     cox.fit  <- CSC(Hist(time_cvd,status_cvd)~age+sex+diabetes_duration+value_SBP+value_LDL+value_HBA1C+value_Smoking+value_Motion+value_Albuminuria+eGFR,data=d,cause=1)
 
     b_score = Score(list("cox"=cox.fit,"sl"=out,"glm"=out1,"gam"=out2,"glmnet"=out3),
@@ -416,7 +629,7 @@ d_test[,c("sex",
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 b_score
 ```
 

@@ -9,3 +9,7 @@ pch_survival <- function(id, dt, haz, na_is_zero = FALSE) {
     .Call(`_tmlensemble_pch_survival`, id, dt, haz, na_is_zero)
 }
 
+poisson_deviance_cpp <- function(folder, learner, lambda, tij, delta) {
+    .Call(`_tmlensemble_poisson_deviance_cpp`, folder, learner, lambda, tij, delta)
+}
+

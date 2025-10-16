@@ -40,10 +40,26 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// poisson_deviance_cpp
+DataFrame poisson_deviance_cpp(IntegerVector folder, CharacterVector learner, NumericMatrix lambda, NumericVector tij, IntegerMatrix delta);
+RcppExport SEXP _tmlensemble_poisson_deviance_cpp(SEXP folderSEXP, SEXP learnerSEXP, SEXP lambdaSEXP, SEXP tijSEXP, SEXP deltaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type folder(folderSEXP);
+    Rcpp::traits::input_parameter< CharacterVector >::type learner(learnerSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type lambda(lambdaSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type tij(tijSEXP);
+    Rcpp::traits::input_parameter< IntegerMatrix >::type delta(deltaSEXP);
+    rcpp_result_gen = Rcpp::wrap(poisson_deviance_cpp(folder, learner, lambda, tij, delta));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_tmlensemble_pch_absolute_risk", (DL_FUNC) &_tmlensemble_pch_absolute_risk, 6},
     {"_tmlensemble_pch_survival", (DL_FUNC) &_tmlensemble_pch_survival, 4},
+    {"_tmlensemble_poisson_deviance_cpp", (DL_FUNC) &_tmlensemble_poisson_deviance_cpp, 5},
     {NULL, NULL, 0}
 };
 

@@ -634,6 +634,7 @@ create_formula <- function(covariates=NA_character_,
                            add_nodes=TRUE){
 
 
+ xs<- NULL
 
   if (!any(is.na( covariates))) {
   xs <- paste(covariates, collapse = "+")
@@ -995,47 +996,53 @@ out <- c(out,one_time_learner)
         intercept = FALSE,
         add_nodes = FALSE,
         penalise_nodes = TRUE
-      ),
+      )#,
+
+
+      #next paper ----
       ## Z1*Z2*node
-      glmnet_ml_2 =  Learner_glmnet(
-        covariates = c(z_covariates, paste0(z_covariates,":node")),
-        cross_validation = TRUE,
-        intercept = FALSE,
-        add_nodes = TRUE,
-        penalise_nodes = TRUE
-      ),
+      # glmnet_ml_2 =  Learner_glmnet(
+      #   covariates = c(z_covariates, paste0(z_covariates,":node")),
+      #   cross_validation = TRUE,
+      #   intercept = FALSE,
+      #   add_nodes = TRUE,
+      #   penalise_nodes = TRUE
+      # ),
       ## Z1*Z2*node - not penalised
-      glmnet_ml_3 =  Learner_glmnet(
-        covariates =  c(z_covariates, paste0(z_covariates,":node")),
-        cross_validation = TRUE,
-        intercept = FALSE,
-        add_nodes = TRUE,
-        penalise_nodes = FALSE
-      ),
+      # glmnet_ml_3 =  Learner_glmnet(
+      #   covariates =  c(z_covariates, paste0(z_covariates,":node")),
+      #   cross_validation = TRUE,
+      #   intercept = FALSE,
+      #   add_nodes = TRUE,
+      #   penalise_nodes = FALSE
+      # ),
       ## Z1+Z2+node
-      glmnet_ml_4 =  Learner_glmnet(
-        covariates = z_covariates,
-        cross_validation = TRUE,
-        intercept = FALSE,
-        add_nodes = TRUE,
-        penalise_nodes = TRUE
-      ),
+      # glmnet_ml_4 =  Learner_glmnet(
+      #   covariates = z_covariates,
+      #   cross_validation = TRUE,
+      #   intercept = FALSE,
+      #   add_nodes = TRUE,
+      #   penalise_nodes = TRUE
+      # ),
       ## Z1+Z2+node - not penalised
-      glmnet_ml_5 =  Learner_glmnet(
-        covariates = z_covariates,
-        cross_validation = TRUE,
-        intercept = FALSE,
-        add_nodes = TRUE,
-        penalise_nodes = FALSE
-      ),
+      # glmnet_ml_5 =  Learner_glmnet(
+      #   covariates = z_covariates,
+      #   cross_validation = TRUE,
+      #   intercept = FALSE,
+      #   add_nodes = TRUE,
+      #   penalise_nodes = FALSE
+      # ),
       ## Z1+Z2+Z1:node+Z2:node
-      glmnet_ml_6 =  Learner_glmnet(
-        covariates =c(z_covariates, paste0(z_covariates,":node")),
-        cross_validation = TRUE,
-        intercept = FALSE,
-        add_nodes = FALSE,
-        penalise_nodes = TRUE
-      ))
+      # glmnet_ml_6 =  Learner_glmnet(
+      #   covariates =c(z_covariates, paste0(z_covariates,":node")),
+      #   cross_validation = TRUE,
+      #   intercept = FALSE,
+      #   add_nodes = FALSE,
+      #   penalise_nodes = TRUE
+      # )
+      #
+
+      )
 
     out <- c(out,glmnet_meta_learners)
 
@@ -1056,34 +1063,34 @@ out <- c(out,one_time_learner)
         add_nodes = FALSE,
         penalise_nodes = TRUE,
         lambda=0
-      ),
+      )#,
       ## Z1*Z2*node
-      glm_ml_2 =  Learner_glmnet(
-        covariates = c(z_covariates, paste0(z_covariates,":node")),
-        cross_validation = FALSE,
-        intercept = FALSE,
-        add_nodes = TRUE,
-        penalise_nodes = TRUE,
-        lambda=0
-      ),
+      # glm_ml_2 =  Learner_glmnet(
+      #   covariates = c(z_covariates, paste0(z_covariates,":node")),
+      #   cross_validation = FALSE,
+      #   intercept = FALSE,
+      #   add_nodes = TRUE,
+      #   penalise_nodes = TRUE,
+      #   lambda=0
+      # ),
       ## Z1+Z2+node
-      glm_ml_3 =  Learner_glmnet(
-        covariates = z_covariates,
-        cross_validation = FALSE,
-        intercept = FALSE,
-        add_nodes = TRUE,
-        penalise_nodes = TRUE,
-        lambda=0
-      ),
+      # glm_ml_3 =  Learner_glmnet(
+      #   covariates = z_covariates,
+      #   cross_validation = FALSE,
+      #   intercept = FALSE,
+      #   add_nodes = TRUE,
+      #   penalise_nodes = TRUE,
+      #   lambda=0
+      # ),
       ## Z1+Z2+Z1:node+Z2:node
-      glm_ml_4 =  Learner_glmnet(
-        covariates =c(z_covariates, paste0(z_covariates,":node")),
-        cross_validation = FALSE,
-        intercept = FALSE,
-        lambda=0,
-        add_nodes = FALSE,
-        penalise_nodes = TRUE
-      )
+      # glm_ml_4 =  Learner_glmnet(
+      #   covariates =c(z_covariates, paste0(z_covariates,":node")),
+      #   cross_validation = FALSE,
+      #   intercept = FALSE,
+      #   lambda=0,
+      #   add_nodes = FALSE,
+      #   penalise_nodes = TRUE
+      # )
 
       )
 
@@ -1181,8 +1188,6 @@ meta_learner_cross_validation <- function(dt,
 
 
 
-
-
   # model output ---
   out<-NULL
 
@@ -1204,7 +1209,7 @@ meta_learner_cross_validation <- function(dt,
     oos_data[['node']],
     oos_data[['deltaij']],
     v_fold_id,
-    as.vector(meta_learner$predictor(meta_learner_fit, oos_data))
+    as.vector(meta_learner$private_predictor(meta_learner_fit, oos_data))
   )
 
   setnames(fitted_hazard,c("id","node",paste0("delta_",cr_ix),"folder",paste0("pwch_", cr_ix)))
