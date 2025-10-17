@@ -4,8 +4,18 @@
 #'
 #' @param data \code{data.frame}, input data to be pre-processed.
 #' @param id \code{character}, identifier column.
+#' @param stratified_k_fold \code{logical}, if TRUE we stratify the V-folds in order to obtain the same number of competing event in each folder.
+#' @param start_time \code{character}, for left-truncated data, the starting point of each observation.
+#' @param end_time \code{character}, for left-truncated data, the starting point of each observation.
 #' @param status \code{character}, status column.
-#' @param nodes \code{numeric}, time grid to construct the piece-wise constant model.
+#' @param event_time \code{character}, time-to-event column in competing risks and survival applications.
+#' @param learners \code{list}, list of learners to include in the ensemble. If only one learner is included, the learner is applied to the full data.
+#' @param min_depth \code{numeric}, minimum number of learners included in the ensemble (not yet implemented).
+#' @param meta_learner_algorithms \code{character}, the ensemble is estimated using one of the given algorithms. The best perfoming based on the Poisson Deviance.
+#' @param variable_transformation \code{list}, any variable transformation to apply to the data.
+#' @param nfold \code{numeric}, number of folds to construct the ensemble.
+#' @param number_of_nodes \code{numeric}, number of time points sampled from the observed time to construct the nodes. Alternative to \code{nodes}, if both NULL we take all the observed time points as nodes.
+#' @param nodes \code{numeric}, time grid to construct the piece-wise constant model. Alternative to \code{number_of_nodes}, if both NULL we take all the observed time points as nodes.
 #'
 #' @return superlearner
 #'

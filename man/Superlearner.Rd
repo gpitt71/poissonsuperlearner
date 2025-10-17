@@ -27,9 +27,29 @@ Superlearner(
 
 \item{id}{\code{character}, identifier column.}
 
+\item{stratified_k_fold}{\code{logical}, if TRUE we stratify the V-folds in order to obtain the same number of competing event in each folder.}
+
+\item{start_time}{\code{character}, for left-truncated data, the starting point of each observation.}
+
+\item{end_time}{\code{character}, for left-truncated data, the starting point of each observation.}
+
 \item{status}{\code{character}, status column.}
 
-\item{nodes}{\code{numeric}, time grid to construct the piece-wise constant model.}
+\item{event_time}{\code{character}, time-to-event column in competing risks and survival applications.}
+
+\item{learners}{\code{list}, list of learners to include in the ensemble. If only one learner is included, the learner is applied to the full data.}
+
+\item{number_of_nodes}{\code{numeric}, number of time points sampled from the observed time to construct the nodes. Alternative to \code{nodes}, if both NULL we take all the observed time points as nodes.}
+
+\item{nodes}{\code{numeric}, time grid to construct the piece-wise constant model. Alternative to \code{number_of_nodes}, if both NULL we take all the observed time points as nodes.}
+
+\item{min_depth}{\code{numeric}, minimum number of learners included in the ensemble (not yet implemented).}
+
+\item{meta_learner_algorithms}{\code{character}, the ensemble is estimated using one of the given algorithms. The best perfoming based on the Poisson Deviance.}
+
+\item{variable_transformation}{\code{list}, any variable transformation to apply to the data.}
+
+\item{nfold}{\code{numeric}, number of folds to construct the ensemble.}
 }
 \value{
 superlearner
