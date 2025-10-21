@@ -26,6 +26,22 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// pch_absolute_risk_euler
+NumericVector pch_absolute_risk_euler(IntegerVector id, NumericVector dt, NumericMatrix haz, int cause_idx, const bool one_based, const bool na_is_zero);
+RcppExport SEXP _tmlensemble_pch_absolute_risk_euler(SEXP idSEXP, SEXP dtSEXP, SEXP hazSEXP, SEXP cause_idxSEXP, SEXP one_basedSEXP, SEXP na_is_zeroSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type id(idSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type dt(dtSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type haz(hazSEXP);
+    Rcpp::traits::input_parameter< int >::type cause_idx(cause_idxSEXP);
+    Rcpp::traits::input_parameter< const bool >::type one_based(one_basedSEXP);
+    Rcpp::traits::input_parameter< const bool >::type na_is_zero(na_is_zeroSEXP);
+    rcpp_result_gen = Rcpp::wrap(pch_absolute_risk_euler(id, dt, haz, cause_idx, one_based, na_is_zero));
+    return rcpp_result_gen;
+END_RCPP
+}
 // pch_survival
 NumericVector pch_survival(IntegerVector id, NumericVector dt, NumericMatrix haz, const bool na_is_zero);
 RcppExport SEXP _tmlensemble_pch_survival(SEXP idSEXP, SEXP dtSEXP, SEXP hazSEXP, SEXP na_is_zeroSEXP) {
@@ -58,6 +74,7 @@ END_RCPP
 
 static const R_CallMethodDef CallEntries[] = {
     {"_tmlensemble_pch_absolute_risk", (DL_FUNC) &_tmlensemble_pch_absolute_risk, 6},
+    {"_tmlensemble_pch_absolute_risk_euler", (DL_FUNC) &_tmlensemble_pch_absolute_risk_euler, 6},
     {"_tmlensemble_pch_survival", (DL_FUNC) &_tmlensemble_pch_survival, 4},
     {"_tmlensemble_poisson_deviance_cpp", (DL_FUNC) &_tmlensemble_poisson_deviance_cpp, 5},
     {NULL, NULL, 0}

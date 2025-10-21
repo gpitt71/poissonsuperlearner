@@ -1,6 +1,6 @@
-#' Individual Data Pre-Processing
+#' Predictions of the Poisson Super-Learner
 #'
-#' This function predicts the survivor function or the hazard using the superlearner.
+#' This function predicts the survivor function, the piece-wise constant hazard and the absolute risk using the superlearner.
 #'
 #' @return predictions
 #'
@@ -10,9 +10,13 @@ predict.poisson_superlearner <- function(object,
                                          times,
                                          type = "survival",
                                          cause = 1,
+                                         absolute_risk_integration_method = c("exact","approx"),
                                          ...) {
-  setDT(newdata)
 
+
+  absolute_risk_integration_method <- match.arg(absolute_risk_integration_method)
+
+  setDT(newdata)
 
 
   tmp <- copy(newdata)
@@ -138,21 +142,24 @@ predict.poisson_superlearner <- function(object,
 
   data_pp[, deltatime := tij][, tij := 1]
 
-  if (length(object$learners) == 1) {
+  if (length(object$learners) == 1L) {
 
+    dt_pred <- lapply(object$superlearner, function(sl_fit) {
+      object$learners[[1]]$private_predictor(
+        model = sl_fit$learners_fit, newdata = data_pp)
+    })
 
-    dt_pred <- mapply(
-      function(crisk_cause,
-               model,
-               superl_fit,
-               newdata)
-        model$private_predictor(model = superl_fit$learners_fit, newdata = data_pp),
-      as.list(1:object$data_info$n_crisks),
-      object$superlearner,
-      MoreArgs = list(newdata = data_pp, model = object$learners[[1]]),
-      SIMPLIFY = F
-    )
-
+    # dt_pred <- mapply(
+    #   function(crisk_cause,
+    #            model,
+    #            superl_fit,
+    #            newdata)
+    #     model$private_predictor(model = superl_fit$learners_fit, newdata = data_pp),
+    #   as.list(1:object$data_info$n_crisks),
+    #   object$superlearner,
+    #   MoreArgs = list(newdata = data_pp, model = object$learners[[1]]),
+    #   SIMPLIFY = F
+    # )
 
   } else{
     #
@@ -227,37 +234,48 @@ predict.poisson_superlearner <- function(object,
 
 
   # compute survival function
-  #
 
+  ## c++
   haz <- as.matrix(data_pp[, .SD, .SDcols = patterns("^pwch_[0-9]+$")])
-
   S <- pch_survival(id = data_pp$id, dt = data_pp$deltatime, haz = haz)
-
   data_pp[, survival_function := S]
 
-  data_pp[, absolute_risk := pch_absolute_risk(id, deltatime, haz, cause_idx = cause)]
+  if (absolute_risk_integration_method == "exact") {
+    data_pp[, absolute_risk := pch_absolute_risk(id, deltatime, haz, cause_idx = cause)]
+  } else{
+    data_pp[, absolute_risk :=
+              pch_absolute_risk_euler(id, deltatime, haz, cause_idx = cause)]
 
-  # hazard_terms <- paste0("cumulative_hazard_", 1:object$data_info$n_crisks)
-  # sum_expr <- paste(pwch_cols, collapse = " + ")
-  # survival_function_string <- paste0("data_pp[, survival_function := cumprod(exp(-(", sum_expr, ")*deltatime)),by=id]")
+  }
 
-  # eval(parse(text = survival_function_string))
-
-  # shift survival function
-
+  # abs_risk approx
   # data_pp[, survival_function_shift := shift(survival_function, fill = 1), by =
   #           id]
-
   # absolute_risk_string <- paste0(
   #   "data_pp[, absolute_risk_2 := cumsum(survival_function_shift * pwch_",
   #   cause,
-  #   "/pwch_dot * (1-exp(-pwch_dot*deltatime))), by = id]"
+  #   "*deltatime), by = id]"
   # )
-
-
   # eval(parse(text = absolute_risk_string))
 
 
+  ## non c++
+  # hazard_terms <- paste0("cumulative_hazard_", 1:object$data_info$n_crisks)
+  # sum_expr <- paste(pwch_cols, collapse = " + ")
+  # survival_function_string <- paste0("data_pp[, survival_function := exp(-cumsum((", sum_expr, ")*deltatime)),by=id]")
+  # eval(parse(text = survival_function_string))
+
+  # shift survival function
+  # data_pp[, survival_function_shift := shift(survival_function, fill = 1), by =
+  #           id]
+  # absolute_risk_string <- paste0(
+  #   "data_pp[, absolute_risk := cumsum(survival_function_shift * pwch_",
+  #   cause,
+  #   "/pwch_dot * (1-exp(-pwch_dot*deltatime))), by = id]"
+  # )
+  # eval(parse(text = absolute_risk_string))
+
+  ####
   data_pp <- data_pp[, .SD[.N], by = id][, times := as.numeric(as.character(node)) +
                                            deltatime]
 

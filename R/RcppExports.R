@@ -5,6 +5,10 @@ pch_absolute_risk <- function(id, dt, haz, cause_idx, one_based = TRUE, na_is_ze
     .Call(`_tmlensemble_pch_absolute_risk`, id, dt, haz, cause_idx, one_based, na_is_zero)
 }
 
+pch_absolute_risk_euler <- function(id, dt, haz, cause_idx, one_based = TRUE, na_is_zero = FALSE) {
+    .Call(`_tmlensemble_pch_absolute_risk_euler`, id, dt, haz, cause_idx, one_based, na_is_zero)
+}
+
 pch_survival <- function(id, dt, haz, na_is_zero = FALSE) {
     .Call(`_tmlensemble_pch_survival`, id, dt, haz, na_is_zero)
 }

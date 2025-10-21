@@ -2,7 +2,7 @@
 % Please edit documentation in R/predict.R
 \name{predict.poisson_superlearner}
 \alias{predict.poisson_superlearner}
-\title{Individual Data Pre-Processing}
+\title{Predictions of the Poisson Super-Learner}
 \usage{
 \method{predict}{poisson_superlearner}(object, newdata, times, type = "survival", cause = 1, ...)
 }
@@ -10,5 +10,5 @@
 predictions
 }
 \description{
-This function predicts the survivor function or the hazard using the superlearner.
+This function predicts the survivor function, the piece-wise constant hazard and the absolute risk using the superlearner.
 }

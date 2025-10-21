@@ -4,11 +4,11 @@ using namespace Rcpp;
 
 // [[Rcpp::export]]
 NumericVector pch_absolute_risk(IntegerVector id,
-                                       NumericVector dt,
-                                       NumericMatrix haz,
-                                       int cause_idx,
-                                       const bool one_based = true,
-                                       const bool na_is_zero = false) {
+                                NumericVector dt,
+                                NumericMatrix haz,
+                                int cause_idx,
+                                const bool one_based = true,
+                                const bool na_is_zero = false) {
   const R_xlen_t n = id.size();
   if (dt.size() != n || haz.nrow() != n) stop("Length mismatch.");
   if (haz.ncol() < 1) stop("haz must have >= 1 column.");

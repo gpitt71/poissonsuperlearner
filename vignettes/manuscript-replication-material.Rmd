@@ -105,7 +105,7 @@ synthesize_TD1_riskengine_data <- function(n,keep = NULL){
 
 Import data and remove ties.
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 veteran <- survival::veteran
 # remove ties
@@ -118,7 +118,7 @@ vetu_test <- vetu[71:100,]
 
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 cph_age <- coxph(Surv(time, status) ~ age, data = vetu_train,x=TRUE)
 coef(cph_age)
 
@@ -138,7 +138,7 @@ outgam <- Superlearner(vetu_train,
 
 Estimates are correct.
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 coef(cph_age)
 
 ## US
@@ -147,7 +147,7 @@ head(coef(outgam$superlearner[[1]]$learners_fit))[['age']]
 
 As expected, same risk predictions for observed times.
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 {
   set.seed(42)
@@ -165,20 +165,33 @@ b<-predictRisk(outgam,newdata=vetu_test,
 
 Net of some numerical difference. 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 a-b
 ```
 
 Why the models are scored differently?
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 x=Score(list("GAM"=outgam,"CPH"=cph_age), #
-        formula=Hist(time,status)~ 1,data=vetu_test,
-        times = some_times, cause=1)
+        formula=Hist(time,status)~ 1,data=vetu_test, null.model=FALSE,
+        times = 5, cause=1)
 
 x$Brier$score
 ```
 
+```{r eval=FALSE, include=FALSE}
+x1=Score(list("GAM"=outgam,"CPH"=cph_age), #
+        formula=Hist(time,status)~ 1,data=vetu_test,
+        predictRisk.args = list("coxph"=list(product.limit=FALSE)),
+        times = some_times, cause=1)
+
+x2=Score(list("GAM"=outgam,"CPH"=cph_age), #
+        formula=Hist(time,status)~ 1,data=vetu_test,
+        predictRisk.args = list("coxph"=list(product.limit=TRUE)),
+        times = some_times, cause=1)
+
+
+```
 
 
 ## Our simulation data
@@ -207,12 +220,12 @@ d[,c("sex",
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 lglm <- Learner_gam(covariates = c("age"),
                     intercept=FALSE)
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
  out <- Superlearner(d,
                         id="id",
                         status="status_cvd",
@@ -224,20 +237,16 @@ lglm <- Learner_gam(covariates = c("age"),
     )
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 cox.fit  <- CSC(Hist(time_cvd,status_cvd)~age,data=d)
 
-cph_age <- coxph(Surv(time_cvd, status_cvd==1) ~ age, data = d,x=TRUE)
 ```
 
 I think the estimation part correct.
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 coef(out$superlearner[[1]]$learners_fit)[['age']]
 #0.05508513
-
-coef(cph_age)
-#0.05508513 
 
 coef(cox.fit)
 #0.05508513
@@ -246,7 +255,7 @@ coef(cox.fit)
 
 Strange out-of sample evaluation. Sligthly different predicted risks.
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 d_test <- synthesize_TD1_riskengine_data(floor(sample_size*30/70))
 
@@ -260,23 +269,61 @@ d_test[,c("sex",
         "value_Smoking",
         "value_Motion")]
 
+```
 
 
+```{r}
+tmp=sort(d$time_cvd)
+
+a= predict(cox.fit,newdata=d_test[1],times=tmp,cause=1,product.limit = FALSE)
+b= predict(cox.fit,newdata=d_test[1],times=tmp,cause=1,product.limit = TRUE)
+
+x= predict(cox.fit,newdata=d_test[1],times=tmp,cause=1,type="survival",product.limit = FALSE)
+y= predict(cox.fit,newdata=d_test[1],times=tmp,cause=1,type="survival",product.limit = TRUE)
+
+z = predict(out,newdata=d_test[1],times=tmp,cause=1,absolute_risk_integration_method = "approx")
+
+w = predict(out,newdata=d_test[1],times=tmp,cause=1,absolute_risk_integration_method = "exact")
+
+```
+
+
+```{r}
+# same as us
+
+max(x$survival-z$survival_function)
+
+# much different than product.limit=TRUE
+max(x$survival-y$survival)
+
+```
+
+```{r}
+
+max(a$absRisk-b$absRisk)
+sum(a$absRisk-z$absolute_risk)
+sum(w$absolute_risk-z$absolute_risk)
+```
+
+
+```{r eval=FALSE, include=FALSE}
 # This is different for unobserved times
 predictRisk(out,newdata=d_test[1:2,],times = c(5,10),cause=1)
 predictRisk(cox.fit,newdata=d_test[1:2,],times = c(5,10),cause=1)
 
 # This is different for observed times
 tmp=sort(d$time_cvd)
-predictRisk(out,newdata=d_test[1:2,],times = tmp[11:12],cause=1)
-predictRisk(cox.fit,newdata=d_test[1:2,],times = tmp[11:12],cause=1)
+predictRisk(out,newdata=d_test[1:2,],times = tmp[4],cause=1)
+predictRisk(cox.fit,newdata=d_test[1:2,],times = tmp[4],cause=1,product.limit=FALSE)
 
-comparables <- list("glm"=out,"survival.cox"=cph_age,"cox"=cox.fit)
+comparables <- list("glm"=out,"cox"=cox.fit)
 
 # the two cox score similar and the pwch scores differently. 
 
 b_score_1 = Score(comparables, #
-    formula=Hist(time_cvd,status_cvd)~ 1,data=d_test,times=c(5,10), cause=1)
+    formula=Hist(time_cvd,status_cvd)~ 1,
+      predictRisk.args=list("CauseSpecificCox"=list(product.limit=FALSE)),
+    data=d_test,times=tmp[10:12], cause=1)
 ```
 
 ### Issues with glmnet for small samples
@@ -286,14 +333,14 @@ The algorithm struggles in converging for few data. Here an example. We need to 
 
 Example with no threshold .
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 lglmnet <- Learner_glmnet(covariates = c("age"),
                     intercept=FALSE,
                     cross_validation=FALSE,
                     lambda=0)
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
  out <- Superlearner(d,
                         id="id",
                         status="status_cvd",
@@ -305,14 +352,14 @@ lglmnet <- Learner_glmnet(covariates = c("age"),
     )
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 coef(out$superlearner[[1]]$learners_fit)['age',]
 #0.05231385
 ```
 
 Example with threshold.
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 lglmnet <- Learner_glmnet(covariates = c("age"),
                     intercept=FALSE,
                     cross_validation=FALSE,
@@ -320,7 +367,7 @@ lglmnet <- Learner_glmnet(covariates = c("age"),
                     lambda=0)
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
  out <- Superlearner(d,
                         id="id",
                         status="status_cvd",
@@ -331,7 +378,7 @@ lglmnet <- Learner_glmnet(covariates = c("age"),
                         nfold = 20
     )
 ```
-```{r}
+```{r eval=FALSE, include=FALSE}
 coef(out$superlearner[[1]]$learners_fit)['age',]
 #0.05508457
 ```
