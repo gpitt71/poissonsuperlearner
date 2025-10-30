@@ -17,6 +17,7 @@ Depends:
     riskRegression,
     Matrix,
     glmnet,
+    hal9001,
     mgcv,
     xgboost
 Imports: 

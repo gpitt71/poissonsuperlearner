@@ -281,7 +281,6 @@ predict.poisson_superlearner <- function(object,
 
 
 
-
   columns_ss <- unique(
     c(
       colnames(newdata),

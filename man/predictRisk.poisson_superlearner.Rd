@@ -4,7 +4,14 @@
 \alias{predictRisk.poisson_superlearner}
 \title{Individual Data Pre-Processing}
 \usage{
-\method{predictRisk}{poisson_superlearner}(object, newdata, times, cause = 1, ...)
+\method{predictRisk}{poisson_superlearner}(
+  object,
+  newdata,
+  times,
+  cause = 1,
+  absolute_risk_integration = "exact",
+  ...
+)
 }
 \value{
 predictions

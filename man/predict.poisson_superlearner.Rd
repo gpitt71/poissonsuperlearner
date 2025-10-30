@@ -4,7 +4,15 @@
 \alias{predict.poisson_superlearner}
 \title{Predictions of the Poisson Super-Learner}
 \usage{
-\method{predict}{poisson_superlearner}(object, newdata, times, type = "survival", cause = 1, ...)
+\method{predict}{poisson_superlearner}(
+  object,
+  newdata,
+  times,
+  type = "survival",
+  cause = 1,
+  absolute_risk_integration_method = c("exact", "approx"),
+  ...
+)
 }
 \value{
 predictions

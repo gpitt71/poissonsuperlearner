@@ -7,7 +7,5 @@
 \title{\code{hal} learner class}
 \description{
 \code{hal} learner class
-
-\code{hal} learner class
 }
 

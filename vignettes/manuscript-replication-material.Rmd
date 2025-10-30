@@ -96,6 +96,8 @@ synthesize_TD1_riskengine_data <- function(n,keep = NULL){
     else d[]
 }
 
+
+
 ```
 
 
@@ -158,7 +160,7 @@ a<-predictRisk(cph_age,newdata=vetu_test,
                times=some_times,cause =1)
 
 b<-predictRisk(outgam,newdata=vetu_test,
-               times=some_times,cause =1)
+               times=some_times,cause =1,absolute_risk_integration="exact")
 
 
 ```
@@ -174,15 +176,19 @@ Why the models are scored differently?
 ```{r eval=FALSE, include=FALSE}
 x=Score(list("GAM"=outgam,"CPH"=cph_age), #
         formula=Hist(time,status)~ 1,data=vetu_test, null.model=FALSE,
+        predictRisk.args = list(coxph=list(product.limit=FALSE),
+                           poisson_superlearner=list(absolute_risk_integration="approx")),
         times = 5, cause=1)
 
-x$Brier$score
+x$Brier$scores
+
 ```
 
 ```{r eval=FALSE, include=FALSE}
 x1=Score(list("GAM"=outgam,"CPH"=cph_age), #
         formula=Hist(time,status)~ 1,data=vetu_test,
-        predictRisk.args = list("coxph"=list(product.limit=FALSE)),
+        predictRisk.args = list(coxph=list(product.limit=TRUE),
+                           poisson_superlearner=list(absolute_risk_integration="approx")),
         times = some_times, cause=1)
 
 x2=Score(list("GAM"=outgam,"CPH"=cph_age), #
@@ -200,7 +206,7 @@ x2=Score(list("GAM"=outgam,"CPH"=cph_age), #
 
 {
   set.seed(42)
-  sample_size=200
+  sample_size=5000
   d <- synthesize_TD1_riskengine_data(sample_size)}
 
 ```
@@ -217,6 +223,17 @@ d[,c("sex",
         "value_Smoking",
         "value_Motion")]
 
+```
+
+
+```{r}
+lbenchmark <- Learner_glmnet(covariates = c("sex", "age", "diabetes_duration",
+              "value_SBP", "value_LDL", "value_HBA1C",
+              "value_Smoking", "value_Motion", "value_Albuminuria","eGFR_log2:age_cut"),
+                         cross_validation=FALSE,
+                         lambda=0,
+                         intercept=FALSE,
+                         penalise_nodes=TRUE)
 ```
 
 
@@ -237,12 +254,36 @@ lglm <- Learner_gam(covariates = c("age"),
     )
 ```
 
+
+```{r eval=FALSE, include=FALSE}
+lhal <- Learner_hal(
+    covariates=c("sex", "age", "diabetes_duration",
+              "value_SBP", "value_LDL", "value_HBA1C",
+              "value_Smoking", "value_Motion", "value_Albuminuria"),
+    penalise_nodes=FALSE,
+    max_degree=2L,
+    num_knots=c(10,5)
+)
+
+out <- Superlearner(
+  d,
+  id = "id",
+  status = "status_cvd",
+  stratified_k_fold = FALSE,
+  event_time = "time_cvd",
+  learners = list(lhal),
+  nodes = seq(5, 35, 5),
+  meta_learner_algorithms = c("glm", "glmnet"),
+  nfold = 5
+)
+```
+
 ```{r eval=FALSE, include=FALSE}
 cox.fit  <- CSC(Hist(time_cvd,status_cvd)~age,data=d)
 
 ```
 
-I think the estimation part correct.
+We estimate the correct coefficient.
 
 ```{r eval=FALSE, include=FALSE}
 coef(out$superlearner[[1]]$learners_fit)[['age']]
@@ -271,34 +312,33 @@ d_test[,c("sex",
 
 ```
 
-
-```{r}
+```{r eval=FALSE, include=FALSE}
 tmp=sort(d$time_cvd)
 
-a= predict(cox.fit,newdata=d_test[1],times=tmp,cause=1,product.limit = FALSE)
-b= predict(cox.fit,newdata=d_test[1],times=tmp,cause=1,product.limit = TRUE)
+sf.csc = predict(cox.fit,newdata=d_test[1],times=tmp,cause=1,type="survival",product.limit = FALSE)
+sf.pwch = predict(out,newdata=d_test[1],times=tmp,cause=1)
 
-x= predict(cox.fit,newdata=d_test[1],times=tmp,cause=1,type="survival",product.limit = FALSE)
-y= predict(cox.fit,newdata=d_test[1],times=tmp,cause=1,type="survival",product.limit = TRUE)
-
-z = predict(out,newdata=d_test[1],times=tmp,cause=1,absolute_risk_integration_method = "approx")
-
-w = predict(out,newdata=d_test[1],times=tmp,cause=1,absolute_risk_integration_method = "exact")
+sum(sf.csc$survival-sf.pwch$survival_function)
+#3.004581e-06
 
 ```
 
 
-```{r}
-# same as us
+```{r eval=FALSE, include=FALSE}
 
-max(x$survival-z$survival_function)
+pr.csc = predict(cox.fit,newdata=d_test[1],times=tmp,cause=1,product.limit = FALSE)
+pr.pwch.exact = predict(out,newdata=d_test[1],times=tmp,cause=1, absolute_risk_integration_method = "exact")
+pr.pwch.approx = predict(out,newdata=d_test[1],times=tmp,cause=1, absolute_risk_integration_method = "approx")
 
-# much different than product.limit=TRUE
-max(x$survival-y$survival)
+# very different
+data.table(sum_of_differences_exact=sum(pr.pwch.exact$absolute_risk-pr.csc$absRisk),
+
+# numerically the same
+sum_of_differences_approx=sum(pr.pwch.approx$absolute_risk-pr.csc$absRisk))
 
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 max(a$absRisk-b$absRisk)
 sum(a$absRisk-z$absolute_risk)
@@ -322,8 +362,11 @@ comparables <- list("glm"=out,"cox"=cox.fit)
 
 b_score_1 = Score(comparables, #
     formula=Hist(time_cvd,status_cvd)~ 1,
-      predictRisk.args=list("CauseSpecificCox"=list(product.limit=FALSE)),
-    data=d_test,times=tmp[10:12], cause=1)
+      predictRisk.args=list("CauseSpecificCox"=list(product.limit=FALSE),
+                            "poisson_superlearner"=list(absolute_risk_integration="approx")
+                            ),
+    data=d_test,times=tmp, cause=1)
+
 ```
 
 ### Issues with glmnet for small samples
@@ -378,6 +421,7 @@ lglmnet <- Learner_glmnet(covariates = c("age"),
                         nfold = 20
     )
 ```
+
 ```{r eval=FALSE, include=FALSE}
 coef(out$superlearner[[1]]$learners_fit)['age',]
 #0.05508457
@@ -413,34 +457,55 @@ d[,c("sex",
 We define the models that we are using. 
 
 ```{r eval=FALSE, include=FALSE}
-
-  lgam <- Learner_gam(covariates = c("s(age)",
-                                     "s(diabetes_duration)",
-                                      "s(value_LDL)",
-                                     "s(value_SBP)",
-                                     "s(value_HBA1C)",
-                                      "s(eGFR)"),
+lgam <- Learner_gam(covariates = c("sex", "age", "s(diabetes_duration)",
+                                       "value_SBP", "s(value_LDL)", "value_HBA1C",
+                                       "value_Smoking", "value_Motion", "value_Albuminuria","s(eGFR)"),
                         intercept=FALSE)
 
-    lglm <- Learner_glmnet(covariates = c("sex",
-              "value_Smoking", "value_Motion", "value_Albuminuria"),
+    lglm <- Learner_glmnet(covariates = c("sex", "age", "diabetes_duration",
+              "value_SBP", "value_LDL", "value_HBA1C",
+              "value_Smoking", "value_Motion", "value_Albuminuria","eGFR"),
+                         cross_validation=FALSE,
+                         lambda=0,
+                         intercept=FALSE,
+                         penalise_nodes=TRUE)
+    
+    lglm <- Learner_glmnet(covariates = c("age"),
                          cross_validation=FALSE,
                          lambda=0,
                          intercept=FALSE,
                          penalise_nodes=TRUE)
 
+    lhal <- Learner_hal(covariates = c("sex", "age", "diabetes_duration",
+              "value_SBP", "value_LDL", "value_HBA1C",
+              "value_Smoking", "value_Motion", "value_Albuminuria","eGFR"),
+               cross_validation=TRUE,
+              intercept=FALSE,
+                     max_degree=2,
+                     smoothness_orders = 1,
+                     num_knots=c(100, 75),
+                     penalise_nodes=FALSE)
 
+lbenchmark <- Learner_glmnet(covariates = c("sex", "age", "diabetes_duration",
+              "value_SBP", "value_LDL", "value_HBA1C",
+              "value_Smoking", "value_Motion", "value_Albuminuria","eGFR_log2:age_cut"),
+                         cross_validation=FALSE,
+                         lambda=0,
+                         intercept=FALSE,
+                         penalise_nodes=TRUE)
+      
 
     null_model <- Learner_glmnet(
       cross_validation=FALSE,
       lambda=0,
       intercept=FALSE,
       penalise_nodes=TRUE)
+
 ```
 
 ```{r eval=FALSE, include=FALSE}
 
-learners_list = list(lglm, lgam)
+learners_list = list(lglm, lgam,lhal)
 
  out <- Superlearner(d,
                         id="id",
@@ -450,12 +515,48 @@ learners_list = list(lglm, lgam)
                         learners=learners_list,
                         nodes = seq(5,35,5),
                         min_depth=length(learners_list),
-                        meta_learner_algorithms = c("glm","glmnet"),
-                        variable_transformation=variable_transformations,
+                        meta_learner_algorithms = c("glm"),
                         nfold = 20
     )
 
 ```
+
+
+```{r}
+lglm <- Learner_glmnet(covariates = c("age"),
+                   cross_validation=FALSE,
+                   lambda=0,
+                   intercept=FALSE,
+                   penalise_nodes=TRUE)
+
+lhal <- Learner_hal(covariates = c("sex", "age", "diabetes_duration",
+        "value_SBP", "value_LDL", "value_HBA1C",
+        "value_Smoking", "value_Motion", "value_Albuminuria","eGFR"),
+         cross_validation=TRUE,
+        intercept=FALSE,
+               max_degree=2L,
+               num_knots=c(10, 5),
+               penalise_nodes=FALSE)
+    
+    
+    
+learners_list = list(lglm,lhal)
+
+out <- Superlearner(d,
+                  id="id",
+                  status="status_cvd",
+                  stratified_k_fold=FALSE,
+                  event_time = "time_cvd",
+                  learners=learners_list,
+                  nodes = seq(5,35,5),
+                  min_depth=length(learners_list),
+                  meta_learner_algorithms = c("glm"),
+                  nfold = 5
+)
+    
+```
+
+
 
 ```{r eval=FALSE, include=FALSE}
 
