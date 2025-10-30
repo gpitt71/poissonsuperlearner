@@ -623,10 +623,9 @@ Learner_hal <- setRefClass(
     },
 
     hal_basis = function(vars,
-                          DT,
-                          max_interaction = 2L,
-                          knots_per_order = rep(10L, 2L),
-                          ref_cat = "first") {
+                         DT,
+                         max_interaction = 2L,
+                         knots_per_order = rep(10L, 2L)) {
 
       stopifnot(requireNamespace("data.table", quietly = TRUE))
       stopifnot(requireNamespace("Matrix", quietly = TRUE))
@@ -666,7 +665,6 @@ Learner_hal <- setRefClass(
         acc
       }
 
-      # primitives per variable, plus per-primitive metadata
       primitives <- setNames(vector("list", length(vars)), vars)
       meta_per_var <- setNames(vector("list", length(vars)), vars)
 
@@ -692,13 +690,13 @@ Learner_hal <- setRefClass(
                var_meta = list(cutpoints = cps))
         } else if (is.factor(x)) {
           lv <- levels(x)
-          lv_use <- if (ref_cat == "first" && length(lv) >= 2L) lv[-1L] else lv
-          if (!length(lv_use)) {
+          if (!length(lv)) {
             return(list(idxs = list(), names = character(),
                         prim_meta = list(), var_meta = list(levels = character())))
           }
+          # keep ALL levels; cap by K if requested
+          lv_use <- if (is.finite(K) && K < length(lv)) head(lv, K) else lv
           idx_by_lvl <- split(seq_len(length(x)), x, drop = FALSE)
-          lv_use <- head(lv_use, K)
           idxs <- lapply(lv_use, function(l) sort.int(idx_by_lvl[[l]], method = "quick"))
           nms  <- sprintf("I(%s==%s)", v, make.names(lv_use, unique = TRUE))
           prim_meta <- lapply(lv_use, function(lv) list(var = v, kind = "factor", level = lv))
@@ -716,7 +714,6 @@ Learner_hal <- setRefClass(
         meta_per_var[[v]] <- res$var_meta
       }
 
-      # sparse triplets + per-column metadata
       I_chunks <- vector("list", 1024L)
       J_chunks <- vector("list", 1024L)
       name_chunks <- vector("list", 1024L)
@@ -747,18 +744,13 @@ Learner_hal <- setRefClass(
         }
       }
 
-      # order-1 columns and metadata
       for (v in vars) {
         prim <- primitives[[v]]
         if (!length(prim$idxs)) next
-        # build per-column meta entries
-        mains_meta <- lapply(prim$prim_meta, function(m) {
-          c(list(type = "main"), m)
-        })
+        mains_meta <- lapply(prim$prim_meta, function(m) c(list(type = "main"), m))
         add_cols(prim$idxs, prim$names, mains_meta)
       }
 
-      # higher-order interactions with per-column metadata
       if (max_interaction >= 2L) {
         for (d in 2:max_interaction) {
           if (length(vars) < d) break
@@ -777,16 +769,11 @@ Learner_hal <- setRefClass(
             if (any(vapply(prim_d, function(z) length(z$idxs), integer(1L)) == 0L)) next
 
             lens <- vapply(prim_d, function(z) length(z$idxs), integer(1L))
-            total <- prod(lens)
-            if (!total) next
-            bases <- c(1L, cumprod(lens))[seq_len(d)]
+            total <- prod(lens); if (!total) next
 
             for (t in 0:(total - 1L)) {
               sel <- integer(d); rem <- t
-              for (j in seq_len(d)) {
-                sel[j] <- (rem %% lens[j]) + 1L
-                rem <- rem %/% lens[j]
-              }
+              for (j in seq_len(d)) { sel[j] <- (rem %% lens[j]) + 1L; rem <- rem %/% lens[j] }
               chosen_idx <- vector("list", d)
               nm_parts <- character(d)
               parts_meta <- vector("list", d)
@@ -800,9 +787,7 @@ Learner_hal <- setRefClass(
               add_cols(
                 list(idx_prod),
                 paste0(nm_parts, collapse = ":"),
-                list(list(type = "interaction",
-                          order = d,
-                          parts = parts_meta))
+                list(list(type = "interaction", order = d, parts = parts_meta))
               )
             }
           }
@@ -820,11 +805,13 @@ Learner_hal <- setRefClass(
       j_vec <- unlist(J_chunks, use.names = FALSE)
       names_all <- unlist(name_chunks, use.names = FALSE)
 
-      X <- Matrix::sparseMatrix(i = i_vec,
-                                j = j_vec,
-                                x = 1L,
-                                dims = c(n, max(j_vec)),
-                                dimnames = list(NULL, names_all))
+      X <- Matrix::sparseMatrix(
+        i = if (length(i_vec)) i_vec else integer(),
+        j = if (length(j_vec)) j_vec else integer(),
+        x = if (length(i_vec)) 1L else integer(),
+        dims = c(n, if (length(j_vec)) max(j_vec) else 0L),
+        dimnames = list(NULL, names_all)
+      )
 
       list(
         X = X,
@@ -1000,8 +987,7 @@ Learner_hal <- setRefClass(
         vars = c(group_cols,"node"),
         DT = data,
         max_interaction = .self$max_degree,
-        knots_per_order = .self$num_knots,  # 6 main primitives, 4 per var for 2-way
-        ref_cat = "first"
+        knots_per_order = .self$num_knots
       )
 
       .self$fit_arguments[['y']] <- as.numeric(data[['deltaij']])
