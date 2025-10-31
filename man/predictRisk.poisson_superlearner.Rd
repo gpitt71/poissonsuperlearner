@@ -2,7 +2,7 @@
 % Please edit documentation in R/predictRisk.R
 \name{predictRisk.poisson_superlearner}
 \alias{predictRisk.poisson_superlearner}
-\title{Individual Data Pre-Processing}
+\title{Absolute Risk prediction}
 \usage{
 \method{predictRisk}{poisson_superlearner}(
   object,
@@ -13,9 +13,24 @@
   ...
 )
 }
+\arguments{
+\item{object}{\code{poisson_superlearner} for absolute risk predictions.}
+
+\item{newdata}{\code{data.frame}, new data to predict the absolute risk for.}
+
+\item{times}{\code{numeric}, time(s) at which to predict the absolute risk.}
+
+\item{cause}{\code{numeric}, competing risk to predict the absolute risk for.}
+
+\item{absolute_risk_integration}{\code{character}. Using the argument \code{"exact"}, the function computes the predicted absolute risk as in Benichou and Gail (1990). The argument \code{"approx"} computes Equation 1.1. of Benichou and Gail (1990) as a discrete sum.}
+}
 \value{
-predictions
+\code{matrix} with as many rows as the observations in \code{newdata} and as many columns as \code{times}.
 }
 \description{
-Extract event probabilities from fitted poisson_superlearner.
+This method computes the predicted absolute risk for some \code{cause}, at given \code{times} based on a \code{poisson_superlearner} object.
+}
+\references{
+Benichou, J., & Gail, M. H. (1990). Estimates of absolute cause-specific risk in cohort studies.
+Biometrics, 46(3), 813–826. https://doi.org/10.2307/2532151 (PMID: 2242416)
 }

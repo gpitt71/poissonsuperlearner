@@ -5,6 +5,13 @@
 \alias{Learner_gam-class}
 \alias{Learner_gam}
 \title{\code{gam} learner class using mgcv bam}
+\arguments{
+\item{covariates}{\code{character}}
+
+\item{treatment}{\code{character}}
+
+\item{cross_validation}{\code{logical}}
+}
 \description{
 \code{gam} learner class using mgcv bam
 }

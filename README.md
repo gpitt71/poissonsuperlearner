@@ -1,3 +1,3 @@
-# tmlensemble
+# Poisson SuperLearner
 
-In this repository we have a very first version of our package.
+This package implements the Poisson SuperLearner.

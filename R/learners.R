@@ -982,7 +982,6 @@ Learner_hal <- setRefClass(
 
       data<-data[complete.cases(data),]
 
-
       x_pp <- hal_basis(
         vars = c(group_cols,"node"),
         DT = data,
@@ -1052,6 +1051,12 @@ Learner_hal <- setRefClass(
 
 
 #' \code{gam} learner class using mgcv bam
+#'
+#' @param covariates \code{character}
+#' @param treatment \code{character}
+#' @param cross_validation \code{logical}
+#'
+#'
 #'
 #' @export Learner_gam
 #' @exportClass Learner_gam

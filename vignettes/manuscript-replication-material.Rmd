@@ -180,7 +180,7 @@ x=Score(list("GAM"=outgam,"CPH"=cph_age), #
                            poisson_superlearner=list(absolute_risk_integration="approx")),
         times = 5, cause=1)
 
-x$Brier$scores
+x$Brier$score
 
 ```
 
@@ -193,7 +193,7 @@ x1=Score(list("GAM"=outgam,"CPH"=cph_age), #
 
 x2=Score(list("GAM"=outgam,"CPH"=cph_age), #
         formula=Hist(time,status)~ 1,data=vetu_test,
-        predictRisk.args = list("coxph"=list(product.limit=TRUE)),
+        predictRisk.args = list("coxph"=list(product.limit=FALSE)),
         times = some_times, cause=1)
 
 
@@ -206,7 +206,7 @@ x2=Score(list("GAM"=outgam,"CPH"=cph_age), #
 
 {
   set.seed(42)
-  sample_size=5000
+  sample_size=300
   d <- synthesize_TD1_riskengine_data(sample_size)}
 
 ```
@@ -226,16 +226,6 @@ d[,c("sex",
 ```
 
 
-```{r}
-lbenchmark <- Learner_glmnet(covariates = c("sex", "age", "diabetes_duration",
-              "value_SBP", "value_LDL", "value_HBA1C",
-              "value_Smoking", "value_Motion", "value_Albuminuria","eGFR_log2:age_cut"),
-                         cross_validation=FALSE,
-                         lambda=0,
-                         intercept=FALSE,
-                         penalise_nodes=TRUE)
-```
-
 
 ```{r eval=FALSE, include=FALSE}
 lglm <- Learner_gam(covariates = c("age"),
@@ -252,30 +242,6 @@ lglm <- Learner_gam(covariates = c("age"),
                         meta_learner_algorithms = c("glm","glmnet"),
                         nfold = 20
     )
-```
-
-
-```{r eval=FALSE, include=FALSE}
-lhal <- Learner_hal(
-    covariates=c("sex", "age", "diabetes_duration",
-              "value_SBP", "value_LDL", "value_HBA1C",
-              "value_Smoking", "value_Motion", "value_Albuminuria"),
-    penalise_nodes=FALSE,
-    max_degree=2L,
-    num_knots=c(10,5)
-)
-
-out <- Superlearner(
-  d,
-  id = "id",
-  status = "status_cvd",
-  stratified_k_fold = FALSE,
-  event_time = "time_cvd",
-  learners = list(lhal),
-  nodes = seq(5, 35, 5),
-  meta_learner_algorithms = c("glm", "glmnet"),
-  nfold = 5
-)
 ```
 
 ```{r eval=FALSE, include=FALSE}

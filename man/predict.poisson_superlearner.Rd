@@ -2,7 +2,7 @@
 % Please edit documentation in R/predict.R
 \name{predict.poisson_superlearner}
 \alias{predict.poisson_superlearner}
-\title{Predictions of the Poisson Super-Learner}
+\title{Poisson Super-Learner Predictions}
 \usage{
 \method{predict}{poisson_superlearner}(
   object,
@@ -14,9 +14,20 @@
   ...
 )
 }
+\arguments{
+\item{object}{\code{poisson_superlearner} for absolute risk and survival function predictions.}
+
+\item{newdata}{\code{data.frame}, new data to predict the absolute risk and the survival function for.}
+
+\item{times}{\code{numeric}, time(s) at which to predict the absolute risk and survival function.}
+
+\item{cause}{\code{numeric}, competing risk to predict the absolute risk and the survival function for.}
+
+\item{absolute_risk_integration}{\code{character}. Using the argument \code{"exact"}, the function computes the predicted absolute risk as in Benichou and Gail (1990). The argument \code{"approx"} computes Equation 1.1. of Benichou and Gail (1990) as a discrete sum.}
+}
 \value{
-predictions
+\code{data.table} containing for each row of \code{newdata} the \code{poisson_superlearner} predictions for the survival function and the absolute risk predictions for some \code{cause} at the given \code{times}.
 }
 \description{
-This function predicts the survivor function, the piece-wise constant hazard and the absolute risk using the superlearner.
+This method computes the survival function and the absolute risk prediction of a \code{poisson_superlearner} object, based on a given data set, at given \code{times} for a given \code{cause}.
 }
