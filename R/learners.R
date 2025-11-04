@@ -729,18 +729,18 @@ Learner_hal <- setRefClass(
         need <- chunk_used + kcols
         if (need > length(I_chunks)) {
           newlen <- max(need, length(I_chunks) * 2L)
-          length(I_chunks) <<- newlen
-          length(J_chunks) <<- newlen
-          length(name_chunks) <<- newlen
-          length(colmeta_chunks) <<- newlen
+          length(I_chunks) <- newlen
+          length(J_chunks) <- newlen
+          length(name_chunks) <- newlen
+          length(colmeta_chunks) <- newlen
         }
         for (i in seq_len(kcols)) {
-          p <<- p + 1L
-          chunk_used <<- chunk_used + 1L
-          I_chunks[[chunk_used]] <<- idxs_list[[i]]
-          J_chunks[[chunk_used]] <<- rep.int(p, length(idxs_list[[i]]))
-          name_chunks[[chunk_used]] <<- nm_vec[[i]]
-          colmeta_chunks[[chunk_used]] <<- col_meta_list[[i]]
+          p <- p + 1L
+          chunk_used <- chunk_used + 1L
+          I_chunks[[chunk_used]] <- idxs_list[[i]]
+          J_chunks[[chunk_used]] <- rep.int(p, length(idxs_list[[i]]))
+          name_chunks[[chunk_used]] <- nm_vec[[i]]
+          colmeta_chunks[[chunk_used]] <- col_meta_list[[i]]
         }
       }
 
@@ -982,6 +982,8 @@ Learner_hal <- setRefClass(
 
       data<-data[complete.cases(data),]
 
+      browser()
+
       x_pp <- hal_basis(
         vars = c(group_cols,"node"),
         DT = data,
@@ -1003,6 +1005,13 @@ Learner_hal <- setRefClass(
       .self$fit_arguments[['x']] <- x_pp$X
 
       .self$covariates_attributes_matrix <-x_pp
+
+
+      # pre_fit_args <- .self$fit_arguments
+      # pre_fit_args[['maxit']] <- 1000
+      #
+      # pre_fit <- do.call(cv.glmnet,
+      #                    pre_fit_args)
 
       out <- do.call(.self$learner,
                      .self$fit_arguments)

@@ -4,15 +4,7 @@
 \alias{predict.poisson_superlearner}
 \title{Poisson Super-Learner Predictions}
 \usage{
-\method{predict}{poisson_superlearner}(
-  object,
-  newdata,
-  times,
-  type = "survival",
-  cause = 1,
-  absolute_risk_integration_method = c("exact", "approx"),
-  ...
-)
+\method{predict}{poisson_superlearner}(object, newdata, times, cause = 1, ...)
 }
 \arguments{
 \item{object}{\code{poisson_superlearner} for absolute risk and survival function predictions.}
@@ -22,8 +14,6 @@
 \item{times}{\code{numeric}, time(s) at which to predict the absolute risk and survival function.}
 
 \item{cause}{\code{numeric}, competing risk to predict the absolute risk and the survival function for.}
-
-\item{absolute_risk_integration}{\code{character}. Using the argument \code{"exact"}, the function computes the predicted absolute risk as in Benichou and Gail (1990). The argument \code{"approx"} computes Equation 1.1. of Benichou and Gail (1990) as a discrete sum.}
 }
 \value{
 \code{data.table} containing for each row of \code{newdata} the \code{poisson_superlearner} predictions for the survival function and the absolute risk predictions for some \code{cause} at the given \code{times}.

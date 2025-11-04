@@ -7,7 +7,6 @@
 #' @param newdata \code{data.frame}, new data to predict the absolute risk and the survival function for.
 #' @param times \code{numeric}, time(s) at which to predict the absolute risk and survival function.
 #' @param cause \code{numeric}, competing risk to predict the absolute risk and the survival function for.
-#' @param absolute_risk_integration \code{character}. Using the argument \code{"exact"}, the function computes the predicted absolute risk as in Benichou and Gail (1990). The argument \code{"approx"} computes Equation 1.1. of Benichou and Gail (1990) as a discrete sum.
 #'
 #' @return \code{data.table} containing for each row of \code{newdata} the \code{poisson_superlearner} predictions for the survival function and the absolute risk predictions for some \code{cause} at the given \code{times}.
 #'
@@ -15,20 +14,16 @@
 predict.poisson_superlearner <- function(object,
                                          newdata,
                                          times,
-                                         type = "survival",
                                          cause = 1,
-                                         absolute_risk_integration_method = c("exact","approx"),
                                          ...) {
-
-
-  absolute_risk_integration_method <- match.arg(absolute_risk_integration_method)
 
   setDT(newdata)
 
-
   tmp <- copy(newdata)
   # here we disregard the event_time column if present in the newdata
-  tmp <- tmp[, setdiff(names(tmp), object$data_info$event_time), with = FALSE]
+  tmp <- tmp[, setdiff(names(tmp), c(object$data_info$event_time,
+                                     object$data_info$status,
+                                     object$data_info$id)), with = FALSE]
 
 
   ## checks on the data
@@ -66,6 +61,15 @@ predict.poisson_superlearner <- function(object,
       )
     ))
 
+    # # no problem writing over id
+    # if (is.null(tmp[[object$data_info$id]])) {
+    #   tmp[[object$data_info$id]] <- 1:nrow(tmp)
+    # }
+    #
+    # if (is.null(tmp[[object$data_info$status]])) {
+    #   tmp[[object$data_info$status]] <- 0
+    # }
+
     tmp[, dummy := 1]
     vec_dt[, dummy := 1]
 
@@ -87,6 +91,7 @@ predict.poisson_superlearner <- function(object,
 
     return(zero_time)
   }
+
   # no problem writing over id
   if (is.null(data_pp[[object$data_info$id]])) {
     data_pp[[object$data_info$id]] <- 1:nrow(data_pp)
@@ -247,13 +252,8 @@ predict.poisson_superlearner <- function(object,
   S <- pch_survival(id = data_pp$id, dt = data_pp$deltatime, haz = haz)
   data_pp[, survival_function := S]
 
-  if (absolute_risk_integration_method == "exact") {
-    data_pp[, absolute_risk := pch_absolute_risk(id, deltatime, haz, cause_idx = cause)]
-  } else{
-    data_pp[, absolute_risk :=
-              pch_absolute_risk_euler(id, deltatime, haz, cause_idx = cause)]
 
-  }
+  data_pp[, absolute_risk := pch_absolute_risk(id, deltatime, haz, cause_idx = cause)]
 
   # abs_risk approx
   # data_pp[, survival_function_shift := shift(survival_function, fill = 1), by =

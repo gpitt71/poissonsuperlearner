@@ -4,14 +4,7 @@
 \alias{predictRisk.poisson_superlearner}
 \title{Absolute Risk prediction}
 \usage{
-\method{predictRisk}{poisson_superlearner}(
-  object,
-  newdata,
-  times,
-  cause = 1,
-  absolute_risk_integration = "exact",
-  ...
-)
+\method{predictRisk}{poisson_superlearner}(object, newdata, times, cause = 1, ...)
 }
 \arguments{
 \item{object}{\code{poisson_superlearner} for absolute risk predictions.}
@@ -21,8 +14,6 @@
 \item{times}{\code{numeric}, time(s) at which to predict the absolute risk.}
 
 \item{cause}{\code{numeric}, competing risk to predict the absolute risk for.}
-
-\item{absolute_risk_integration}{\code{character}. Using the argument \code{"exact"}, the function computes the predicted absolute risk as in Benichou and Gail (1990). The argument \code{"approx"} computes Equation 1.1. of Benichou and Gail (1990) as a discrete sum.}
 }
 \value{
 \code{matrix} with as many rows as the observations in \code{newdata} and as many columns as \code{times}.
