@@ -1327,13 +1327,14 @@ Learner_hal <- setRefClass(
 
       data_copy<-data_copy[complete.cases(data_copy),]
 
+
+
       x_pp <- hal_basis(
         vars = c(group_cols,"node"),
         DT = data_copy,
         max_interaction = .self$max_degree,
         knots_per_order = .self$num_knots
       )
-
 
       .self$fit_arguments[['y']] <- as.numeric(data_copy[['deltaij']])
 
@@ -1373,8 +1374,6 @@ Learner_hal <- setRefClass(
       .self$fit_arguments[['lambda']] <- lambda_opt
 
       }
-
-      # browser()
 
       out <- do.call(glmnet,
                      .self$fit_arguments)
