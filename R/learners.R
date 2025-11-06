@@ -4,14 +4,6 @@
 #'
 #' @import data.table
 
-Learner_nn <- function(data,covariates){
-
-
-  return(0)
-
-
-
-}
 
 #' \code{xgboost} learner class
 #'
@@ -376,7 +368,8 @@ Learner_glmnet <- setRefClass(
     add_nodes="logical",
     penalise_nodes= "logical",
     fit_arguments = "list",
-    covariates_attributes_matrix= "list"
+    covariates_attributes_matrix= "list",
+    id="character"
   ),
   methods = list(
 
@@ -387,11 +380,13 @@ Learner_glmnet <- setRefClass(
                           add_nodes = TRUE,
                           penalise_nodes=FALSE,
                           recycle_information =FALSE,
-
+                          id=NA_character_,
                           ...) {
       .self$covariates <- covariates
 
       .self$treatment <- treatment
+
+      .self$id <- id
 
       .self$cross_validation <- cross_validation
 
@@ -435,6 +430,12 @@ Learner_glmnet <- setRefClass(
     update_cross_validation_argument= function(nfold){
 
       .self$fit_arguments[['nfolds']] <- nfold
+
+    },
+
+    save_meta_data= function(id, ...){
+
+      .self$id <- id
 
     },
 
@@ -563,12 +564,14 @@ Learner_hal <- setRefClass(
     penalise_nodes= "logical",
     fit_arguments = "list",
     covariates_attributes_matrix= "list",
-    num_knots="numeric"
+    num_knots="numeric",
+    id="character"
   ),
   methods = list(
 
     initialize = function(covariates = NA_character_,
                           treatment = NA_character_,
+                          id = NA_character_,
                           cross_validation = FALSE,
                           intercept=FALSE,
                           add_nodes = TRUE,
@@ -580,6 +583,8 @@ Learner_hal <- setRefClass(
       .self$covariates <- covariates
 
       .self$treatment <- treatment
+
+      .self$id <- id
 
       .self$cross_validation <- cross_validation
 
@@ -602,12 +607,12 @@ Learner_hal <- setRefClass(
                                           add_nodes=.self$add_nodes)
 
 
-      if (.self$cross_validation) {
-        .self$learner = cv.glmnet
-
-      } else{
-        .self$learner = glmnet
-      }
+      # if (.self$cross_validation) {
+      #   .self$learner = cv.glmnet
+      #
+      # } else{
+      #   .self$learner = glmnet
+      # }
 
       .self$fit_arguments <- list(...)
 
@@ -622,10 +627,18 @@ Learner_hal <- setRefClass(
 
     },
 
+    save_meta_data = function(id, ...){
+
+      .self$id <- id
+
+    },
+
+
+
     hal_basis = function(vars,
-                         DT,
-                         max_interaction = 2L,
-                         knots_per_order = rep(10L, 2L)) {
+                          DT,
+                          max_interaction = 2L,
+                          knots_per_order = rep(10L, 2L)) {
 
       stopifnot(requireNamespace("data.table", quietly = TRUE))
       stopifnot(requireNamespace("Matrix", quietly = TRUE))
@@ -729,18 +742,18 @@ Learner_hal <- setRefClass(
         need <- chunk_used + kcols
         if (need > length(I_chunks)) {
           newlen <- max(need, length(I_chunks) * 2L)
-          length(I_chunks) <- newlen
-          length(J_chunks) <- newlen
-          length(name_chunks) <- newlen
-          length(colmeta_chunks) <- newlen
+          length(I_chunks) <<- newlen
+          length(J_chunks) <<- newlen
+          length(name_chunks) <<- newlen
+          length(colmeta_chunks) <<- newlen
         }
         for (i in seq_len(kcols)) {
-          p <- p + 1L
-          chunk_used <- chunk_used + 1L
-          I_chunks[[chunk_used]] <- idxs_list[[i]]
-          J_chunks[[chunk_used]] <- rep.int(p, length(idxs_list[[i]]))
-          name_chunks[[chunk_used]] <- nm_vec[[i]]
-          colmeta_chunks[[chunk_used]] <- col_meta_list[[i]]
+          p <<- p + 1L
+          chunk_used <<- chunk_used + 1L
+          I_chunks[[chunk_used]] <<- idxs_list[[i]]
+          J_chunks[[chunk_used]] <<- rep.int(p, length(idxs_list[[i]]))
+          name_chunks[[chunk_used]] <<- nm_vec[[i]]
+          colmeta_chunks[[chunk_used]] <<- col_meta_list[[i]]
         }
       }
 
@@ -827,6 +840,128 @@ Learner_hal <- setRefClass(
     update_cross_validation_argument= function(nfold){
 
       .self$fit_arguments[['nfolds']] <- nfold
+
+    },
+
+
+    glmnet_for_cv_risk = function(lambda, data, newdata, ...){
+
+      data_copy = data.table::copy(data)
+
+      group_cols <- c(.self$covariates,.self$treatment)[complete.cases(c(.self$covariates,.self$treatment))]
+
+      data_copy <- data_copy[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(group_cols, "node", "k")]
+
+      data_copy<-data_copy[complete.cases(data_copy),]
+
+      x_pp <- hal_basis(
+        vars = c(group_cols,"node"),
+        DT = data_copy,
+        max_interaction = .self$max_degree,
+        knots_per_order = .self$num_knots
+      )
+
+
+      fit_arguments_copy <- .self$fit_arguments
+      fit_arguments_copy[['lambda']] <- lambda
+
+      fit_arguments_copy[['y']] <- as.numeric(data_copy[['deltaij']])
+
+      fit_arguments_copy[['offset']] <-  log(data_copy[['tij']])
+
+
+      if(!.self$penalise_nodes){
+
+        fit_arguments_copy[['penalty.factor']] <- 1- grepl('^I\\(\\s*node\\s*==[^)]*\\)$', x_pp$colnames)
+
+      }
+
+      fit_arguments_copy[['x']] <- x_pp$X
+
+
+
+      model_fit <- do.call(glmnet,
+                     fit_arguments_copy)
+
+
+      X_new <- .self$hal_prepare_new(newdata, x_pp)
+
+      out <- predict(model_fit,
+                     newx=X_new,
+                     newoffset = log(1),
+                     type = "response")
+
+
+
+    return(out)
+
+
+    },
+
+
+    cross_validated_risk = function(data,
+                                    lambda_grid){
+
+      if(is.null(.self$fit_arguments[['nfolds']])){
+
+        nfolds <- 5
+      }else{
+
+        nfolds <- .self$fit_arguments[['nfolds']]
+
+      }
+
+      n <- length(unique(data[[.self$id]]))
+
+      id_fold <- sample(1:nfolds,
+                        n,
+                        replace = TRUE,
+                        prob = rep(1 / nfolds, nfolds))
+
+      dt_id <- data.table(hal_folder = id_fold, id = unique(data[[id]]))
+
+      tmp <- merge(data, dt_id, by = "id", all.x = T)
+
+      lambda_out <- NULL
+
+      for (v in 1:nfolds) {
+
+        v_out <- lapply(lambda_grid,
+                        .self$glmnet_for_cv_risk,
+                        data = tmp[hal_folder != v, ],
+                        newdata = tmp[hal_folder == v, ])
+
+
+        v_lkh <- lapply(v_out,
+                        .self$compute_poisson_lkh,
+                        y = tmp[hal_folder == v, "deltaij"],
+                        offset = tmp[hal_folder == v, "tij"])
+
+
+        lambda_out <- rbind(lambda_out, data.table(
+          lambda_ix = 1:length(lambda_grid),
+          nll = -unlist(v_lkh),
+          hal_folder = v
+
+        ))
+
+
+
+      }
+
+    lambda_out <- lambda_out[,.(avg_nll=mean(nll)),by=c("lambda_ix")]
+
+    ix <- lambda_out[avg_nll==min(avg_nll),lambda_ix]
+
+
+    return(lambda_grid[ix])
+
+    },
+
+    compute_poisson_lkh = function(lambda,y,offset, eps = 1e-12){
+
+      mu <- pmax(lambda * offset, eps)
+      sum(y * log(mu) - mu)
 
     },
 
@@ -976,24 +1111,24 @@ Learner_hal <- setRefClass(
 
     fit = function(data, ...) {
 
-      group_cols <- c(covariates,treatment)[complete.cases(c(covariates,treatment))]
+      data_copy = data.table::copy(data)
 
-      data <- data[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(group_cols, "node", "k")]
+      group_cols <- c(.self$covariates,.self$treatment)[complete.cases(c(.self$covariates,.self$treatment))]
 
-      data<-data[complete.cases(data),]
+      data_copy <- data_copy[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(group_cols, "node", "k")]
 
-      browser()
+      data_copy<-data_copy[complete.cases(data_copy),]
 
       x_pp <- hal_basis(
         vars = c(group_cols,"node"),
-        DT = data,
+        DT = data_copy,
         max_interaction = .self$max_degree,
         knots_per_order = .self$num_knots
       )
 
-      .self$fit_arguments[['y']] <- as.numeric(data[['deltaij']])
+      .self$fit_arguments[['y']] <- as.numeric(data_copy[['deltaij']])
 
-      .self$fit_arguments[['offset']] <-  log(data[['tij']])
+      .self$fit_arguments[['offset']] <-  log(data_copy[['tij']])
 
 
       if(!.self$penalise_nodes){
@@ -1007,13 +1142,25 @@ Learner_hal <- setRefClass(
       .self$covariates_attributes_matrix <-x_pp
 
 
-      # pre_fit_args <- .self$fit_arguments
-      # pre_fit_args[['maxit']] <- 1000
-      #
-      # pre_fit <- do.call(cv.glmnet,
-      #                    pre_fit_args)
+      if(.self$cross_validation){pre_fit_args <- .self$fit_arguments
+      pre_fit_args[['maxit']] <- 1000
 
-      out <- do.call(.self$learner,
+      pre_fit_args[['lambda']] <- NULL
+
+      pre_fit <- do.call(cv.glmnet,
+                         pre_fit_args)
+
+      lambda_opt <- .self$cross_validated_risk(
+        data=data,
+        lambda_grid = pre_fit$lambda
+      )
+
+
+      .self$fit_arguments[['lambda']] <- lambda_opt
+
+      }
+
+      out <- do.call(glmnet,
                      .self$fit_arguments)
 
       return(out)
@@ -1082,7 +1229,8 @@ Learner_gam <- setRefClass(
     add_nodes = "logical",
     penalise_nodes = "logical",
     fit_arguments = "list",
-    covariates_attributes_matrix = "list"
+    covariates_attributes_matrix = "list",
+    id="character"
   ),
   methods = list(
 
@@ -1093,10 +1241,12 @@ Learner_gam <- setRefClass(
                           add_nodes = TRUE,
                           penalise_nodes = FALSE,
                           recycle_information = FALSE,
+                          id=NA_character_,
                           ...) {
 
       .self$covariates <- covariates
       .self$treatment <- treatment
+      .self$id <- id
       .self$cross_validation <- cross_validation
       .self$intercept <- intercept
       .self$add_nodes <- add_nodes
@@ -1119,6 +1269,12 @@ Learner_gam <- setRefClass(
     update_cross_validation_argument= function(nfold){
 
 
+
+    },
+
+    save_meta_data= function(id, ...){
+
+      .self$id <- id
 
     },
 

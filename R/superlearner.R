@@ -183,10 +183,6 @@ Superlearner <- function(data,
       if (is.null(nodes)) {
         grid_nodes <- sort(unique(data[[event_time]]))
 
-
-
-        # grid_nodes <- grid_nodes[-((length(grid_nodes) - 2):length(grid_nodes))]
-
       } else{
         grid_nodes <- nodes
 
@@ -343,6 +339,9 @@ Superlearner <- function(data,
   z_covariates <- paste0("Z", 1:length(learners))
 
 
+  # Save data information in the learners ----
+
+  lapply(learners, function(f) f$save_meta_data(id))
 
   # if only one learner is present, we simply perform a CV ----
   if (length(learners) == 1) {
