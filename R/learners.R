@@ -1,12 +1,6 @@
-#' Script containing our learners
-#'
-#' This script contains the learners available in the package.
-#'
-#' @import data.table
-
-
 #' \code{xgboost} learner class
 #'
+#' @import data.table
 #' @export Learner_xgboost
 #' @exportClass Learner_xgboost
 Learner_xgboost <- setRefClass(
