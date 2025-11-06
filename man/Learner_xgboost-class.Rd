@@ -4,8 +4,8 @@
 \name{Learner_xgboost-class}
 \alias{Learner_xgboost-class}
 \alias{Learner_xgboost}
-\title{\code{xgboost} learner class}
+\title{Script containing our learners}
 \description{
-\code{xgboost} learner class
+This script contains the learners available in the package.
 }
 
