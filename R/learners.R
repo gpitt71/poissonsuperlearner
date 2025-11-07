@@ -1115,7 +1115,7 @@ Learner_hal <- setRefClass(
 
         if (!.self$penalise_nodes) {
 
-          fit_arguments_copy[['penalty.factor']] <- 1 - grepl('^I\(\s*node\s*==[^)]*\)$', x_pp$colnames)
+          fit_arguments_copy[['penalty.factor']] <- 1 - grepl('^I\\(\\s*node\\s*==[^)]*\\)$', x_pp$colnames)
 
         }
 
