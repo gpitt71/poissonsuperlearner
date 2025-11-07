@@ -1045,62 +1045,6 @@ Learner_hal <- setRefClass(
     },
 
 
-    glmnet_for_cv_risk = function(lambda, data, newdata, ...){
-
-      data_copy = data.table::copy(data)
-
-      group_cols <- c(.self$covariates,.self$treatment)[complete.cases(c(.self$covariates,.self$treatment))]
-
-      data_copy <- data_copy[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(group_cols, "node", "k")]
-
-      data_copy<-data_copy[complete.cases(data_copy),]
-
-      x_pp <- hal_basis(
-        vars = c(group_cols,"node"),
-        DT = data_copy,
-        max_interaction = .self$max_degree,
-        knots_per_order = .self$num_knots
-      )
-
-
-
-      fit_arguments_copy <- .self$fit_arguments
-      fit_arguments_copy[['lambda']] <- lambda
-
-      fit_arguments_copy[['y']] <- as.numeric(data_copy[['deltaij']])
-
-      fit_arguments_copy[['offset']] <-  log(data_copy[['tij']])
-
-
-      if(!.self$penalise_nodes){
-
-        fit_arguments_copy[['penalty.factor']] <- 1- grepl('^I\\(\\s*node\\s*==[^)]*\\)$', x_pp$colnames)
-
-      }
-
-      fit_arguments_copy[['x']] <- x_pp$X
-
-
-
-      model_fit <- do.call(glmnet,
-                     fit_arguments_copy)
-
-
-      X_new <- .self$hal_prepare_new(newdata, x_pp)
-
-      out <- predict(model_fit,
-                     newx=X_new,
-                     newoffset = log(1),
-                     type = "response")
-
-
-
-    return(out)
-
-
-    },
-
-
     cross_validated_risk = function(data,
                                     lambda_grid){
 
@@ -1113,50 +1057,113 @@ Learner_hal <- setRefClass(
 
       }
 
-      n <- length(unique(data[[.self$id]]))
+      lambda_seq <- sort(unique(lambda_grid), decreasing = TRUE)
 
-      id_fold <- sample(1:nfolds,
-                        n,
-                        replace = TRUE,
-                        prob = rep(1 / nfolds, nfolds))
+      if (!length(lambda_seq)) {
+        stop("lambda_grid must contain at least one value")
+      }
 
-      dt_id <- data.table(hal_folder = id_fold, id = unique(data[[id]]))
+      ids <- unique(data[[.self$id]])
+      n <- length(ids)
 
-      tmp <- merge(data, dt_id, by = "id", all.x = T)
+      if (!n) {
+        stop("cross validation requires at least one observation")
+      }
 
-      lambda_out <- NULL
+      id_fold <- sample.int(nfolds,
+                            n,
+                            replace = TRUE,
+                            prob = rep(1 / nfolds, nfolds))
 
-      for (v in 1:nfolds) {
+      fold_map <- data.table::data.table(id = ids, hal_folder = id_fold)
 
-        v_out <- lapply(lambda_grid,
-                        .self$glmnet_for_cv_risk,
-                        data = tmp[hal_folder != v, ],
-                        newdata = tmp[hal_folder == v, ])
+      tmp <- data.table::copy(data)
+      if (!data.table::is.data.table(tmp)) tmp <- data.table::as.data.table(tmp)
 
+      tmp[, hal_folder := fold_map$hal_folder[match(tmp[[.self$id]], fold_map$id)]]
 
-        v_lkh <- lapply(v_out,
-                        .self$compute_poisson_lkh,
-                        y = tmp[hal_folder == v, "deltaij"],
-                        offset = tmp[hal_folder == v, "tij"])
+      group_cols <- c(.self$covariates, .self$treatment)
+      group_cols <- group_cols[complete.cases(group_cols)]
 
+      fold_results <- vector("list", nfolds)
 
-        lambda_out <- rbind(lambda_out, data.table(
-          lambda_ix = 1:length(lambda_grid),
-          nll = -unlist(v_lkh),
+      for (v in seq_len(nfolds)) {
+
+        val_idx <- tmp[['hal_folder']] == v
+        if (!any(val_idx)) next
+        train_idx <- !val_idx
+        if (!any(train_idx)) next
+
+        train_dt <- tmp[train_idx,
+                        .(tij = sum(tij), deltaij = sum(deltaij)),
+                        by = c(group_cols, "node", "k")]
+
+        train_dt <- train_dt[stats::complete.cases(train_dt), ]
+        if (!nrow(train_dt)) next
+
+        x_pp <- hal_basis(
+          vars = c(group_cols, "node"),
+          DT = train_dt,
+          max_interaction = .self$max_degree,
+          knots_per_order = .self$num_knots
+        )
+
+        fit_arguments_copy <- .self$fit_arguments
+        fit_arguments_copy[['lambda']] <- lambda_seq
+        fit_arguments_copy[['y']] <- as.numeric(train_dt[['deltaij']])
+        fit_arguments_copy[['offset']] <- log(train_dt[['tij']])
+
+        if (!.self$penalise_nodes) {
+
+          fit_arguments_copy[['penalty.factor']] <- 1 - grepl('^I\(\s*node\s*==[^)]*\)$', x_pp$colnames)
+
+        }
+
+        fit_arguments_copy[['x']] <- x_pp$X
+
+        model_fit <- do.call(glmnet,
+                             fit_arguments_copy)
+
+        val_data <- tmp[val_idx, ]
+        X_new <- .self$hal_prepare_new(val_data, x_pp)
+
+        preds <- predict(model_fit,
+                          newx = X_new,
+                          newoffset = log(1),
+                          type = "response",
+                          s = lambda_seq)
+
+        if (is.null(dim(preds))) {
+          preds <- matrix(preds, ncol = 1L)
+        }
+
+        offset_vec <- val_data[['tij']]
+        y_vec <- val_data[['deltaij']]
+        mu <- pmax(preds * offset_vec, 1e-12)
+        ll <- colSums(y_vec * log(mu) - mu)
+
+        fold_results[[v]] <- data.table::data.table(
+          lambda_ix = seq_along(lambda_seq),
+          nll = -ll,
           hal_folder = v
 
-        ))
-
-
+        )
 
       }
 
-    lambda_out <- lambda_out[,.(avg_nll=mean(nll)),by=c("lambda_ix")]
+      fold_results <- Filter(Negate(is.null), fold_results)
+      if (!length(fold_results)) {
+        stop("cross validation failed: no valid folds")
+      }
 
-    ix <- lambda_out[avg_nll==min(avg_nll),lambda_ix]
+      lambda_out <- data.table::rbindlist(fold_results)
+
+      lambda_out <- lambda_out[, .(avg_nll = mean(nll)), by = c("lambda_ix")]
+
+      ix <- lambda_out[avg_nll == min(avg_nll), lambda_ix][1L]
 
 
-    return(lambda_grid[ix])
+      return(lambda_seq[ix])
 
     },
 
@@ -1347,25 +1354,28 @@ Learner_hal <- setRefClass(
 
       if(.self$cross_validation){
         pre_fit_args <- .self$fit_arguments
-      pre_fit_args[['maxit']] <- 1000
+        pre_fit_args[['maxit']] <- 1000
 
-      pre_fit_args[['lambda']] <- NULL
+        pre_fit_args[['lambda']] <- NULL
 
-      pre_fit <- do.call(cv.glmnet,
-                         pre_fit_args)
+        # use a plain glmnet fit to obtain the lambda path without
+        # performing an additional round of cross-validation on the
+        # same data that will be used for estimation
+        pre_fit <- do.call(glmnet,
+                           pre_fit_args)
 
-      lambda_grid <- c(.self$lambda_grid,
-                       pre_fit$lambda)
+        lambda_grid <- c(.self$lambda_grid,
+                         pre_fit$lambda)
 
-      lambda_grid<- lambda_grid[complete.cases(lambda_grid)]
+        lambda_grid<- lambda_grid[complete.cases(lambda_grid)]
 
-      lambda_opt <- .self$cross_validated_risk(
-        data=data,
-        lambda_grid = lambda_grid
-      )
+        lambda_opt <- .self$cross_validated_risk(
+          data=data,
+          lambda_grid = lambda_grid
+        )
 
 
-      .self$fit_arguments[['lambda']] <- lambda_opt
+        .self$fit_arguments[['lambda']] <- lambda_opt
 
       }
 
