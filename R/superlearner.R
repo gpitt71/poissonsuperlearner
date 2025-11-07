@@ -60,7 +60,6 @@ Superlearner <- function(data,
 
 
   # Multiple checks about the input ----
-
   ############
   check_1 <- is.null(start_time) & !is.null(end_time)
   check_2 <- !is.null(start_time) & is.null(end_time)
