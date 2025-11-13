@@ -175,8 +175,12 @@ Superlearner <- function(data,
     ##Either the nodes are given or we take all of the realised times
     if (!is.null(number_of_nodes)) {
       # grid_nodes <- seq(min(data[[event_time]]), max(data[[event_time]]) + 1, length.out = as.integer(number_of_nodes))
-      grid_nodes <- unique(sort(sample(data[[event_time]],
-                           as.integer(number_of_nodes))))
+      # grid_nodes <- unique(sort(sample(data[[event_time]],
+      #                      as.integer(number_of_nodes))))
+
+      grid_nodes = quantile(data[[event_time]], probs = seq(0, 1, length.out = as.integer(number_of_nodes)+1), type = 1, names = FALSE)
+
+
 
     } else{
       if (is.null(nodes)) {

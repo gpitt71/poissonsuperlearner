@@ -1121,6 +1121,24 @@ Learner_hal <- setRefClass(
 
         fit_arguments_copy[['x']] <- x_pp$X
 
+
+        # tryCatch block to handle convergence issues
+        # model_fit <- tryCatch({
+        #   suppressWarnings(do.call(glmnet, fit_arguments_copy))
+        # }, error = function(e) {
+        #   message("Skipping fold ", v, " due to glmnet error: ", e$message)
+        #   return(NULL)
+        # }, warning = function(w) {
+        #   if (grepl("Convergence", w$message)) {
+        #     message("Skipping fold ", v, " due to convergence warning.")
+        #     return(NULL)
+        #   } else {
+        #     invokeRestart("muffleWarning")
+        #   }
+        # })
+        #
+        # if (is.null(model_fit)) next
+
         model_fit <- do.call(glmnet,
                              fit_arguments_copy)
 
@@ -1327,7 +1345,6 @@ Learner_hal <- setRefClass(
       data_copy <- data_copy[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(group_cols, "node", "k")]
 
       data_copy<-data_copy[complete.cases(data_copy),]
-
 
 
       x_pp <- hal_basis(
