@@ -632,7 +632,7 @@ Superlearner <- function(data,
 
 
 #### THIS if-else cycle will be removed for production version of the package: we will only keep the else part.
-  if(length(meta_learner_algorithms)==1&!("glmnet"%in%meta_learner_algorithms)&!("glm"%in%meta_learner_algorithms)){
+  if(length(meta_learner_algorithms)==1){
 
     warning('Only one meta_learner was supplied. Cross-validation on the pseudo-observations will not be performed.')
 
