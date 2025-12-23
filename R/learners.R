@@ -504,6 +504,8 @@ Learner_glmnet <- setRefClass(
 
     private_predictor = function(model, newdata, ...) {
 
+
+
       out <- predict(model,
                      ...,
                      newx=sparse.model.matrix(formula(.self$formula),
@@ -1142,6 +1144,8 @@ Learner_hal <- setRefClass(
         model_fit <- do.call(glmnet,
                              fit_arguments_copy)
 
+        if(sum(model_fit$beta)==0) next
+
         val_data <- tmp[val_idx, ]
         X_new <- .self$hal_prepare_new(val_data, x_pp)
 
@@ -1409,6 +1413,8 @@ Learner_hal <- setRefClass(
 
       X_new <- .self$hal_prepare_new(newdata, .self$covariates_attributes_matrix)
 
+
+
       out <- predict(model,
                      ...,
                      newx=X_new,
@@ -1422,8 +1428,8 @@ Learner_hal <- setRefClass(
 
     private_predictor = function(model, newdata, ...) {
 
-
       X_new <- .self$hal_prepare_new(newdata, .self$covariates_attributes_matrix)
+
 
       out <- predict(model,
                      ...,

@@ -475,6 +475,14 @@ Superlearner <- function(data,
     dt_z <- mapply(function(x, y)
       rbind(x, y), dt_z, pseudo_observations, SIMPLIFY = FALSE)
 
+    # dt_z <- mapply(
+    #   function(existing, newly)
+    #     data.table::rbindlist(list(existing, newly), fill = TRUE),
+    #   dt_z,
+    #   pseudo_observations,
+    #   SIMPLIFY = FALSE
+    # )
+
   }
 
 
