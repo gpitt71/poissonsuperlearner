@@ -1373,6 +1373,29 @@ Learner_hal <- setRefClass(
 
       .self$covariates_attributes_matrix <-x_pp
 
+      fit_with_handling <- function(fit_args) {
+        convergence_issue <- FALSE
+
+        fit <- tryCatch(
+          withCallingHandlers(
+            do.call(glmnet, fit_args),
+            warning = function(w) {
+              if (grepl("Convergence", conditionMessage(w), ignore.case = TRUE) ||
+                  grepl("empty model", conditionMessage(w), ignore.case = TRUE)) {
+                convergence_issue <<- TRUE
+              }
+              invokeRestart("muffleWarning")
+            }
+          ),
+          error = function(e) {
+            convergence_issue <<- TRUE
+            return(NULL)
+          }
+        )
+
+        list(fit = fit, convergence_issue = convergence_issue)
+      }
+
       if(.self$cross_validation){
         pre_fit_args <- .self$fit_arguments
         pre_fit_args[['maxit']] <- 1000
@@ -1400,8 +1423,45 @@ Learner_hal <- setRefClass(
 
       }
 
-      out <- do.call(glmnet,
-                     .self$fit_arguments)
+      # out <- do.call(glmnet,
+      #                .self$fit_arguments)
+
+      fit_result <- fit_with_handling(.self$fit_arguments)
+
+      if (is.null(fit_result$fit) ||
+          fit_result$convergence_issue ||
+          nrow(fit_result$fit$beta) == 0) {
+
+        node_only_idx <- grepl("^I\\(\\s*node\\s*==[^)]*\\)$", x_pp$colnames)
+
+        if (!any(node_only_idx)) {
+          stop("HAL fit failed and no node columns were available for the intercept fallback model")
+        }
+
+        node_only_hal <- x_pp
+        node_only_hal$X <- x_pp$X[, node_only_idx, drop = FALSE]
+        node_only_hal$colnames <- x_pp$colnames[node_only_idx]
+        node_only_hal$meta$per_col <- x_pp$meta$per_col[node_only_idx]
+
+        fallback_args <- .self$fit_arguments
+        fallback_args[['x']] <- node_only_hal$X
+
+        if (!.self$penalise_nodes) {
+          fallback_args[['penalty.factor']] <- rep(0, ncol(node_only_hal$X))
+        } else {
+          fallback_args[['penalty.factor']] <- NULL
+        }
+
+        fit_result <- fit_with_handling(fallback_args)
+
+        if (is.null(fit_result$fit)) {
+          stop("HAL fit failed even after applying the node-only intercept fallback model")
+        }
+
+        .self$covariates_attributes_matrix <- node_only_hal
+      }
+
+      out <- fit_result$fit
 
       return(out)
 
