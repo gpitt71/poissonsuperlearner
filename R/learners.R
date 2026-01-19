@@ -581,7 +581,7 @@ Learner_hal <- setRefClass(
   fields = list(
     covariates = "character",
     treatment = "character",
-    cross_validation = "logical",
+    cross_validation_routine = "character",
     recycle_information = "logical",
     intercept="logical",
     formula ="character",
@@ -600,7 +600,7 @@ Learner_hal <- setRefClass(
     initialize = function(covariates = NA_character_,
                           treatment = NA_character_,
                           id = NA_character_,
-                          cross_validation = FALSE,
+                          cross_validation_routine = "cv.glmnet",
                           intercept=FALSE,
                           add_nodes = TRUE,
                           penalise_nodes=FALSE,
@@ -615,7 +615,14 @@ Learner_hal <- setRefClass(
 
       .self$id <- id
 
-      .self$cross_validation <- cross_validation
+      if (is.na(cross_validation_routine) || !nzchar(cross_validation_routine)) {
+        cross_validation_routine <- "cv.glmnet"
+      }
+      cross_validation_routine <- match.arg(
+        cross_validation_routine,
+        c("cv.glmnet", "poisson_likelihood")
+      )
+      .self$cross_validation_routine <- cross_validation_routine
 
       .self$intercept <- intercept
 
@@ -637,13 +644,11 @@ Learner_hal <- setRefClass(
                                           intercept =FALSE, #in the glmnet case, intercept is handled separately.
                                           add_nodes=.self$add_nodes)
 
-
-      # if (.self$cross_validation) {
-      #   .self$learner = cv.glmnet
-      #
-      # } else{
-      #   .self$learner = glmnet
-      # }
+      if (.self$cross_validation_routine == "cv.glmnet") {
+        .self$learner <- cv.glmnet
+      } else {
+        .self$learner <- glmnet
+      }
 
       .self$fit_arguments <- list(...)
 
@@ -1404,30 +1409,7 @@ Learner_hal <- setRefClass(
 
       .self$covariates_attributes_matrix <-x_pp
 
-      fit_with_handling <- function(fit_args) {
-        convergence_issue <- FALSE
-
-        fit <- tryCatch(
-          withCallingHandlers(
-            do.call(glmnet, fit_args),
-            warning = function(w) {
-              if (grepl("Convergence", conditionMessage(w), ignore.case = TRUE) ||
-                  grepl("empty model", conditionMessage(w), ignore.case = TRUE)) {
-                convergence_issue <<- TRUE
-              }
-              invokeRestart("muffleWarning")
-            }
-          ),
-          error = function(e) {
-            convergence_issue <<- TRUE
-            return(NULL)
-          }
-        )
-
-        list(fit = fit, convergence_issue = convergence_issue)
-      }
-
-      if(.self$cross_validation){
+      if(.self$cross_validation_routine == "poisson_likelihood"){
         pre_fit_args <- .self$fit_arguments
         pre_fit_args[['maxit']] <- 1000
 
@@ -1454,53 +1436,40 @@ Learner_hal <- setRefClass(
 
       }
 
-      # out <- do.call(glmnet,
-      #                .self$fit_arguments)
-
-      fit_result <- fit_with_handling(.self$fit_arguments)
-
-      if (is.null(fit_result$fit) ||
-          fit_result$convergence_issue ||
-          nrow(fit_result$fit$beta) == 0) {
-
-        node_only_idx <- grepl("^I\\(\\s*node\\s*==[^)]*\\)$", x_pp$colnames)
-
-        if (!any(node_only_idx)) {
-          stop("HAL fit failed and no node columns were available for the intercept fallback model")
+      fit <- tryCatch(
+        withCallingHandlers(
+          do.call(.self$learner, .self$fit_arguments),
+          warning = function(w) {
+            if (grepl("Convergence", conditionMessage(w), ignore.case = TRUE) ||
+                grepl("empty model", conditionMessage(w), ignore.case = TRUE)) {
+              invokeRestart("muffleWarning")
+            }
+          }
+        ),
+        error = function(e) {
+          stop("HAL fit failed: ", conditionMessage(e))
         }
+      )
 
-        node_only_hal <- x_pp
-        node_only_hal$X <- x_pp$X[, node_only_idx, drop = FALSE]
-        node_only_hal$colnames <- x_pp$colnames[node_only_idx]
-        node_only_hal$meta$per_col <- x_pp$meta$per_col[node_only_idx]
-
-        fallback_args <- .self$fit_arguments
-        fallback_args[['x']] <- node_only_hal$X
-
-        if (!.self$penalise_nodes) {
-          fallback_args[['penalty.factor']] <- rep(0, ncol(node_only_hal$X))
-        } else {
-          fallback_args[['penalty.factor']] <- NULL
-        }
-
-        fit_result <- fit_with_handling(fallback_args)
-
-        if (is.null(fit_result$fit)) {
-          stop("HAL fit failed even after applying the node-only intercept fallback model")
-        }
-
-        .self$covariates_attributes_matrix <- node_only_hal
-      }
-
-      out <- fit_result$fit
-
-      return(out)
+      return(fit)
 
     },
 
 
     predictor = function(model, newdata, ...) {
 
+      is_empty_model <- function(fit) {
+        if (is.null(fit)) return(TRUE)
+        df <- if (inherits(fit, "cv.glmnet")) fit$glmnet.fit$df else fit$df
+        if (!is.null(df)) return(all(df == 0))
+        beta <- if (inherits(fit, "cv.glmnet")) fit$glmnet.fit$beta else fit$beta
+        if (is.null(beta)) return(TRUE)
+        all(beta == 0)
+      }
+
+      if (is_empty_model(model)) {
+        return(rep(NA_real_, nrow(newdata)))
+      }
 
       X_new <- .self$hal_prepare_new(newdata, .self$covariates_attributes_matrix)
 
@@ -1518,6 +1487,19 @@ Learner_hal <- setRefClass(
     },
 
     private_predictor = function(model, newdata, ...) {
+
+      is_empty_model <- function(fit) {
+        if (is.null(fit)) return(TRUE)
+        df <- if (inherits(fit, "cv.glmnet")) fit$glmnet.fit$df else fit$df
+        if (!is.null(df)) return(all(df == 0))
+        beta <- if (inherits(fit, "cv.glmnet")) fit$glmnet.fit$beta else fit$beta
+        if (is.null(beta)) return(TRUE)
+        all(beta == 0)
+      }
+
+      if (is_empty_model(model)) {
+        return(rep(NA_real_, nrow(newdata)))
+      }
 
       X_new <- .self$hal_prepare_new(newdata, .self$covariates_attributes_matrix)
 
@@ -1706,8 +1688,3 @@ Learner_gam <- setRefClass(
     }
   )
 )
-
-
-
-
-
