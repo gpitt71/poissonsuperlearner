@@ -1447,7 +1447,7 @@ Learner_hal <- setRefClass(
           }
         ),
         error = function(e) {
-          stop("HAL fit failed: ", conditionMessage(e))
+          return(NULL)
         }
       )
 
