@@ -582,6 +582,7 @@ Learner_hal <- setRefClass(
     covariates = "character",
     treatment = "character",
     cross_validation_routine = "character",
+    cross_validation = "logical",
     recycle_information = "logical",
     intercept="logical",
     formula ="character",
@@ -602,6 +603,7 @@ Learner_hal <- setRefClass(
                           id = NA_character_,
                           cross_validation_routine = "cv.glmnet",
                           intercept=FALSE,
+                          cross_validation=TRUE,
                           add_nodes = TRUE,
                           penalise_nodes=FALSE,
                           recycle_information =FALSE,
@@ -623,6 +625,8 @@ Learner_hal <- setRefClass(
         c("cv.glmnet", "poisson_likelihood")
       )
       .self$cross_validation_routine <- cross_validation_routine
+
+      .self$cross_validation <- cross_validation
 
       .self$intercept <- intercept
 
