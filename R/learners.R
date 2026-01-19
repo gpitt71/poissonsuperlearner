@@ -296,7 +296,6 @@ Learner_glm <- setRefClass(
 
     },
 
-
     predictor = function(model, newdata,...) {
 
       newdata<-newdata[complete.cases(newdata),]
@@ -489,6 +488,22 @@ Learner_glmnet <- setRefClass(
 
     predictor = function(model, newdata, ...) {
 
+      is_empty_model <- function(model) {
+        if (is.null(model)) return(TRUE)
+        if (inherits(model, "cv.glmnet")) {
+          if (is.null(model$glmnet.fit)) return(TRUE)
+          beta <- model$glmnet.fit$beta
+        } else {
+          beta <- model$beta
+        }
+        if (is.null(beta)) return(TRUE)
+        if (!is.matrix(beta) && !inherits(beta, "Matrix")) return(FALSE)
+        nrow(beta) == 0 || ncol(beta) == 0
+      }
+
+      if (is_empty_model(model)) {
+        return(rep(NA_real_, nrow(newdata)))
+      }
 
       out <- predict(model,
                      ...,
@@ -505,6 +520,22 @@ Learner_glmnet <- setRefClass(
     private_predictor = function(model, newdata, ...) {
 
 
+      is_empty_model <- function(model) {
+        if (is.null(model)) return(TRUE)
+        if (inherits(model, "cv.glmnet")) {
+          if (is.null(model$glmnet.fit)) return(TRUE)
+          beta <- model$glmnet.fit$beta
+        } else {
+          beta <- model$beta
+        }
+        if (is.null(beta)) return(TRUE)
+        if (!is.matrix(beta) && !inherits(beta, "Matrix")) return(FALSE)
+        nrow(beta) == 0 || ncol(beta) == 0
+      }
+
+      if (is_empty_model(model)) {
+        return(rep(NA_real_, nrow(newdata)))
+      }
 
       out <- predict(model,
                      ...,
