@@ -445,7 +445,6 @@ lgam <- Learner_gam(covariates = c("sex", "age", "s(diabetes_duration)",
     lhal <- Learner_hal(covariates = c("sex", "age", "diabetes_duration",
               "value_SBP", "value_LDL", "value_HBA1C",
               "value_Smoking", "value_Motion", "value_Albuminuria","eGFR"),
-               cross_validation_routine="poisson_likelihood",
               intercept=FALSE,
                      max_degree=2,
                      smoothness_orders = 1,
@@ -498,7 +497,6 @@ lglm <- Learner_glmnet(covariates = c("age"),
 lhal <- Learner_hal(covariates = c("sex", "age", "diabetes_duration",
         "value_SBP", "value_LDL", "value_HBA1C",
         "value_Smoking", "value_Motion", "value_Albuminuria","eGFR"),
-         cross_validation_routine="poisson_likelihood",
         intercept=FALSE,
                max_degree=2L,
                num_knots=c(10, 5),
@@ -598,6 +596,5 @@ d_test[,c("sex",
     formula=Hist(time_cvd,status_cvd)~ 1,data=d_test,times=c(5,10), cause=2)
 
 ```
-
 
 
