@@ -629,6 +629,7 @@ Learner_hal <- setRefClass(
     max_degree="integer",
     lambda_grid="numeric",
     penalise_nodes= "logical",
+    maxit_prefit="numeric",
     fit_arguments = "list",
     covariates_attributes_matrix= "list",
     num_knots="numeric",
@@ -645,6 +646,7 @@ Learner_hal <- setRefClass(
                           penalise_nodes=FALSE,
                           recycle_information =FALSE,
                           max_degree=2,
+                          maxit_prefit=NA_real_,
                           num_knots=c(10L,5L),
                           lambda_grid=NA_real_,
                           ...) {
@@ -669,6 +671,8 @@ Learner_hal <- setRefClass(
       .self$penalise_nodes <- penalise_nodes
 
       .self$recycle_information <- recycle_information
+
+      .self$maxit_prefit <- maxit_prefit
 
       # create formula for competing risks. It is correct in the fit method if survival.
       .self$formula <- create_formula_hal(covariates = .self$covariates,
@@ -1268,7 +1272,6 @@ Learner_hal <- setRefClass(
 
       data_copy<-data_copy[complete.cases(data_copy),]
 
-
       x_pp <- hal_basis(
         vars = c(group_cols,"node"),
         DT = data_copy,
@@ -1292,7 +1295,12 @@ Learner_hal <- setRefClass(
       .self$covariates_attributes_matrix <-x_pp
 
       if (.self$cross_validation) {
-        cv_fit <- do.call(cv.glmnet, .self$fit_arguments)
+
+        prefit_args <- .self$fit_arguments
+
+        if(!is.null(.self$maxit_prefit)){prefit_args[['maxit']] <- .self$maxit_prefit}
+
+        cv_fit <- do.call(cv.glmnet, prefit_args)
 
         if (is.null(cv_fit$glmnet.fit)) return(cv_fit)
 
