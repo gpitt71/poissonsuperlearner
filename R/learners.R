@@ -361,6 +361,7 @@ Learner_glmnet <- setRefClass(
     add_nodes="logical",
     penalise_nodes= "logical",
     lambda_grid="numeric",
+    lambda="numeric",
     fit_arguments = "list",
     covariates_attributes_matrix= "list",
     id="character"
@@ -376,6 +377,7 @@ Learner_glmnet <- setRefClass(
                           recycle_information =FALSE,
                           id=NA_character_,
                           lambda_grid=NA_real_,
+                          lambda=NA_real_,
                           ...) {
       .self$covariates <- covariates
 
@@ -392,6 +394,7 @@ Learner_glmnet <- setRefClass(
       .self$penalise_nodes <- penalise_nodes
 
       .self$lambda_grid <- lambda_grid
+      .self$lambda <- lambda
 
       .self$recycle_information <- recycle_information
 
@@ -402,12 +405,6 @@ Learner_glmnet <- setRefClass(
                                       add_nodes=.self$add_nodes)
 
 
-      if (.self$cross_validation) {
-        .self$learner = cv.glmnet
-
-      } else{
-        .self$learner = glmnet
-      }
 
       .self$fit_arguments <- list(...)
 
@@ -417,7 +414,13 @@ Learner_glmnet <- setRefClass(
 
       .self$fit_arguments[['intercept']] <- .self$intercept
 
+      if (.self$cross_validation) {
+        .self$learner = cv.glmnet
 
+      } else{
+        .self$learner = glmnet
+        .self$fit_arguments[['lambda']] <- .self$lambda
+      }
 
 
     },
@@ -516,6 +519,7 @@ Learner_glmnet <- setRefClass(
         out <- do.call(glmnet, glmnet_args)
 
       } else {
+
         out <- do.call(.self$learner,
                        .self$fit_arguments)
       }
