@@ -620,7 +620,6 @@ Learner_hal <- setRefClass(
   fields = list(
     covariates = "character",
     treatment = "character",
-    cross_validation_routine = "character",
     cross_validation = "logical",
     recycle_information = "logical",
     intercept="logical",
@@ -640,7 +639,6 @@ Learner_hal <- setRefClass(
     initialize = function(covariates = NA_character_,
                           treatment = NA_character_,
                           id = NA_character_,
-                          cross_validation_routine = "cv.glmnet",
                           intercept=FALSE,
                           cross_validation=TRUE,
                           add_nodes = TRUE,
@@ -655,15 +653,6 @@ Learner_hal <- setRefClass(
       .self$treatment <- treatment
 
       .self$id <- id
-
-      if (is.na(cross_validation_routine) || !nzchar(cross_validation_routine)) {
-        cross_validation_routine <- "cv.glmnet"
-      }
-      cross_validation_routine <- match.arg(
-        cross_validation_routine,
-        c("cv.glmnet", "poisson_likelihood")
-      )
-      .self$cross_validation_routine <- cross_validation_routine
 
       .self$cross_validation <- cross_validation
 
@@ -687,7 +676,7 @@ Learner_hal <- setRefClass(
                                           intercept =FALSE, #in the glmnet case, intercept is handled separately.
                                           add_nodes=.self$add_nodes)
 
-      if (.self$cross_validation_routine == "cv.glmnet") {
+      if (.self$cross_validation) {
         .self$learner <- cv.glmnet
       } else {
         .self$learner <- glmnet
@@ -1125,156 +1114,6 @@ Learner_hal <- setRefClass(
 
     },
 
-
-    cross_validated_risk = function(data,
-                                    lambda_grid){
-
-      if(is.null(.self$fit_arguments[['nfolds']])){
-
-        nfolds <- 5
-      }else{
-
-        nfolds <- .self$fit_arguments[['nfolds']]
-
-      }
-
-      lambda_seq <- sort(unique(lambda_grid), decreasing = TRUE)
-
-      if (!length(lambda_seq)) {
-        stop("lambda_grid must contain at least one value")
-      }
-
-      ids <- unique(data[[.self$id]])
-      n <- length(ids)
-
-      if (!n) {
-        stop("cross validation requires at least one observation")
-      }
-
-      id_fold <- sample.int(nfolds,
-                            n,
-                            replace = TRUE,
-                            prob = rep(1 / nfolds, nfolds))
-
-      fold_map <- data.table::data.table(id = ids, hal_folder = id_fold)
-
-      tmp <- data.table::copy(data)
-      if (!data.table::is.data.table(tmp)) tmp <- data.table::as.data.table(tmp)
-
-      tmp[, hal_folder := fold_map$hal_folder[match(tmp[[.self$id]], fold_map$id)]]
-
-      group_cols <- c(.self$covariates, .self$treatment)
-      group_cols <- group_cols[complete.cases(group_cols)]
-
-      fold_results <- vector("list", nfolds)
-
-      for (v in seq_len(nfolds)) {
-
-        val_idx <- tmp[['hal_folder']] == v
-        if (!any(val_idx)) next
-        train_idx <- !val_idx
-        if (!any(train_idx)) next
-
-        train_dt <- tmp[train_idx,
-                        .(tij = sum(tij), deltaij = sum(deltaij)),
-                        by = c(group_cols, "node", "k")]
-
-        train_dt <- train_dt[stats::complete.cases(train_dt), ]
-        if (!nrow(train_dt)) next
-
-        x_pp <- hal_basis(
-          vars = c(group_cols, "node"),
-          DT = train_dt,
-          max_interaction = .self$max_degree,
-          knots_per_order = .self$num_knots
-        )
-
-        fit_arguments_copy <- .self$fit_arguments
-        fit_arguments_copy[['lambda']] <- lambda_seq
-        fit_arguments_copy[['y']] <- as.numeric(train_dt[['deltaij']])
-        fit_arguments_copy[['offset']] <- log(train_dt[['tij']])
-
-        if (!.self$penalise_nodes) {
-
-          fit_arguments_copy[['penalty.factor']] <- 1 - grepl('^I\\(\\s*node\\s*==[^)]*\\)$', x_pp$colnames)
-
-        }
-
-        fit_arguments_copy[['x']] <- x_pp$X
-
-
-        # tryCatch block to handle convergence issues
-        # model_fit <- tryCatch({
-        #   suppressWarnings(do.call(glmnet, fit_arguments_copy))
-        # }, error = function(e) {
-        #   message("Skipping fold ", v, " due to glmnet error: ", e$message)
-        #   return(NULL)
-        # }, warning = function(w) {
-        #   if (grepl("Convergence", w$message)) {
-        #     message("Skipping fold ", v, " due to convergence warning.")
-        #     return(NULL)
-        #   } else {
-        #     invokeRestart("muffleWarning")
-        #   }
-        # })
-        #
-        # if (is.null(model_fit)) next
-
-        model_fit <- do.call(glmnet,
-                             fit_arguments_copy)
-
-        if(sum(model_fit$beta)==0) next
-
-        val_data <- tmp[val_idx, ]
-        X_new <- .self$hal_prepare_new(val_data, x_pp)
-
-        preds <- predict(model_fit,
-                          newx = X_new,
-                          newoffset = log(1),
-                          type = "response",
-                          s = lambda_seq)
-
-        if (is.null(dim(preds))) {
-          preds <- matrix(preds, ncol = 1L)
-        }
-
-        offset_vec <- val_data[['tij']]
-        y_vec <- val_data[['deltaij']]
-        mu <- pmax(preds * offset_vec, 1e-12)
-        ll <- colSums(y_vec * log(mu) - mu)
-
-        fold_results[[v]] <- data.table::data.table(
-          lambda_ix = seq_along(lambda_seq),
-          nll = -ll,
-          hal_folder = v
-
-        )
-
-      }
-
-      fold_results <- Filter(Negate(is.null), fold_results)
-      if (!length(fold_results)) {
-        stop("cross validation failed: no valid folds")
-      }
-
-      lambda_out <- data.table::rbindlist(fold_results)
-
-      lambda_out <- lambda_out[, .(avg_nll = mean(nll)), by = c("lambda_ix")]
-
-      ix <- lambda_out[avg_nll == min(avg_nll), lambda_ix][1L]
-
-
-      return(lambda_seq[ix])
-
-    },
-
-    compute_poisson_lkh = function(lambda,y,offset, eps = 1e-12){
-
-      mu <- pmax(lambda * offset, eps)
-      sum(y * log(mu) - mu)
-
-    },
-
     hal_prepare_new = function(DT_new, hal_obj) {
       stopifnot(requireNamespace("data.table", quietly = TRUE))
       stopifnot(requireNamespace("Matrix", quietly = TRUE))
@@ -1452,47 +1291,55 @@ Learner_hal <- setRefClass(
 
       .self$covariates_attributes_matrix <-x_pp
 
-      if(.self$cross_validation_routine == "poisson_likelihood"){
-        pre_fit_args <- .self$fit_arguments
-        pre_fit_args[['maxit']] <- 1000
+      if (.self$cross_validation) {
+        cv_fit <- do.call(cv.glmnet, .self$fit_arguments)
 
-        pre_fit_args[['lambda']] <- NULL
+        if (is.null(cv_fit$glmnet.fit)) return(cv_fit)
 
-        # use a plain glmnet fit to obtain the lambda path without
-        # performing an additional round of cross-validation on the
-        # same data that will be used for estimation
-        pre_fit <- do.call(glmnet,
-                           pre_fit_args)
+        lambda_grid <- cv_fit$lambda
 
-        lambda_grid <- c(.self$lambda_grid,
-                         pre_fit$lambda)
-
-        lambda_grid<- lambda_grid[complete.cases(lambda_grid)]
-
-        lambda_opt <- .self$cross_validated_risk(
-          data=data,
-          lambda_grid = lambda_grid
-        )
-
-
-        .self$fit_arguments[['lambda']] <- lambda_opt
-
-      }
-
-      fit <- tryCatch(
-        withCallingHandlers(
-          do.call(.self$learner, .self$fit_arguments),
-          warning = function(w) {
-            if (grepl("Convergence", conditionMessage(w), ignore.case = TRUE) ||
-                grepl("empty model", conditionMessage(w), ignore.case = TRUE)) {
-              invokeRestart("muffleWarning")
-            }
-          }
-        ),
-        error = function(e) {
-          return(NULL)
+        if (!all(is.na(.self$lambda_grid))) {
+          lambda_grid <- c(.self$lambda_grid, lambda_grid)
+          lambda_grid <- lambda_grid[complete.cases(lambda_grid)]
+          lambda_grid <- sort(unique(lambda_grid), decreasing = TRUE)
         }
-      )
+
+        preds <- predict(cv_fit$glmnet.fit,
+                         newx = x_pp$X,
+                         newoffset = log(data_copy[['tij']]),
+                         type = "response",
+                         s = lambda_grid)
+
+        if (is.null(dim(preds))) {
+          preds <- matrix(preds, ncol = 1L)
+        }
+
+        mu <- pmax(preds, 1e-12)
+        y_vec <- as.numeric(data_copy[['deltaij']])
+        nll <- -colSums(y_vec * log(mu) - mu)
+        lambda_opt <- lambda_grid[which.min(nll)]
+
+        glmnet_args <- .self$fit_arguments
+        glmnet_args[['lambda']] <- lambda_opt
+        glmnet_args[['nfolds']] <- NULL
+
+        fit <- do.call(glmnet, glmnet_args)
+      } else {
+        fit <- tryCatch(
+          withCallingHandlers(
+            do.call(.self$learner, .self$fit_arguments),
+            warning = function(w) {
+              if (grepl("Convergence", conditionMessage(w), ignore.case = TRUE) ||
+                  grepl("empty model", conditionMessage(w), ignore.case = TRUE)) {
+                invokeRestart("muffleWarning")
+              }
+            }
+          ),
+          error = function(e) {
+            return(NULL)
+          }
+        )
+      }
 
       return(fit)
 
