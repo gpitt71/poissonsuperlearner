@@ -478,8 +478,37 @@ Learner_glmnet <- setRefClass(
 
       .self$fit_arguments[['x']] <- x
 
-      out <- do.call(.self$learner,
-                     .self$fit_arguments)
+      if (.self$cross_validation) {
+        cv_fit <- do.call(cv.glmnet, .self$fit_arguments)
+
+        if (is.null(cv_fit$glmnet.fit)) return(cv_fit)
+
+        lambda_grid <- cv_fit$lambda
+        preds <- predict(cv_fit$glmnet.fit,
+                         newx = x,
+                         newoffset = log(data[['tij']]),
+                         type = "response",
+                         s = lambda_grid)
+
+        if (is.null(dim(preds))) {
+          preds <- matrix(preds, ncol = 1L)
+        }
+
+        mu <- pmax(preds, 1e-12)
+        y_vec <- as.numeric(data[['deltaij']])
+        nll <- -colSums(y_vec * log(mu) - mu)
+        lambda_opt <- lambda_grid[which.min(nll)]
+
+        glmnet_args <- .self$fit_arguments
+        glmnet_args[['lambda']] <- lambda_opt
+        glmnet_args[['nfolds']] <- NULL
+
+        out <- do.call(glmnet, glmnet_args)
+
+      } else {
+        out <- do.call(.self$learner,
+                       .self$fit_arguments)
+      }
 
       return(out)
 
