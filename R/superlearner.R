@@ -352,14 +352,7 @@ Superlearner <- function(data,
 
     if (learners[[1]]$cross_validation == TRUE) {
 
-      message("\n Cross-validated for the learner is performed on the data.")
-
       learners[[1]]$update_cross_validation_argument(nfold)
-
-    } else{
-      warning(
-        "\n The learner was provided with given hyper-parameters. It will be applied with the given configuration."
-      )
 
     }
 

@@ -1298,11 +1298,11 @@ Learner_hal <- setRefClass(
 
         prefit_args <- .self$fit_arguments
 
-        if(!is.null(.self$maxit_prefit)){prefit_args[['maxit']] <- .self$maxit_prefit}
+        if (!is.na(.self$maxit_prefit)) {
+          prefit_args[['maxit']] <- .self$maxit_prefit
+        }
 
         cv_fit <- do.call(cv.glmnet, prefit_args)
-
-        if (is.null(cv_fit$glmnet.fit)) return(cv_fit)
 
         lambda_grid <- cv_fit$lambda
 
