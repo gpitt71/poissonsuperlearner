@@ -360,6 +360,7 @@ Learner_glmnet <- setRefClass(
     learner="function",
     add_nodes="logical",
     penalise_nodes= "logical",
+    lambda_grid="numeric",
     fit_arguments = "list",
     covariates_attributes_matrix= "list",
     id="character"
@@ -374,6 +375,7 @@ Learner_glmnet <- setRefClass(
                           penalise_nodes=FALSE,
                           recycle_information =FALSE,
                           id=NA_character_,
+                          lambda_grid=NA_real_,
                           ...) {
       .self$covariates <- covariates
 
@@ -388,6 +390,8 @@ Learner_glmnet <- setRefClass(
       .self$add_nodes <- add_nodes
 
       .self$penalise_nodes <- penalise_nodes
+
+      .self$lambda_grid <- lambda_grid
 
       .self$recycle_information <- recycle_information
 
@@ -484,6 +488,12 @@ Learner_glmnet <- setRefClass(
         if (is.null(cv_fit$glmnet.fit)) return(cv_fit)
 
         lambda_grid <- cv_fit$lambda
+
+        if (!all(is.na(.self$lambda_grid))) {
+          lambda_grid <- c(.self$lambda_grid, lambda_grid)
+          lambda_grid <- lambda_grid[complete.cases(lambda_grid)]
+          lambda_grid <- sort(unique(lambda_grid), decreasing = TRUE)
+        }
         preds <- predict(cv_fit$glmnet.fit,
                          newx = x,
                          newoffset = log(data[['tij']]),
