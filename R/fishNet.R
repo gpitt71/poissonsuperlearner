@@ -3,9 +3,9 @@
 ## Author: Thomas Alexander Gerds
 ## Created: feb 12 2026 (08:18) 
 ## Version: 
-## Last-Updated: feb 12 2026 (08:33) 
+## Last-Updated: feb 12 2026 (08:55) 
 ##           By: Thomas Alexander Gerds
-##     Update #: 5
+##     Update #: 7
 #----------------------------------------------------------------------
 ## 
 ### Commentary: 
@@ -50,9 +50,10 @@ fishNet <- function(data,
                     nfold = 20){
     fit <- Learner_glmnet(covariates,
                           cross_validation=TRUE,
-                          alpha=1,
+                          alpha=alpha,
                           lambda_grid =lambda_grid,
-                          intercept=FALSE)
+                          intercept=FALSE,
+                          penalise_nodes = penalise_nodes)
     sl_fit <- suppressWarnings(Superlearner(data,
                                             stratified_k_fold=FALSE,
                                             event_time = event_time,
