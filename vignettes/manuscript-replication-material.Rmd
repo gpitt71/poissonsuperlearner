@@ -80,7 +80,6 @@ synthesize_TD1_riskengine_data <- function(n,keep = NULL){
     lava::regression(sim_model,time.event.2~value_Motion+value_Smoking+log2_eGFR_old+log2_eGFR_young+value_AlbuminuriaMicro+value_AlbuminuriaMacro+value_HBA1C+value_LDL+value_SBP+diabetes_duration+age+sex) <- c(-0.410553409305998,0.833815403131808,0.3289175620287,0.313118375461698,0.225523885897843,0.604004891420425,0.0102472549995989,0.0287051547482761,0.00156423178426314,0.00678536173681053,0.0803874049498844,-0.276186036048047)
     # construction of eGFR
 
-    # browser()
     lava::transform(sim_model,eGFR~log2_eGFR_old+log2_eGFR_young+age) <- function(x){as.numeric(x[["age"]]<40)*100*2^{x[["log2_eGFR_young"]]}+as.numeric(x[["age"]]>40)*100*2^{x[["log2_eGFR_old"]]}}
     # simulate from model
     d <- lava::sim(sim_model,n)

@@ -186,7 +186,6 @@ data_pre_processing <- function(data,
 
 
   setDT(data)
-
   # Handle competing risks ----
   ## for each of the competing risks (CR) we need to create a table
   n_crisks <- pmax(length(unique(data[[status]])) - 1+uncensored_01,1)
@@ -259,27 +258,20 @@ data_pre_processing <- function(data,
   dt_fit <- dt_fit[, k := rep(1:n_crisks, each = dim(data)[1])]
 
 
-  # Data Transformation ----
-  tmp <- c(id, "k")
+    # Data Transformation ----
+    tmp <- c(id, "k")
+    dt_fit <- dt_fit[ , {
+        tte <- .SD[[1L]]   # time-to-event vector
+        del <- .SD[[2L]]   # status/delta vector
+        off <- create_offset_variable(nodes, time_to_event = tte)
+        .(node    = off[, 1L],
+          tij     = off[, 2L],
+          deltaij = create_response_variable_c_risks(nodes,time_to_event = tte,delta = del,event_type = k)
+          )
+    }, by = c(id, "k"),
+    .SDcols = c(event_time, status)]
 
-  dt_fit <- eval(parse(text = paste("dt_fit[, .(node = create_offset_variable(nodes, time_to_event = ",
-                                    event_time,
-                                    ")[, 1]",
-                                    ", tij = create_offset_variable(nodes, time_to_event = ",
-                                    event_time,
-                                    ")[,2]",
-                                    ", deltaij = create_response_variable_c_risks(nodes,time_to_event = ",
-                                    event_time,
-                                    ", delta=",
-                                    status,
-                                    ", event_type = k)",
-                                    ")",
-                                    ", by = .(",
-                                    id,
-                                    ", k)",
-                                    "]")))
-
-  ## Retrieve covariates
+    ## Retrieve covariates
 
   dt_fit <- merge(dt_fit, data, by = id, all.x = TRUE)
 

@@ -16,7 +16,7 @@
 #' @param nfold \code{numeric}, number of V-folds to construct the ensemble.
 #' @param number_of_nodes \code{numeric}, number of time points sampled from the observed time to construct the nodes. Alternative to \code{nodes}, if both NULL we take all the observed time points as nodes.
 #' @param nodes \code{numeric}, time grid to construct the piece-wise constant model. Alternative to \code{number_of_nodes}, if both NULL we take all the observed time points as nodes.
-#'
+#' 
 #' @return A \code{poisson_superlearner} object contains the following output
 #' \itemize{
 #' \item{\code{learners}: \code{list} containing the learners.}
@@ -59,13 +59,18 @@ Superlearner <- function(data,
 
 
 
-  # Multiple checks about the input ----
-  ############
-  check_1 <- is.null(start_time) & !is.null(end_time)
-  check_2 <- !is.null(start_time) & is.null(end_time)
-  check_3 <- (!is.null(start_time) ||
+    # Multiple checks about the input ----
+    ############
+    check_1 <- is.null(start_time) & !is.null(end_time)
+    check_2 <- !is.null(start_time) & is.null(end_time)
+    check_3 <- (!is.null(start_time) ||
                 !is.null(end_time)) & !is.null(event_time)
-
+    # GABRIELE: why do you want the user to
+    #           create an id variable?
+    if (!(id %in% names(data))) {
+        data[["id"]] <- 1:NROW(data)
+        id <- "id"
+    }
   # give names to the learners
   if(is.null(names(learners))){
 
@@ -348,7 +353,7 @@ Superlearner <- function(data,
 
   # if only one learner is present, we simply perform a CV ----
   if (length(learners) == 1) {
-    warning("Only one learner was provided.")
+      warning("Only one learner was provided.")
 
     if (learners[[1]]$cross_validation == TRUE) {
 
