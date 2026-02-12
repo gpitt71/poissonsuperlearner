@@ -16,7 +16,7 @@
 #' @param nfold \code{numeric}, number of V-folds to construct the ensemble.
 #' @param number_of_nodes \code{numeric}, number of time points sampled from the observed time to construct the nodes. Alternative to \code{nodes}, if both NULL we take all the observed time points as nodes.
 #' @param nodes \code{numeric}, time grid to construct the piece-wise constant model. Alternative to \code{number_of_nodes}, if both NULL we take all the observed time points as nodes.
-#' 
+#'
 #' @return A \code{poisson_superlearner} object contains the following output
 #' \itemize{
 #' \item{\code{learners}: \code{list} containing the learners.}
@@ -67,6 +67,8 @@ Superlearner <- function(data,
                 !is.null(end_time)) & !is.null(event_time)
     # GABRIELE: why do you want the user to
     #           create an id variable?
+
+    # One of the planned extensions is using time varying covariates. I thought it would be easier with an id.
     if (!(id %in% names(data))) {
         data[["id"]] <- 1:NROW(data)
         id <- "id"
