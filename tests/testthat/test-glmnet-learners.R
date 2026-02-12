@@ -3,9 +3,9 @@
 ## Author: Thomas Alexander Gerds
 ## Created: feb 12 2026 (06:30)
 ## Version:
-## Last-Updated: feb 12 2026 (12:15)
+## Last-Updated: feb 12 2026 (15:24) 
 ##           By: Thomas Alexander Gerds
-##     Update #: 17
+##     Update #: 18
 #----------------------------------------------------------------------
 ##
 ### Commentary:
@@ -22,7 +22,10 @@ library(riskRegression)
 test_that("rigde works", {
     Xvars <- paste0("X", 1:10)
     d <- sampleData(n = 3000,formula = ~ f(X1, 2) + f(X2, 0) + f(X3, 0) + f(X6, 0) + f(X7, 0) + f(X8, 0) + f(X9, 0))
-    fit_cox <- coxph(Surv(time, event == 1) ~ X1,data = d,x = TRUE,y = TRUE)
+    fit_cox <- coxph(Surv(time, event == 1) ~ X1+X2+X3+X4+X5+X6+X7+X8+X9+X10,data = d,x = TRUE,y = TRUE)
+    
+    fit_rigde_cox <- GLMnet(formula = Surv(time, event == 1) ~ X1+X2+X3+X4+X5+X6+X7+X8+X9+X10,data = d,alpha = 0)
+    fit_lasso_cox <- GLMnet(formula = Surv(time, event == 1) ~ X1+X2+X3+X4+X5+X6+X7+X8+X9+X10,data = d,alpha = 1)
 
     # Here you define the learner
     lridge <- Learner_glmnet(covariates = Xvars,
@@ -34,10 +37,10 @@ test_that("rigde works", {
 
     # Here you call the method that fits the learner to the data.
     lridge$fit(data = d,
-                event_time = "time",
-                status = "event",
-                covariates = Xvars,
-                number_of_nodes = 2)
+               event_time = "time",
+               status = "event",
+               covariates = Xvars,
+               number_of_nodes = 2)
 
     # The model fit is saved as an attribute (model_fit) of the reference class Learner_glmnet.
     # It essentially works like a Python class.
