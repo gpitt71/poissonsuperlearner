@@ -367,16 +367,12 @@ Superlearner <- function(data,
     training_data <- split(dt, by = "k")
     learner_fit <- mapply(function(x){
 
-      out <- learners[[1]]$fit(x)
+      out <- learners[[1]]$private_fit(x)
       return(out)
     },
     training_data,
     SIMPLIFY = FALSE
       )
-
-
-
-    #lapply(learners, function(f) f$fit(dt))
 
     # The learner on the full dataset ----
     fitted_values <- mapply(function(x,newdata){

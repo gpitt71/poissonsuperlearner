@@ -750,7 +750,7 @@ create_pseudo_observations <- function(training_data,
 
   "
 
-  train_list <- lapply(learners, function(f) f$fit(training_data))
+  train_list <- lapply(learners, function(f) f$private_fit(training_data))
 
 
   # Predict on the validation set your pseudo-observations ----
@@ -1125,14 +1125,14 @@ fit_meta_learner <- function(dt,
   #
   # dt_z[, virtual_seq := NULL]
 
-  meta_learner_fit <- meta_learner$fit(dt_z)
+  meta_learner_fit <- meta_learner$private_fit(dt_z)
 
   fitted_values <- meta_learner$predictor(meta_learner_fit,
                                           dt_z)
 
   # learners on the full dataset ----
 
-  full_train_list <- lapply(learners, function(f) f$fit(dt))
+  full_train_list <- lapply(learners, function(f) f$private_fit(dt))
 
   # step_0_predictions <- mapply(
   #   function(f, model, newdata)
@@ -1190,7 +1190,7 @@ meta_learner_cross_validation <- function(dt,
 
   for(v_fold_id in 1:nfold){
 
-  meta_learner_fit <- meta_learner$fit(dt_z[folder!=v_fold_id,])
+  meta_learner_fit <- meta_learner$private_fit(dt_z[folder!=v_fold_id,])
 
   oos_data <- copy(dt_z[folder == v_fold_id, ])
 

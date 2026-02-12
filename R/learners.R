@@ -92,7 +92,7 @@ Learner_xgboost <- setRefClass(
 
     },
 
-    fit = function(data, ...) {
+    private_fit = function(data, ...) {
 
       x = sparse.model.matrix(formula(.self$formula),
                               data)
@@ -237,7 +237,7 @@ Learner_glm <- setRefClass(
       }
     },
 
-    fit = function(data, ...) {
+    private_fit = function(data, ...) {
 
 
       out <- glm.fit(x=sparse.model.matrix(formula(.self$formula),
@@ -250,7 +250,7 @@ Learner_glm <- setRefClass(
 
     },
 
-    # fit = function(data, validation_data=NULL, ...) {
+    # private_fit = function(data, validation_data=NULL, ...) {
 
       # survival_01 <- length(unique(data[['k']])) < 2
 
@@ -279,7 +279,7 @@ Learner_glm <- setRefClass(
     # },
 
 
-    fit = function(data, ...) {
+    private_fit = function(data, ...) {
 
       # out<- .self$learner(.self$formula,
       #                     data=data,
@@ -364,7 +364,8 @@ Learner_glmnet <- setRefClass(
     lambda="numeric",
     fit_arguments = "list",
     covariates_attributes_matrix= "list",
-    id="character"
+    id="character",
+    model_fit = "ANY"
   ),
   methods = list(
 
@@ -425,7 +426,7 @@ Learner_glmnet <- setRefClass(
 
       } else{
         .self$learner = glmnet
-        .self$fit_arguments[['lambda']] <- .self$lambda
+        .self$fit_arguments[['lambda']] <- lambda
       }
 
 
@@ -445,7 +446,172 @@ Learner_glmnet <- setRefClass(
 
     },
 
-    fit = function(data, ...) {
+    fit = function(data,
+                   id = "id", #
+                   stratified_k_fold = FALSE, #
+                   start_time = NULL, #
+                   end_time = NULL, #
+                   status = "status", #
+                   event_time = NULL, #
+                   number_of_nodes = NULL, #
+                   nodes = NULL,
+                   variable_transformation = NULL,
+                   nfold = 3,
+                   ...){
+
+
+      # Multiple checks about the input ----
+      ############
+      check_1 <- is.null(start_time) & !is.null(end_time)
+      check_2 <- !is.null(start_time) & is.null(end_time)
+      check_3 <- (!is.null(start_time) ||
+                    !is.null(end_time)) & !is.null(event_time)
+
+
+      if (!(id %in% names(data))) {
+        data[["id"]] <- 1:NROW(data)
+        id <- "id"
+      }
+
+
+
+      if (check_1 || check_2) {
+        stop("For interval data, both start_time and end_time are required.")
+
+      }
+
+      if (check_3) {
+        stop("Either provide interval data or censored data")
+
+      }
+
+      if (!is.null(start_time) & !is.null(end_time)) {
+        interval_data_type = TRUE
+
+        maximum_followup = max(data[[end_time]])
+
+      } else{
+        interval_data_type = FALSE
+
+        maximum_followup = max(data[[event_time]])
+
+      }
+
+      n <- length(unique(data[[id]]))
+
+      if (!(0 %in% data[[status]])) {
+        warning(
+          paste0(
+            "There is no value of ",
+            status,
+            " equal to zero. We will consider the data uncensored."
+          )
+        )
+        n_crisks <- length(unique(data[[status]]))
+        uncensored_01 <-TRUE
+
+      } else{
+        n_crisks <- length(unique(data[[status]])) - 1
+        uncensored_01 <-FALSE
+      }
+
+
+      if (interval_data_type) {
+        # Compute here the nodes checking
+        if (!is.null(number_of_nodes)) {
+          observed_times <- c(data[[start_time]], data[[end_time]])
+          grid_nodes <- seq(min(observed_times),
+                            max(observed_times) + 1,
+                            length.out = as.integer(number_of_nodes))
+
+        } else{
+          if (is.null(nodes)) {
+            observed_times <- c(data[[start_time]], data[[end_time]])
+            grid_nodes <- sort(unique(observed_times))
+          } else {
+            grid_nodes <- sort(nodes)
+          }
+        }
+
+        if (!(0 %in% grid_nodes)) {
+          grid_nodes <- c(0, grid_nodes)
+        }
+
+        # Actual data pp
+        dt <- data_pre_processing_interval_data(
+          data = data,
+          id = id,
+          status = status,
+          start_time = start_time,
+          nodes = grid_nodes,
+          end_time = end_time
+        )
+
+
+
+
+      } else{
+        #  Handle nodes
+        ##Either the nodes are given or we take all of the realised times
+        if (!is.null(number_of_nodes)) {
+          # grid_nodes <- seq(min(data[[event_time]]), max(data[[event_time]]) + 1, length.out = as.integer(number_of_nodes))
+          # grid_nodes <- unique(sort(sample(data[[event_time]],
+          #                      as.integer(number_of_nodes))))
+
+          grid_nodes = quantile(data[[event_time]], probs = seq(0, 1, length.out = as.integer(number_of_nodes)+1), type = 1, names = FALSE)
+
+
+
+        } else{
+          if (is.null(nodes)) {
+            grid_nodes <- sort(unique(data[[event_time]]))
+
+          } else{
+            grid_nodes <- nodes
+
+          }
+        }
+
+        # Add zero if missing
+        if (!(0 %in% grid_nodes)) {
+          grid_nodes <- c(0, grid_nodes)
+
+        }
+
+
+
+        grid_nodes <- grid_nodes[grid_nodes <= max(data[[event_time]])]
+
+        # Actual data pp
+        dt <- data_pre_processing(
+          data = data,
+          id = id,
+          status = status,
+          nodes = grid_nodes,
+          event_time = event_time,
+          uncensored_01=uncensored_01
+        )
+
+
+
+      }
+
+
+      lhs_string = NULL
+
+      if (!is.null(variable_transformation)) {
+
+
+        apply_transformations(dt,variable_transformation)}
+
+
+      .self$model_fit <- .self$private_fit(dt)
+
+
+
+    },
+
+    private_fit = function(data, ...) {
 
       .extract_symbols <- function(term) {
         # try as a bare expression, then as a RHS of a formula
@@ -492,11 +658,12 @@ Learner_glmnet <- setRefClass(
       .self$fit_arguments[['x']] <- x
 
       if (.self$cross_validation) {
-        cv_fit <- do.call(cv.glmnet, .self$fit_arguments)
+        suppressWarnings(cv_fit <- do.call(cv.glmnet, .self$fit_arguments))
 
-        if (is.null(cv_fit$glmnet.fit)) return(cv_fit)
+        # if (is.null(cv_fit$glmnet.fit)) return(cv_fit)
 
         lambda_grid <- cv_fit$lambda
+
 
         if (!all(is.na(.self$lambda_grid))) {
           lambda_grid <- c(.self$lambda_grid, lambda_grid)
@@ -533,7 +700,6 @@ Learner_glmnet <- setRefClass(
       return(out)
 
     },
-
 
     predictor = function(model, newdata, ...) {
 
@@ -615,6 +781,8 @@ Learner_glmnet <- setRefClass(
 
 
     }
+
+
 
 
 
@@ -1275,7 +1443,7 @@ Learner_hal <- setRefClass(
     },
 
 
-    fit = function(data, ...) {
+    private_fit = function(data, ...) {
 
       data_copy = data.table::copy(data)
 
@@ -1524,7 +1692,7 @@ Learner_gam <- setRefClass(
       return(list(x = x, y = y, offset = offset))
     },
 
-    fit = function(data, ...) {
+    private_fit = function(data, ...) {
 
       .extract_symbols <- function(term) {
         # try as a bare expression, then as a RHS of a formula

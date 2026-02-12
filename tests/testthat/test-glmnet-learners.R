@@ -3,7 +3,7 @@
 ## Author: Thomas Alexander Gerds
 ## Created: feb 12 2026 (06:30)
 ## Version:
-## Last-Updated: feb 12 2026 (12:15) 
+## Last-Updated: feb 12 2026 (12:15)
 ##           By: Thomas Alexander Gerds
 ##     Update #: 17
 #----------------------------------------------------------------------
@@ -23,31 +23,45 @@ test_that("rigde works", {
     Xvars <- paste0("X", 1:10)
     d <- sampleData(n = 3000,formula = ~ f(X1, 2) + f(X2, 0) + f(X3, 0) + f(X6, 0) + f(X7, 0) + f(X8, 0) + f(X9, 0))
     fit_cox <- coxph(Surv(time, event == 1) ~ X1,data = d,x = TRUE,y = TRUE)
-    lasso_fish <- fishNet(data = d,
-                          event_time = "time",
-                          status = "event",
-                          covariates = Xvars,
-                          alpha = 1,
-                          lambda_grid = NULL,
-                          lambda = 0,
-                          ## lambda_grid = seq(.001, .9, .0002),
-                          penalise_nodes = FALSE,
-                          number_of_nodes = 2,
-                          nfold = 10)
-    ridge_fish <- fishNet(data = d,
-                          event_time = "time",
-                          status = "event",
-                          covariates = Xvars,
-                          alpha = 0,
-                          lambda_grid = NULL,
-                          lambda = 0,
-                          ## lambda_grid = seq(.001, .9, .0002),
-                          penalise_nodes = FALSE,
-                          number_of_nodes = 2,
-                          nfold = 10)
+
+    # Here you define the learner
+    lridge <- Learner_glmnet(covariates = Xvars,
+                              cross_validation=FALSE,
+                              lambda=0L,
+                              alpha=0,
+                              intercept=FALSE,
+                              penalise_nodes=FALSE)
+
+    # Here you call the method that fits the learner to the data.
+    lridge$fit(data = d,
+                event_time = "time",
+                status = "event",
+                covariates = Xvars,
+                number_of_nodes = 2)
+
+    # The model fit is saved as an attribute (model_fit) of the reference class Learner_glmnet.
+    # It essentially works like a Python class.
+
+
+    llasso <- Learner_glmnet(covariates = Xvars,
+                             cross_validation=FALSE,
+                             lambda=0L,
+                             alpha=1,
+                             intercept=FALSE,
+                             penalise_nodes=FALSE)
+
+    llasso$fit(data = d,
+               event_time = "time",
+               status = "event",
+               covariates = Xvars,
+               number_of_nodes = 2)
+
+
+
+
     cbind(
-        lasso_fish$superlearner[[1]]$learners_fit$beta,
-        ridge_fish$superlearner[[1]]$learners_fit$beta
+        lridge$model_fit$beta,
+        llasso$model_fit$beta
     )
 })
 
@@ -82,20 +96,18 @@ test_that("glmnet convergence issues veteran", {
 
   lglmnet <- Learner_glmnet(covariates = c("age"),
                                   cross_validation=FALSE,
-                                  alpha=1,
                                   lambda=0,
                                   lambda_grid =seq(.001,.9,.0002),
                                   intercept=FALSE,
                                   penalise_nodes=FALSE)
 
   out_glmnet_notresh <- Superlearner(veteran_data,
-                                   id="id",
-                                   status="status",
-                                   stratified_k_fold=FALSE,
-                                   event_time = "time",
-                                   learners=list(lglmnet),
-                                   meta_learner_algorithms = c("glm"),
-                                   nfold = 20
+                                     id="id",
+                                     status="status",
+                                     stratified_k_fold=FALSE,
+                                     event_time = "time",
+                                     learners=list(lglmnet),
+                                     meta_learner_algorithms = c("glm")
   )
 
   lglmnet_yt <- Learner_glmnet(covariates = c("age"),
