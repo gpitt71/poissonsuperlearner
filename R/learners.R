@@ -393,8 +393,14 @@ Learner_glmnet <- setRefClass(
 
       .self$penalise_nodes <- penalise_nodes
 
-      .self$lambda_grid <- lambda_grid
-      .self$lambda <- lambda
+      # normalize user input
+      if (is.null(lambda_grid)) lambda_grid <- NA_real_
+      if (length(lambda_grid) == 0L) lambda_grid <- NA_real_
+      lambda_grid <- as.numeric(lambda_grid)  # will keep NA as NA
+
+      if (is.null(lambda)) lambda <- NA_real_
+      if (length(lambda) == 0L) lambda <- NA_real_
+      lambda <- as.numeric(lambda)
 
       .self$recycle_information <- recycle_information
 
@@ -670,7 +676,10 @@ Learner_hal <- setRefClass(
 
       .self$num_knots <- num_knots
 
-      .self$lambda_grid <- lambda_grid
+      # normalize user input
+      if (is.null(lambda_grid)) lambda_grid <- NA_real_
+      if (length(lambda_grid) == 0L) lambda_grid <- NA_real_
+      lambda_grid <- as.numeric(lambda_grid)  # will keep NA as NA
 
       .self$penalise_nodes <- penalise_nodes
 
