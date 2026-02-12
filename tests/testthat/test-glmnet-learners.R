@@ -3,9 +3,9 @@
 ## Author: Thomas Alexander Gerds
 ## Created: feb 12 2026 (06:30)
 ## Version:
-## Last-Updated: feb 12 2026 (09:05)
+## Last-Updated: feb 12 2026 (11:32) 
 ##           By: Thomas Alexander Gerds
-##     Update #: 12
+##     Update #: 16
 #----------------------------------------------------------------------
 ##
 ### Commentary:
@@ -20,41 +20,34 @@ library(tmlensemble)
 library(survival)
 library(riskRegression)
 test_that("rigde works", {
-  Xvars <- paste0("X", 1:10)
-  d <- sampleData(
-    n = 300,
-    formula = ~ f(X1, 2) + f(X2, 0) + f(X3, 0) + f(X6, 0) + f(X7, 0) + f(X8, 0) + f(X9, 0)
-  )
-  fit_cox <- coxph(Surv(time, event == 1) ~ X1,
-                   data = d,
-                   x = TRUE,
-                   y = TRUE)
-  lasso_fish <- fishNet(
-    data = d,
-    event_time = "time",
-    status = "event",
-    covariates = Xvars,
-    alpha = 1,
-    lambda = seq(.001, .9, .0002),
-    penalise_nodes = FALSE,
-    number_of_nodes = 20,
-    nfold = 20
-  )
-  ridge_fish <- fishNet(
-    data = d,
-    event_time = "time",
-    status = "event",
-    covariates = Xvars,
-    alpha = 0,
-    lambda = seq(.001, .9, .0002),
-    penalise_nodes = FALSE,
-    number_of_nodes = 20,
-    nfold = 20
-  )
-  cbind(
-    lasso_fish$superlearner[[1]]$learners_fit$beta,
-    ridge_fish$superlearner[[1]]$learners_fit$beta
-  )
+    Xvars <- paste0("X", 1:10)
+    d <- sampleData(n = 3000,formula = ~ f(X1, 2) + f(X2, 0) + f(X3, 0) + f(X6, 0) + f(X7, 0) + f(X8, 0) + f(X9, 0))
+    fit_cox <- coxph(Surv(time, event == 1) ~ X1,data = d,x = TRUE,y = TRUE)
+    lasso_fish <- fishNet(data = d,
+                          event_time = "time",
+                          status = "event",
+                          covariates = Xvars,
+                          alpha = 1,
+                          lambda_grid = NULL,
+                          ## lambda_grid = seq(.001, .9, .0002),
+                          penalise_nodes = FALSE,
+                          number_of_nodes = 2,
+                          nfold = 10)
+    ridge_fish <- fishNet(data = d,
+                          event_time = "time",
+                          status = "event",
+                          covariates = Xvars,
+                          alpha = 0,
+                          lambda_grid = NULL,
+                          lambda = 0,
+                          ## lambda_grid = seq(.001, .9, .0002),
+                          penalise_nodes = FALSE,
+                          number_of_nodes = 2,
+                          nfold = 10)
+    cbind(
+        lasso_fish$superlearner[[1]]$learners_fit$beta,
+        ridge_fish$superlearner[[1]]$learners_fit$beta
+    )
 })
 
 

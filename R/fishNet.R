@@ -3,9 +3,9 @@
 ## Author: Thomas Alexander Gerds
 ## Created: feb 12 2026 (08:18) 
 ## Version: 
-## Last-Updated: feb 12 2026 (08:55) 
+## Last-Updated: feb 12 2026 (11:31) 
 ##           By: Thomas Alexander Gerds
-##     Update #: 7
+##     Update #: 8
 #----------------------------------------------------------------------
 ## 
 ### Commentary: 
@@ -44,6 +44,7 @@ fishNet <- function(data,
                     status,
                     covariates,
                     alpha,
+                    lambda = NULL,
                     lambda_grid,
                     penalise_nodes = FALSE,
                     number_of_nodes=20,
@@ -51,6 +52,7 @@ fishNet <- function(data,
     fit <- Learner_glmnet(covariates,
                           cross_validation=TRUE,
                           alpha=alpha,
+                          lambda = lambda,
                           lambda_grid =lambda_grid,
                           intercept=FALSE,
                           penalise_nodes = penalise_nodes)
