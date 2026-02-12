@@ -3,9 +3,9 @@
 ## Author: Thomas Alexander Gerds
 ## Created: feb 12 2026 (06:30)
 ## Version:
-## Last-Updated: feb 12 2026 (11:32) 
+## Last-Updated: feb 12 2026 (12:15) 
 ##           By: Thomas Alexander Gerds
-##     Update #: 16
+##     Update #: 17
 #----------------------------------------------------------------------
 ##
 ### Commentary:
@@ -29,6 +29,7 @@ test_that("rigde works", {
                           covariates = Xvars,
                           alpha = 1,
                           lambda_grid = NULL,
+                          lambda = 0,
                           ## lambda_grid = seq(.001, .9, .0002),
                           penalise_nodes = FALSE,
                           number_of_nodes = 2,
