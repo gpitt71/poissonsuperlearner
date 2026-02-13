@@ -661,6 +661,36 @@ create_formula <- function(covariates=NA_character_,
 
 }
 
+
+create_formula_glmnet <- function(covariates=NA_character_,
+                           treatment=NA_character_,
+                           add_nodes=TRUE){
+
+
+  xs<- NULL
+
+  if (!any(is.na( covariates))) {
+    xs <- paste(covariates, collapse = "+")
+  }
+
+  if (!is.na( treatment)) {
+    xs <- paste(xs, "+", treatment)
+  }
+
+  if (add_nodes) {
+    xs <- paste(xs, "+ node")
+  }
+
+  out <- paste("deltaij ~", xs, "+offset(log(tij))", sep =
+                 "")
+
+  return(out)
+
+
+
+
+}
+
 create_formula_gam <- function(covariates=NA_character_,
                            treatment=NA_character_,
                            competing_risks=FALSE,

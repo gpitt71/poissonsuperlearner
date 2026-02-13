@@ -372,7 +372,7 @@ Learner_glmnet <- setRefClass(
     initialize = function(covariates = NA_character_,
                           treatment = NA_character_,
                           cross_validation = FALSE,
-                          intercept=FALSE,
+                          intercept=TRUE,
                           add_nodes = TRUE,
                           penalise_nodes=FALSE,
                           recycle_information =FALSE,
@@ -394,21 +394,22 @@ Learner_glmnet <- setRefClass(
 
       .self$penalise_nodes <- penalise_nodes
 
+      tmp <- lambda_grid
       # normalize user input
-      if (is.null(lambda_grid)) lambda_grid <- NA_real_
-      if (length(lambda_grid) == 0L) lambda_grid <- NA_real_
-      lambda_grid <- as.numeric(lambda_grid)  # will keep NA as NA
+      if (is.null(lambda_grid)) tmp <- NA_real_
+      if (length(lambda_grid) == 0L) tmp <- NA_real_
+      .self$lambda_grid <- as.numeric(tmp)  # will keep NA as NA
 
-      if (is.null(lambda)) lambda <- NA_real_
-      if (length(lambda) == 0L) lambda <- NA_real_
-      lambda <- as.numeric(lambda)
+      tmp <- lambda
+      if (is.null(lambda)) tmp <- NA_real_
+      if (length(lambda) == 0L) tmp <- NA_real_
+      tmp <- as.numeric(tmp)
 
       .self$recycle_information <- recycle_information
 
       # create formula for competing risks. It is correct in the fit method if survival.
-      .self$formula <- create_formula(covariates = .self$covariates,
+      .self$formula <- create_formula_glmnet(covariates = .self$covariates,
                                       treatment = .self$treatment,
-                                      intercept =FALSE, #in the glmnet case, intercept is handled separately.
                                       add_nodes=.self$add_nodes)
 
 
@@ -426,7 +427,7 @@ Learner_glmnet <- setRefClass(
 
       } else{
         .self$learner = glmnet
-        .self$fit_arguments[['lambda']] <- lambda
+        .self$fit_arguments[['lambda']] <- tmp
       }
 
 
@@ -470,7 +471,7 @@ Learner_glmnet <- setRefClass(
 
       if (!(id %in% names(data))) {
         data[["id"]] <- 1:NROW(data)
-        id <- "id"
+        id <<- "id"
       }
 
 
@@ -605,13 +606,25 @@ Learner_glmnet <- setRefClass(
         apply_transformations(dt,variable_transformation)}
 
 
-      .self$model_fit <- .self$private_fit(dt)
+      # .self$model_fit <- .self$private_fit(dt)
 
+      training_data <- split(dt, by = "k")
+
+      .self$model_fit <- mapply(function(x){
+
+        out <- .self$private_fit(x)
+        return(out)
+      },
+      training_data,
+      SIMPLIFY = FALSE
+      )
 
 
     },
 
     private_fit = function(data, ...) {
+
+
 
       .extract_symbols <- function(term) {
         # try as a bare expression, then as a RHS of a formula
@@ -642,7 +655,7 @@ Learner_glmnet <- setRefClass(
 
       x = sparse.model.matrix(formula(.self$formula),
                               data,
-                              contrasts.arg = NULL)
+                              contrasts.arg = NULL)[,-1]
 
       .self$fit_arguments[['y']] <- as.numeric(data[['deltaij']])
 
@@ -657,24 +670,23 @@ Learner_glmnet <- setRefClass(
 
       .self$fit_arguments[['x']] <- x
 
+
       if (.self$cross_validation) {
         suppressWarnings(cv_fit <- do.call(cv.glmnet, .self$fit_arguments))
 
-        # if (is.null(cv_fit$glmnet.fit)) return(cv_fit)
-
-        lambda_grid <- cv_fit$lambda
+        lambda_grid_prefit <- cv_fit$lambda
 
 
         if (!all(is.na(.self$lambda_grid))) {
-          lambda_grid <- c(.self$lambda_grid, lambda_grid)
-          lambda_grid <- lambda_grid[complete.cases(lambda_grid)]
-          lambda_grid <- sort(unique(lambda_grid), decreasing = TRUE)
+          lambda_grid_prefit <- c(.self$lambda_grid, lambda_grid_prefit)
+          lambda_grid_prefit <- lambda_grid_prefit[complete.cases(lambda_grid_prefit)]
+          lambda_grid_prefit <- sort(unique(lambda_grid_prefit), decreasing = TRUE)
         }
         preds <- predict(cv_fit$glmnet.fit,
                          newx = x,
                          newoffset = log(data[['tij']]),
                          type = "response",
-                         s = lambda_grid)
+                         s = lambda_grid_prefit)
 
         if (is.null(dim(preds))) {
           preds <- matrix(preds, ncol = 1L)
@@ -683,7 +695,7 @@ Learner_glmnet <- setRefClass(
         mu <- pmax(preds, 1e-12)
         y_vec <- as.numeric(data[['deltaij']])
         nll <- -colSums(y_vec * log(mu) - mu)
-        lambda_opt <- lambda_grid[which.min(nll)]
+        lambda_opt <- lambda_grid_prefit[which.min(nll)]
 
         glmnet_args <- .self$fit_arguments
         glmnet_args[['lambda']] <- lambda_opt
@@ -845,9 +857,11 @@ Learner_hal <- setRefClass(
       .self$num_knots <- num_knots
 
       # normalize user input
-      if (is.null(lambda_grid)) lambda_grid <- NA_real_
-      if (length(lambda_grid) == 0L) lambda_grid <- NA_real_
-      lambda_grid <- as.numeric(lambda_grid)  # will keep NA as NA
+      tmp <- lambda_grid
+      if (is.null(lambda_grid)) tmp <- NA_real_
+      if (length(lambda_grid) == 0L) tmp <- NA_real_
+
+      .self$lambda_grid <- tmp
 
       .self$penalise_nodes <- penalise_nodes
 
@@ -977,43 +991,85 @@ Learner_hal <- setRefClass(
         meta_per_var[[v]] <- res$var_meta
       }
 
-      I_chunks <- vector("list", 1024L)
-      J_chunks <- vector("list", 1024L)
-      name_chunks <- vector("list", 1024L)
-      colmeta_chunks <- vector("list", 1024L)
-      chunk_used <- 0L
-      p <- 0L
+
+      st <- new.env(parent = emptyenv())
+      st$I_chunks <- vector("list", 1024L)
+      st$J_chunks <- vector("list", 1024L)
+      st$name_chunks <- vector("list", 1024L)
+      st$colmeta_chunks <- vector("list", 1024L)
+      st$chunk_used <- 0L
+      st$p <- 0L
 
       add_cols <- function(idxs_list, nm_vec, col_meta_list) {
         keep <- lengths(idxs_list) > 0L
-        if (!any(keep)) return()
-        idxs_list <- idxs_list[keep]; nm_vec <- nm_vec[keep]; col_meta_list <- col_meta_list[keep]
+        if (!any(keep)) return(invisible(NULL))
+
+        idxs_list <- idxs_list[keep]
+        nm_vec <- nm_vec[keep]
+        col_meta_list <- col_meta_list[keep]
+
         kcols <- length(idxs_list)
-        need <- chunk_used + kcols
-        if (need > length(I_chunks)) {
-          newlen <- max(need, length(I_chunks) * 2L)
-          length(I_chunks) <<- newlen
-          length(J_chunks) <<- newlen
-          length(name_chunks) <<- newlen
-          length(colmeta_chunks) <<- newlen
+        need <- st$chunk_used + kcols
+
+        if (need > length(st$I_chunks)) {
+          newlen <- max(need, length(st$I_chunks) * 2L)
+          length(st$I_chunks) <- newlen
+          length(st$J_chunks) <- newlen
+          length(st$name_chunks) <- newlen
+          length(st$colmeta_chunks) <- newlen
         }
+
         for (i in seq_len(kcols)) {
-          p <<- p + 1L
-          chunk_used <<- chunk_used + 1L
-          I_chunks[[chunk_used]] <<- idxs_list[[i]]
-          J_chunks[[chunk_used]] <<- rep.int(p, length(idxs_list[[i]]))
-          name_chunks[[chunk_used]] <<- nm_vec[[i]]
-          colmeta_chunks[[chunk_used]] <<- col_meta_list[[i]]
+          st$p <- st$p + 1L
+          st$chunk_used <- st$chunk_used + 1L
+
+          st$I_chunks[[st$chunk_used]] <- idxs_list[[i]]
+          st$J_chunks[[st$chunk_used]] <- rep.int(st$p, length(idxs_list[[i]]))
+          st$name_chunks[[st$chunk_used]] <- nm_vec[[i]]
+          st$colmeta_chunks[[st$chunk_used]] <- col_meta_list[[i]]
         }
+
+        invisible(NULL)
       }
 
-      # mains
-      for (v in vars) {
-        prim <- primitives[[v]]
-        if (!length(prim$idxs)) next
-        mains_meta <- lapply(prim$prim_meta, function(m) c(list(type = "main"), m))
-        add_cols(prim$idxs, prim$names, mains_meta)
-      }
+
+      # I_chunks <- vector("list", 1024L)
+      # J_chunks <- vector("list", 1024L)
+      # name_chunks <- vector("list", 1024L)
+      # colmeta_chunks <- vector("list", 1024L)
+      # chunk_used <- 0L
+      # p <- 0L
+      #
+      # add_cols <- function(idxs_list, nm_vec, col_meta_list) {
+      #   keep <- lengths(idxs_list) > 0L
+      #   if (!any(keep)) return()
+      #   idxs_list <- idxs_list[keep]; nm_vec <- nm_vec[keep]; col_meta_list <- col_meta_list[keep]
+      #   kcols <- length(idxs_list)
+      #   need <- chunk_used + kcols
+      #   if (need > length(I_chunks)) {
+      #     newlen <- max(need, length(I_chunks) * 2L)
+      #     length(I_chunks) <<- newlen
+      #     length(J_chunks) <<- newlen
+      #     length(name_chunks) <<- newlen
+      #     length(colmeta_chunks) <<- newlen
+      #   }
+      #   for (i in seq_len(kcols)) {
+      #     p <<- p + 1L
+      #     chunk_used <<- chunk_used + 1L
+      #     I_chunks[[chunk_used]] <<- idxs_list[[i]]
+      #     J_chunks[[chunk_used]] <<- rep.int(p, length(idxs_list[[i]]))
+      #     name_chunks[[chunk_used]] <<- nm_vec[[i]]
+      #     colmeta_chunks[[chunk_used]] <<- col_meta_list[[i]]
+      #   }
+      # }
+      #
+      # # mains
+      # for (v in vars) {
+      #   prim <- primitives[[v]]
+      #   if (!length(prim$idxs)) next
+      #   mains_meta <- lapply(prim$prim_meta, function(m) c(list(type = "main"), m))
+      #   add_cols(prim$idxs, prim$names, mains_meta)
+      # }
 
       # interactions: cap numerics by Kcap, include all factor levels
       if (max_interaction >= 2L) {
@@ -1485,12 +1541,12 @@ Learner_hal <- setRefClass(
 
         cv_fit <- do.call(cv.glmnet, prefit_args)
 
-        lambda_grid <- cv_fit$lambda
+        lambda_grid_prefit <- cv_fit$lambda
 
         if (!all(is.na(.self$lambda_grid))) {
-          lambda_grid <- c(.self$lambda_grid, lambda_grid)
-          lambda_grid <- lambda_grid[complete.cases(lambda_grid)]
-          lambda_grid <- sort(unique(lambda_grid), decreasing = TRUE)
+          lambda_grid_prefit <- c(.self$lambda_grid, lambda_grid_prefit)
+          lambda_grid_prefit <- lambda_grid_prefit[complete.cases(lambda_grid_prefit)]
+          lambda_grid_prefit <- sort(unique(lambda_grid_prefit), decreasing = TRUE)
         }
 
         preds <- predict(cv_fit$glmnet.fit,
@@ -1720,6 +1776,8 @@ Learner_gam <- setRefClass(
       data <- data[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(group_cols, "node", "k")]
 
       data <- data[complete.cases(data), ]
+
+
       .self$fit_arguments$formula <- as.formula(.self$formula)
       .self$fit_arguments$data <- data
       .self$fit_arguments$offset <- log(data[['tij']])

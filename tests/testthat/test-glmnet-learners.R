@@ -3,7 +3,7 @@
 ## Author: Thomas Alexander Gerds
 ## Created: feb 12 2026 (06:30)
 ## Version:
-## Last-Updated: feb 12 2026 (15:24) 
+## Last-Updated: feb 12 2026 (15:24)
 ##           By: Thomas Alexander Gerds
 ##     Update #: 18
 #----------------------------------------------------------------------
@@ -20,52 +20,87 @@ library(tmlensemble)
 library(survival)
 library(riskRegression)
 test_that("rigde works", {
+
     Xvars <- paste0("X", 1:10)
     d <- sampleData(n = 3000,formula = ~ f(X1, 2) + f(X2, 0) + f(X3, 0) + f(X6, 0) + f(X7, 0) + f(X8, 0) + f(X9, 0))
-    fit_cox <- coxph(Surv(time, event == 1) ~ X1+X2+X3+X4+X5+X6+X7+X8+X9+X10,data = d,x = TRUE,y = TRUE)
-    
-    fit_rigde_cox <- GLMnet(formula = Surv(time, event == 1) ~ X1+X2+X3+X4+X5+X6+X7+X8+X9+X10,data = d,alpha = 0)
-    fit_lasso_cox <- GLMnet(formula = Surv(time, event == 1) ~ X1+X2+X3+X4+X5+X6+X7+X8+X9+X10,data = d,alpha = 1)
+
+    fit_cox <- coxph(Surv(time, event == 1) ~ X1+X7,data = d,x = TRUE,y = TRUE)
+    fit_pen_cox <- GLMnet(formula = Surv(time, event == 1) ~ X1+X7,data = d,lambda = 0)
+    fit_rigde_cox <- GLMnet(formula = Surv(time, event == 1) ~ X1+X7,data = d,alpha = 0)
+    fit_lasso_cox <- GLMnet(formula = Surv(time, event == 1) ~ X1+X7,data = d,alpha = 1)
 
     # Here you define the learner
-    lridge <- Learner_glmnet(covariates = Xvars,
-                              cross_validation=FALSE,
-                              lambda=0L,
+    lridge <- Learner_glmnet(covariates = c("X1","X7"),
+                              cross_validation=TRUE,
+                              lambda_grid =seq(0.01,.9,by=0.002),
                               alpha=0,
-                              intercept=FALSE,
+                              intercept=TRUE,
                               penalise_nodes=FALSE)
 
     # Here you call the method that fits the learner to the data.
-    lridge$fit(data = d,
+
+    # In my package you need explicit coding of the event.
+    dupdated <- copy(d)
+    dupdated[,event:=as.numeric(event==1)]
+
+    lridge$fit(data = dupdated,
                event_time = "time",
                status = "event",
-               covariates = Xvars,
-               number_of_nodes = 2)
+               number_of_nodes=20)
 
     # The model fit is saved as an attribute (model_fit) of the reference class Learner_glmnet.
     # It essentially works like a Python class.
 
+    head(coef(lridge$model_fit[[1]]))
 
-    llasso <- Learner_glmnet(covariates = Xvars,
+
+    lcox <- Learner_glmnet(covariates = c("X1","X7"),
                              cross_validation=FALSE,
-                             lambda=0L,
-                             alpha=1,
-                             intercept=FALSE,
+                             lambda=0,
+                             alpha=0,
+                             intercept=TRUE,
                              penalise_nodes=FALSE)
 
-    llasso$fit(data = d,
+    lcox$fit(data = dupdated,
                event_time = "time",
                status = "event",
-               covariates = Xvars,
-               number_of_nodes = 2)
+             number_of_nodes = 20)
+
+    head(coef(lcox$model_fit[[1]]))
+
+
+    llasso <- Learner_glmnet(covariates = c("X1","X7"),
+                             cross_validation=TRUE,
+                             lambda_grid =seq(0.01,.9,by=0.002),
+                             alpha=1,
+                             intercept=TRUE,
+                             penalise_nodes=FALSE)
+
+    llasso$fit(data = dupdated,
+             event_time = "time",
+             status = "event",
+             number_of_nodes = 20)
 
 
 
+    lgam <- Learner_gam(covariates = c("X1","X7"))
 
-    cbind(
-        lridge$model_fit$beta,
-        llasso$model_fit$beta
+    out_gam <- Superlearner(
+      data = dupdated,
+      event_time = "time",
+      status = "event",
+      id = "id",
+      learners = list(lgam),
+      nfold = 20,
+      number_of_nodes = 20
     )
+
+   cbind( lasso=head(coef(llasso$model_fit[[1]])),
+    ridge=head(coef(lridge$model_fit[[1]])),
+    cox=head(coef(lcox$model_fit[[1]])),
+    gam=head(coef(out_gam$superlearner[[1]]$learners_fit)))
+
+
 })
 
 
@@ -93,27 +128,27 @@ test_that("glmnet convergence issues veteran", {
 
   veteran_data <- veteran_data[,.SD[1],by="time"] # disregard ties
 
-  covariates <- c("age")
+  covariates <- c("age","celltype")
 
-  fit_cox <- coxph(Surv(time,status )~age,data = veteran_data,x = TRUE,y = TRUE)
+  fit_cox <- coxph(Surv(time,status )~age+celltype,data = veteran_data,x = TRUE,y = TRUE)
 
-  lglmnet <- Learner_glmnet(covariates = c("age"),
+  fit_rigde_cox <- GLMnet(formula = Surv(time, status == 1) ~ age+celltype,data = veteran_data,alpha = 0)
+  fit_lasso_cox <- GLMnet(formula = Surv(time, status == 1) ~ age+celltype,data = veteran_data,alpha = 1)
+
+  lglmnet <- Learner_glmnet(covariates = covariates,
                                   cross_validation=FALSE,
                                   lambda=0,
                                   lambda_grid =seq(.001,.9,.0002),
                                   intercept=FALSE,
                                   penalise_nodes=FALSE)
 
-  out_glmnet_notresh <- Superlearner(veteran_data,
-                                     id="id",
-                                     status="status",
-                                     stratified_k_fold=FALSE,
-                                     event_time = "time",
-                                     learners=list(lglmnet),
-                                     meta_learner_algorithms = c("glm")
-  )
+  lglmnet$fit(veteran_data,
+              id="id",
+              status="status",
+              stratified_k_fold=FALSE,
+              event_time = "time")
 
-  lglmnet_yt <- Learner_glmnet(covariates = c("age"),
+  lglmnet_yt <- Learner_glmnet(covariates = covariates,
                             cross_validation=FALSE,
                             alpha=1,
                             lambda=0,
@@ -122,17 +157,32 @@ test_that("glmnet convergence issues veteran", {
                             thresh = 1e-15,
                             penalise_nodes=FALSE)
 
-  out_glmnet_yestresh <- Superlearner(veteran_data,
-                                     id="id",
-                                     status="status",
-                                     stratified_k_fold=FALSE,
-                                     event_time = "time",
-                                     learners=list(lglmnet_yt),
-                                     meta_learner_algorithms = c("glm"),
-                                     nfold = 20
-  )
 
-  lgam <- Learner_gam(covariates = c("age"))
+  lglmnet_yt$fit(veteran_data,
+              id="id",
+              status="status",
+              stratified_k_fold=FALSE,
+              event_time = "time")
+
+
+  llasso <- Learner_glmnet(covariates = covariates,
+                               cross_validation=T,
+                               alpha=1,
+                               # lambda=0,
+                               lambda_grid =seq(.001,.9,.0002),
+                               intercept=FALSE,
+                               thresh = 1e-15,
+                               penalise_nodes=TRUE)
+
+
+  llasso$fit(veteran_data,
+                 id="id",
+                 status="status",
+                 stratified_k_fold=FALSE,
+                 event_time = "time")
+
+
+  lgam <- Learner_gam(covariates = c("age","celltype"))
 
   out_gam <- Superlearner(veteran_data,
                                       id="id",
@@ -145,9 +195,10 @@ test_that("glmnet convergence issues veteran", {
   )
 
   cbind(coef(fit_cox),
-  out_glmnet_notresh$superlearner[[1]]$learners_fit$beta[1,],
-  out_glmnet_yestresh$superlearner[[1]]$learners_fit$beta[1,],
-  out_gam$superlearner[[1]]$learners_fit$coefficients[2]
+        lglmnet$model_fit$beta[1:5,],
+        lglmnet_yt$model_fit$beta[1:5,],
+        llasso$model_fit$beta[1:5,],
+        out_gam$superlearner[[1]]$learners_fit$coefficients[2:5]
   )
 
 })

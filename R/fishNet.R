@@ -1,30 +1,30 @@
-### fishNet.R --- 
+### fishNet.R ---
 #----------------------------------------------------------------------
 ## Author: Thomas Alexander Gerds
-## Created: feb 12 2026 (08:18) 
-## Version: 
-## Last-Updated: feb 12 2026 (11:31) 
+## Created: feb 12 2026 (08:18)
+## Version:
+## Last-Updated: feb 12 2026 (11:31)
 ##           By: Thomas Alexander Gerds
 ##     Update #: 8
 #----------------------------------------------------------------------
-## 
-### Commentary: 
-## 
+##
+### Commentary:
+##
 ### Change Log:
 #----------------------------------------------------------------------
-## 
+##
 ### Code:
-##' Fit poisson regression model  
+##' Fit poisson regression model
 ##'
 ##' via Superlearner
 ##' @title fit poisson regression model
 ##' @param data data including the outcome variables and the covariates
-##' @param event_time character. event time variable 
-##' @param status character. event type. 
+##' @param event_time character. event time variable
+##' @param status character. event type.
 ##' @param covariates character vector of covariate names
 ##' @param alpha alpha mixing parameter (1=LASSO, 0=ridge, elastic net else)
 ##' @param lambda_grid vector of values for lambda search
-##' @param penalise_nodes if TRUE penalize also baseline hazard parameters 
+##' @param penalise_nodes if TRUE penalize also baseline hazard parameters
 ##' @param number_of_nodes number of baseline hazard parameters
 ##' @param nfold number of folds for super learner
 ##' @return fitted object
@@ -36,13 +36,14 @@
 ##' fit <- fishNet(data = d,event_time = "time",status = "event",
 ##'  covariates = covariates,alpha = 0,lambda = seq(.001,.9,.0002),
 ##'  penalise_nodes = FALSE,number_of_nodes=20,nfold = 20)
-##' 
-##' @export 
+##'
+##' @export
 ##' @author Thomas A. Gerds <tag@@biostat.ku.dk>
 fishNet <- function(data,
                     event_time,
                     status,
                     covariates,
+                    cross_validation=FALSE,
                     alpha,
                     lambda = NULL,
                     lambda_grid,
@@ -50,7 +51,7 @@ fishNet <- function(data,
                     number_of_nodes=20,
                     nfold = 20){
     fit <- Learner_glmnet(covariates,
-                          cross_validation=TRUE,
+                          cross_validation=FALSE,
                           alpha=alpha,
                           lambda = lambda,
                           lambda_grid =lambda_grid,
