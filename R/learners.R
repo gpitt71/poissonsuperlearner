@@ -657,10 +657,6 @@ Learner_glmnet <- setRefClass(
                               data,
                               contrasts.arg = NULL)[,-1]
 
-      .self$fit_arguments[['y']] <- as.numeric(data[['deltaij']])
-
-      .self$fit_arguments[['offset']] <-  log(data[['tij']])
-
 
       if(!.self$penalise_nodes){
 
@@ -668,11 +664,18 @@ Learner_glmnet <- setRefClass(
 
       }
 
-      .self$fit_arguments[['x']] <- x
+
 
 
       if (.self$cross_validation) {
-        suppressWarnings(cv_fit <- do.call(cv.glmnet, .self$fit_arguments))
+        suppressWarnings(cv_fit <- do.call(cv.glmnet, c(
+          .self$fit_arguments,
+          list(
+            x = x,
+            y = as.numeric(data[["deltaij"]]),
+            offset = log(data[["tij"]])
+          )
+        )))
 
         lambda_grid_prefit <- cv_fit$lambda
 
@@ -701,12 +704,26 @@ Learner_glmnet <- setRefClass(
         glmnet_args[['lambda']] <- lambda_opt
         glmnet_args[['nfolds']] <- NULL
 
-        out <- do.call(glmnet, glmnet_args)
+        out <- do.call(glmnet, c(
+          glmnet_args,
+          list(
+            x = x,
+            y = as.numeric(data[["deltaij"]]),
+            offset = log(data[["tij"]])
+          )
+        ))
 
       } else {
 
         out <- do.call(.self$learner,
-                       .self$fit_arguments)
+                       c(
+                         .self$fit_arguments,
+                         list(
+                           x = x,
+                           y = as.numeric(data[["deltaij"]]),
+                           offset = log(data[["tij"]])
+                         )
+                       ))
       }
 
       return(out)
