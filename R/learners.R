@@ -1796,9 +1796,12 @@ Learner_gam <- setRefClass(
 
 
       .self$fit_arguments$formula <- as.formula(.self$formula)
-      .self$fit_arguments$data <- data
-      .self$fit_arguments$offset <- log(data[['tij']])
-      fit <- do.call(.self$learner, .self$fit_arguments)
+      # .self$fit_arguments$data <- data
+      # .self$fit_arguments$offset <- log(data[['tij']])
+
+      fit <- do.call(.self$learner, c(.self$fit_arguments,
+                                      list(data=data,
+                                           offset=log(data[['tij']]))))
       return(fit)
     },
 
