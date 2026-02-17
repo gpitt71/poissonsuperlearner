@@ -10,6 +10,65 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
+// inter2_cpp
+IntegerVector inter2_cpp(IntegerVector a, IntegerVector b);
+RcppExport SEXP _tmlensemble_inter2_cpp(SEXP aSEXP, SEXP bSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type a(aSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type b(bSEXP);
+    rcpp_result_gen = Rcpp::wrap(inter2_cpp(a, b));
+    return rcpp_result_gen;
+END_RCPP
+}
+// interN_cpp
+IntegerVector interN_cpp(List lst);
+RcppExport SEXP _tmlensemble_interN_cpp(SEXP lstSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< List >::type lst(lstSEXP);
+    rcpp_result_gen = Rcpp::wrap(interN_cpp(lst));
+    return rcpp_result_gen;
+END_RCPP
+}
+// mk_main_numeric_cpp
+List mk_main_numeric_cpp(NumericVector x, int K);
+RcppExport SEXP _tmlensemble_mk_main_numeric_cpp(SEXP xSEXP, SEXP KSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type x(xSEXP);
+    Rcpp::traits::input_parameter< int >::type K(KSEXP);
+    rcpp_result_gen = Rcpp::wrap(mk_main_numeric_cpp(x, K));
+    return rcpp_result_gen;
+END_RCPP
+}
+// mk_main_factor_cpp
+List mk_main_factor_cpp(IntegerVector x_int, int n_levels);
+RcppExport SEXP _tmlensemble_mk_main_factor_cpp(SEXP x_intSEXP, SEXP n_levelsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type x_int(x_intSEXP);
+    Rcpp::traits::input_parameter< int >::type n_levels(n_levelsSEXP);
+    rcpp_result_gen = Rcpp::wrap(mk_main_factor_cpp(x_int, n_levels));
+    return rcpp_result_gen;
+END_RCPP
+}
+// add_cols_cpp
+List add_cols_cpp(List idxs_list, int p_start);
+RcppExport SEXP _tmlensemble_add_cols_cpp(SEXP idxs_listSEXP, SEXP p_startSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< List >::type idxs_list(idxs_listSEXP);
+    Rcpp::traits::input_parameter< int >::type p_start(p_startSEXP);
+    rcpp_result_gen = Rcpp::wrap(add_cols_cpp(idxs_list, p_start));
+    return rcpp_result_gen;
+END_RCPP
+}
 // pch_absolute_risk
 NumericVector pch_absolute_risk(IntegerVector id, NumericVector dt, NumericMatrix haz, int cause_idx, const bool one_based, const bool na_is_zero);
 RcppExport SEXP _tmlensemble_pch_absolute_risk(SEXP idSEXP, SEXP dtSEXP, SEXP hazSEXP, SEXP cause_idxSEXP, SEXP one_basedSEXP, SEXP na_is_zeroSEXP) {
@@ -73,6 +132,11 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
+    {"_tmlensemble_inter2_cpp", (DL_FUNC) &_tmlensemble_inter2_cpp, 2},
+    {"_tmlensemble_interN_cpp", (DL_FUNC) &_tmlensemble_interN_cpp, 1},
+    {"_tmlensemble_mk_main_numeric_cpp", (DL_FUNC) &_tmlensemble_mk_main_numeric_cpp, 2},
+    {"_tmlensemble_mk_main_factor_cpp", (DL_FUNC) &_tmlensemble_mk_main_factor_cpp, 2},
+    {"_tmlensemble_add_cols_cpp", (DL_FUNC) &_tmlensemble_add_cols_cpp, 2},
     {"_tmlensemble_pch_absolute_risk", (DL_FUNC) &_tmlensemble_pch_absolute_risk, 6},
     {"_tmlensemble_pch_absolute_risk_euler", (DL_FUNC) &_tmlensemble_pch_absolute_risk_euler, 6},
     {"_tmlensemble_pch_survival", (DL_FUNC) &_tmlensemble_pch_survival, 4},
