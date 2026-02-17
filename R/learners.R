@@ -667,6 +667,7 @@ Learner_glmnet <- setRefClass(
 
 
 
+
       if (.self$cross_validation) {
         suppressWarnings(cv_fit <- do.call(cv.glmnet, c(
           .self$fit_arguments,
@@ -916,11 +917,10 @@ Learner_hal <- setRefClass(
       .self$id <- id
 
     },
-
     hal_basis = function(vars,
-                          DT,
-                          max_interaction = 2L,
-                          knots_per_order = rep(10L, 2L)) {
+                         DT,
+                         max_interaction = 2L,
+                         knots_per_order = rep(10L, 2L)) {
 
       stopifnot(requireNamespace("data.table", quietly = TRUE))
       stopifnot(requireNamespace("Matrix", quietly = TRUE))
@@ -931,76 +931,15 @@ Learner_hal <- setRefClass(
       if (!all(vars %in% names(DT))) stop("vars not all found in DT")
 
       n <- nrow(DT)
+
       DT_local <- DT[, ..vars]
       for (v in vars) {
         x <- DT_local[[v]]
         if (is.character(x) || is.logical(x)) DT_local[[v]] <- factor(x)
       }
 
-      inter2 <- function(a, b) {
-        i <- 1L; j <- 1L; la <- length(a); lb <- length(b)
-        if (!la || !lb) return(integer())
-        out <- integer(min(la, lb)); k <- 0L
-        while (i <= la && j <= lb) {
-          ai <- a[i]; bj <- b[j]
-          if (ai < bj) i <- i + 1L else if (ai > bj) j <- j + 1L else {
-            k <- k + 1L; out[k] <- ai; i <- i + 1L; j <- j + 1L
-          }
-        }
-        if (k) out[seq_len(k)] else integer()
-      }
-      interN <- function(lst) {
-        if (length(lst) == 1L) return(lst[[1L]])
-        acc <- inter2(lst[[1L]], lst[[2L]])
-        if (!length(acc) || length(lst) == 2L) return(acc)
-        for (i in 3L:length(lst)) {
-          acc <- inter2(acc, lst[[i]])
-          if (!length(acc)) break
-        }
-        acc
-      }
-
       primitives <- setNames(vector("list", length(vars)), vars)
       meta_per_var <- setNames(vector("list", length(vars)), vars)
-
-      mk_main <- function(x, v, K) {
-        if (is.numeric(x)) {
-          ps  <- seq(0, 1, length.out = K + 2L)
-          cps <- unique(stats::quantile(x, probs = ps, na.rm = TRUE, type = 1))
-          cps <- cps[is.finite(cps)]
-          if (length(cps) >= 2L) cps <- cps[-c(1L, length(cps))] else cps <- numeric()
-          cps <- unique(cps)
-          if (!length(cps)) {
-            return(list(idxs = list(), names = character(),
-                        prim_meta = list(), var_meta = list(cutpoints = numeric())))
-          }
-          ord <- order(x); xs <- x[ord]
-          pos <- findInterval(cps, xs, rightmost.closed = TRUE, all.inside = TRUE)
-          idxs <- lapply(pos, function(k) if (k > 0L) ord[seq_len(k)] else integer())
-          idxs <- lapply(idxs, sort.int, method = "quick")
-          nms  <- sprintf("I(%s<=%.10g)", v, cps)
-          prim_meta <- lapply(cps, function(cu) list(var = v, kind = "numeric", cutpoint = cu))
-          list(idxs = idxs, names = nms,
-               prim_meta = prim_meta,
-               var_meta = list(cutpoints = cps))
-        } else if (is.factor(x)) {
-          lv <- levels(x)
-          if (!length(lv)) {
-            return(list(idxs = list(), names = character(),
-                        prim_meta = list(), var_meta = list(levels = character())))
-          }
-          # TAKE ALL LEVELS, ignore K
-          idx_by_lvl <- split(seq_len(length(x)), x, drop = FALSE)
-          idxs <- lapply(lv, function(l) sort.int(idx_by_lvl[[l]], method = "quick"))
-          nms  <- sprintf("I(%s==%s)", v, make.names(lv, unique = TRUE))
-          prim_meta <- lapply(lv, function(L) list(var = v, kind = "factor", level = L))
-          list(idxs = idxs, names = nms,
-               prim_meta = prim_meta,
-               var_meta = list(levels = lv))
-        } else {
-          stop(sprintf("Unsupported type for %s", v))
-        }
-      }
 
       for (v in vars) {
         res <- mk_main(DT_local[[v]], v, K = knots_per_order[1L])
@@ -1008,142 +947,94 @@ Learner_hal <- setRefClass(
         meta_per_var[[v]] <- res$var_meta
       }
 
+      # state for chunked construction (purely threaded)
+      state <- list(
+        I_chunks = vector("list", 0L),
+        J_chunks = vector("list", 0L),
+        name_chunks = vector("list", 0L),
+        colmeta_chunks = vector("list", 0L),
+        chunk_used = 0L,
+        p = 0L
+      )
 
-      st <- new.env(parent = emptyenv())
-      st$I_chunks <- vector("list", 1024L)
-      st$J_chunks <- vector("list", 1024L)
-      st$name_chunks <- vector("list", 1024L)
-      st$colmeta_chunks <- vector("list", 1024L)
-      st$chunk_used <- 0L
-      st$p <- 0L
-
-      add_cols <- function(idxs_list, nm_vec, col_meta_list) {
-        keep <- lengths(idxs_list) > 0L
-        if (!any(keep)) return(invisible(NULL))
-
-        idxs_list <- idxs_list[keep]
-        nm_vec <- nm_vec[keep]
-        col_meta_list <- col_meta_list[keep]
-
-        kcols <- length(idxs_list)
-        need <- st$chunk_used + kcols
-
-        if (need > length(st$I_chunks)) {
-          newlen <- max(need, length(st$I_chunks) * 2L)
-          length(st$I_chunks) <- newlen
-          length(st$J_chunks) <- newlen
-          length(st$name_chunks) <- newlen
-          length(st$colmeta_chunks) <- newlen
-        }
-
-        for (i in seq_len(kcols)) {
-          st$p <- st$p + 1L
-          st$chunk_used <- st$chunk_used + 1L
-
-          st$I_chunks[[st$chunk_used]] <- idxs_list[[i]]
-          st$J_chunks[[st$chunk_used]] <- rep.int(st$p, length(idxs_list[[i]]))
-          st$name_chunks[[st$chunk_used]] <- nm_vec[[i]]
-          st$colmeta_chunks[[st$chunk_used]] <- col_meta_list[[i]]
-        }
-
-        invisible(NULL)
+      # mains
+      for (v in vars) {
+        prim <- primitives[[v]]
+        if (!length(prim$idxs)) next
+        mains_meta <- lapply(prim$prim_meta, function(m) c(list(type = "main"), m))
+        state <- add_cols(state, prim$idxs, prim$names, mains_meta)
       }
 
-
-      # I_chunks <- vector("list", 1024L)
-      # J_chunks <- vector("list", 1024L)
-      # name_chunks <- vector("list", 1024L)
-      # colmeta_chunks <- vector("list", 1024L)
-      # chunk_used <- 0L
-      # p <- 0L
-      #
-      # add_cols <- function(idxs_list, nm_vec, col_meta_list) {
-      #   keep <- lengths(idxs_list) > 0L
-      #   if (!any(keep)) return()
-      #   idxs_list <- idxs_list[keep]; nm_vec <- nm_vec[keep]; col_meta_list <- col_meta_list[keep]
-      #   kcols <- length(idxs_list)
-      #   need <- chunk_used + kcols
-      #   if (need > length(I_chunks)) {
-      #     newlen <- max(need, length(I_chunks) * 2L)
-      #     length(I_chunks) <<- newlen
-      #     length(J_chunks) <<- newlen
-      #     length(name_chunks) <<- newlen
-      #     length(colmeta_chunks) <<- newlen
-      #   }
-      #   for (i in seq_len(kcols)) {
-      #     p <<- p + 1L
-      #     chunk_used <<- chunk_used + 1L
-      #     I_chunks[[chunk_used]] <<- idxs_list[[i]]
-      #     J_chunks[[chunk_used]] <<- rep.int(p, length(idxs_list[[i]]))
-      #     name_chunks[[chunk_used]] <<- nm_vec[[i]]
-      #     colmeta_chunks[[chunk_used]] <<- col_meta_list[[i]]
-      #   }
-      # }
-      #
-      # # mains
-      # for (v in vars) {
-      #   prim <- primitives[[v]]
-      #   if (!length(prim$idxs)) next
-      #   mains_meta <- lapply(prim$prim_meta, function(m) c(list(type = "main"), m))
-      #   add_cols(prim$idxs, prim$names, mains_meta)
-      # }
-
-      # interactions: cap numerics by Kcap, include all factor levels
+      # interactions
       if (max_interaction >= 2L) {
         for (d in 2:max_interaction) {
           if (length(vars) < d) break
+
           cmbs <- utils::combn(vars, d, simplify = FALSE)
           Kcap <- knots_per_order[d]
+
           for (cmb in cmbs) {
             prim_d <- lapply(cmb, function(v) {
               idxs <- primitives[[v]]$idxs
               pm   <- primitives[[v]]$prim_meta
               if (!length(idxs)) return(list(idxs = list(), names = character(), meta = list()))
-              # decide cap per variable
+
               is_num <- length(pm) > 0L && identical(pm[[1]]$kind, "numeric")
-              ncap <- if (is_num) min(length(idxs), Kcap) else length(idxs)  # factors: all levels
-              list(idxs = idxs[seq_len(ncap)],
-                   names = primitives[[v]]$names[seq_len(ncap)],
-                   meta  = pm[seq_len(ncap)])
+              ncap <- if (is_num) min(length(idxs), Kcap) else length(idxs)
+
+              list(
+                idxs  = idxs[seq_len(ncap)],
+                names = primitives[[v]]$names[seq_len(ncap)],
+                meta  = pm[seq_len(ncap)]
+              )
             })
+
             if (any(vapply(prim_d, function(z) length(z$idxs), integer(1L)) == 0L)) next
 
             lens <- vapply(prim_d, function(z) length(z$idxs), integer(1L))
-            total <- prod(lens); if (!total) next
+            total <- prod(lens)
+            if (!total) next
 
             for (t in 0:(total - 1L)) {
               sel <- integer(d); rem <- t
               for (j in seq_len(d)) { sel[j] <- (rem %% lens[j]) + 1L; rem <- rem %/% lens[j] }
+
               chosen_idx <- vector("list", d)
               nm_parts <- character(d)
               parts_meta <- vector("list", d)
+
               for (j in seq_len(d)) {
                 chosen_idx[[j]] <- prim_d[[j]]$idxs[[sel[j]]]
                 nm_parts[j] <- prim_d[[j]]$names[[sel[j]]]
                 parts_meta[[j]] <- prim_d[[j]]$meta[[sel[j]]]
               }
-              idx_prod <- interN(chosen_idx)
+
+              idx_prod <- interN_cpp(chosen_idx)
               if (!length(idx_prod)) next
-              add_cols(
-                list(idx_prod),
-                paste0(nm_parts, collapse = ":"),
-                list(list(type = "interaction", order = d, parts = parts_meta))
+
+              state <- add_cols(
+                state,
+                idxs_list = list(idx_prod),
+                nm_vec = paste0(nm_parts, collapse = ":"),
+                col_meta_list = list(list(type = "interaction", order = d, parts = parts_meta))
               )
             }
           }
         }
       }
 
-      if (chunk_used == 0L) stop("No basis columns created.")
+      if (state$chunk_used == 0L) stop("No basis columns created.")
 
-      I_chunks <- I_chunks[seq_len(chunk_used)]
-      J_chunks <- J_chunks[seq_len(chunk_used)]
-      name_chunks <- name_chunks[seq_len(chunk_used)]
-      colmeta_chunks <- colmeta_chunks[seq_len(chunk_used)]
+      I_chunks <- state$I_chunks
+      J_chunks <- state$J_chunks
+      name_chunks <- state$name_chunks
+      colmeta_chunks <- state$colmeta_chunks
 
       i_vec <- unlist(I_chunks, use.names = FALSE)
       j_vec <- unlist(J_chunks, use.names = FALSE)
+
       names_all <- unlist(name_chunks, use.names = FALSE)
+      per_col_meta <- unlist(colmeta_chunks, recursive = FALSE, use.names = FALSE)
 
       X <- Matrix::sparseMatrix(
         i = if (length(i_vec)) i_vec else integer(),
@@ -1158,212 +1049,10 @@ Learner_hal <- setRefClass(
         colnames = names_all,
         meta = list(
           per_var = meta_per_var,
-          per_col = colmeta_chunks
+          per_col = per_col_meta
         )
       )
     },
-
-
-    # hal_basis = function(vars,
-    #                       DT,
-    #                       max_interaction = 2L,
-    #                       knots_per_order = rep(10L, 2L)) {
-    #
-    #   stopifnot(requireNamespace("data.table", quietly = TRUE))
-    #   stopifnot(requireNamespace("Matrix", quietly = TRUE))
-    #
-    #   if (!data.table::is.data.table(DT)) DT <- data.table::as.data.table(DT)
-    #   if (length(knots_per_order) != max_interaction)
-    #     stop("knots_per_order must have length max_interaction")
-    #   if (!all(vars %in% names(DT))) stop("vars not all found in DT")
-    #
-    #   n <- nrow(DT)
-    #   DT_local <- DT[, ..vars]
-    #   for (v in vars) {
-    #     x <- DT_local[[v]]
-    #     if (is.character(x) || is.logical(x)) DT_local[[v]] <- factor(x)
-    #   }
-    #
-    #   inter2 <- function(a, b) {
-    #     i <- 1L; j <- 1L; la <- length(a); lb <- length(b)
-    #     if (la == 0L || lb == 0L) return(integer())
-    #     out <- integer(min(la, lb)); k <- 0L
-    #     while (i <= la && j <= lb) {
-    #       ai <- a[i]; bj <- b[j]
-    #       if (ai < bj) { i <- i + 1L
-    #       } else if (ai > bj) { j <- j + 1L
-    #       } else { k <- k + 1L; out[k] <- ai; i <- i + 1L; j <- j + 1L }
-    #     }
-    #     if (k) out[seq_len(k)] else integer()
-    #   }
-    #   interN <- function(lst) {
-    #     if (length(lst) == 1L) return(lst[[1L]])
-    #     acc <- inter2(lst[[1L]], lst[[2L]])
-    #     if (length(acc) == 0L || length(lst) == 2L) return(acc)
-    #     for (i in 3L:length(lst)) {
-    #       acc <- inter2(acc, lst[[i]])
-    #       if (!length(acc)) break
-    #     }
-    #     acc
-    #   }
-    #
-    #   primitives <- setNames(vector("list", length(vars)), vars)
-    #   meta_per_var <- setNames(vector("list", length(vars)), vars)
-    #
-    #   mk_main <- function(x, v, K) {
-    #     if (is.numeric(x)) {
-    #       ps  <- seq(0, 1, length.out = K + 2L)
-    #       cps <- unique(stats::quantile(x, probs = ps, na.rm = TRUE, type = 7))
-    #       cps <- cps[is.finite(cps)]
-    #       if (length(cps) >= 2L) cps <- cps[-c(1L, length(cps))] else cps <- numeric()
-    #       cps <- unique(cps)
-    #       if (!length(cps)) {
-    #         return(list(idxs = list(), names = character(),
-    #                     prim_meta = list(), var_meta = list(cutpoints = numeric())))
-    #       }
-    #       ord <- order(x); xs <- x[ord]
-    #       pos <- findInterval(cps, xs, rightmost.closed = TRUE, all.inside = TRUE)
-    #       idxs <- lapply(pos, function(k) if (k > 0L) ord[seq_len(k)] else integer())
-    #       idxs <- lapply(idxs, sort.int, method = "quick")
-    #       nms  <- sprintf("I(%s<=%.10g)", v, cps)
-    #       prim_meta <- lapply(cps, function(cu) list(var = v, kind = "numeric", cutpoint = cu))
-    #       list(idxs = idxs, names = nms,
-    #            prim_meta = prim_meta,
-    #            var_meta = list(cutpoints = cps))
-    #     } else if (is.factor(x)) {
-    #       lv <- levels(x)
-    #       if (!length(lv)) {
-    #         return(list(idxs = list(), names = character(),
-    #                     prim_meta = list(), var_meta = list(levels = character())))
-    #       }
-    #       # keep ALL levels; cap by K if requested
-    #       lv_use <- if (is.finite(K) && K < length(lv)) head(lv, K) else lv
-    #       idx_by_lvl <- split(seq_len(length(x)), x, drop = FALSE)
-    #       idxs <- lapply(lv_use, function(l) sort.int(idx_by_lvl[[l]], method = "quick"))
-    #       nms  <- sprintf("I(%s==%s)", v, make.names(lv_use, unique = TRUE))
-    #       prim_meta <- lapply(lv_use, function(lv) list(var = v, kind = "factor", level = lv))
-    #       list(idxs = idxs, names = nms,
-    #            prim_meta = prim_meta,
-    #            var_meta = list(levels = lv_use))
-    #     } else {
-    #       stop(sprintf("Unsupported type for %s", v))
-    #     }
-    #   }
-    #
-    #   for (v in vars) {
-    #     res <- mk_main(DT_local[[v]], v, K = knots_per_order[1L])
-    #     primitives[[v]] <- res
-    #     meta_per_var[[v]] <- res$var_meta
-    #   }
-    #
-    #   I_chunks <- vector("list", 1024L)
-    #   J_chunks <- vector("list", 1024L)
-    #   name_chunks <- vector("list", 1024L)
-    #   colmeta_chunks <- vector("list", 1024L)
-    #   chunk_used <- 0L
-    #   p <- 0L
-    #
-    #   add_cols <- function(idxs_list, nm_vec, col_meta_list) {
-    #     keep <- lengths(idxs_list) > 0L
-    #     if (!any(keep)) return()
-    #     idxs_list <- idxs_list[keep]; nm_vec <- nm_vec[keep]; col_meta_list <- col_meta_list[keep]
-    #     kcols <- length(idxs_list)
-    #     need <- chunk_used + kcols
-    #     if (need > length(I_chunks)) {
-    #       newlen <- max(need, length(I_chunks) * 2L)
-    #       length(I_chunks) <<- newlen
-    #       length(J_chunks) <<- newlen
-    #       length(name_chunks) <<- newlen
-    #       length(colmeta_chunks) <<- newlen
-    #     }
-    #     for (i in seq_len(kcols)) {
-    #       p <<- p + 1L
-    #       chunk_used <<- chunk_used + 1L
-    #       I_chunks[[chunk_used]] <<- idxs_list[[i]]
-    #       J_chunks[[chunk_used]] <<- rep.int(p, length(idxs_list[[i]]))
-    #       name_chunks[[chunk_used]] <<- nm_vec[[i]]
-    #       colmeta_chunks[[chunk_used]] <<- col_meta_list[[i]]
-    #     }
-    #   }
-    #
-    #   for (v in vars) {
-    #     prim <- primitives[[v]]
-    #     if (!length(prim$idxs)) next
-    #     mains_meta <- lapply(prim$prim_meta, function(m) c(list(type = "main"), m))
-    #     add_cols(prim$idxs, prim$names, mains_meta)
-    #   }
-    #
-    #   if (max_interaction >= 2L) {
-    #     for (d in 2:max_interaction) {
-    #       if (length(vars) < d) break
-    #       cmbs <- utils::combn(vars, d, simplify = FALSE)
-    #       Kcap <- knots_per_order[d]
-    #       for (cmb in cmbs) {
-    #         prim_d <- lapply(cmb, function(v) {
-    #           idxs <- primitives[[v]]$idxs
-    #           pm   <- primitives[[v]]$prim_meta
-    #           if (!length(idxs)) return(list(idxs = list(), names = character(), meta = list()))
-    #           ncap <- min(length(idxs), Kcap)
-    #           list(idxs = idxs[seq_len(ncap)],
-    #                names = primitives[[v]]$names[seq_len(ncap)],
-    #                meta  = pm[seq_len(ncap)])
-    #         })
-    #         if (any(vapply(prim_d, function(z) length(z$idxs), integer(1L)) == 0L)) next
-    #
-    #         lens <- vapply(prim_d, function(z) length(z$idxs), integer(1L))
-    #         total <- prod(lens); if (!total) next
-    #
-    #         for (t in 0:(total - 1L)) {
-    #           sel <- integer(d); rem <- t
-    #           for (j in seq_len(d)) { sel[j] <- (rem %% lens[j]) + 1L; rem <- rem %/% lens[j] }
-    #           chosen_idx <- vector("list", d)
-    #           nm_parts <- character(d)
-    #           parts_meta <- vector("list", d)
-    #           for (j in seq_len(d)) {
-    #             chosen_idx[[j]] <- prim_d[[j]]$idxs[[sel[j]]]
-    #             nm_parts[j] <- prim_d[[j]]$names[[sel[j]]]
-    #             parts_meta[[j]] <- prim_d[[j]]$meta[[sel[j]]]
-    #           }
-    #           idx_prod <- interN(chosen_idx)
-    #           if (!length(idx_prod)) next
-    #           add_cols(
-    #             list(idx_prod),
-    #             paste0(nm_parts, collapse = ":"),
-    #             list(list(type = "interaction", order = d, parts = parts_meta))
-    #           )
-    #         }
-    #       }
-    #     }
-    #   }
-    #
-    #   if (chunk_used == 0L) stop("No basis columns created.")
-    #
-    #   I_chunks <- I_chunks[seq_len(chunk_used)]
-    #   J_chunks <- J_chunks[seq_len(chunk_used)]
-    #   name_chunks <- name_chunks[seq_len(chunk_used)]
-    #   colmeta_chunks <- colmeta_chunks[seq_len(chunk_used)]
-    #
-    #   i_vec <- unlist(I_chunks, use.names = FALSE)
-    #   j_vec <- unlist(J_chunks, use.names = FALSE)
-    #   names_all <- unlist(name_chunks, use.names = FALSE)
-    #
-    #   X <- Matrix::sparseMatrix(
-    #     i = if (length(i_vec)) i_vec else integer(),
-    #     j = if (length(j_vec)) j_vec else integer(),
-    #     x = if (length(i_vec)) 1L else integer(),
-    #     dims = c(n, if (length(j_vec)) max(j_vec) else 0L),
-    #     dimnames = list(NULL, names_all)
-    #   )
-    #
-    #   list(
-    #     X = X,
-    #     colnames = names_all,
-    #     meta = list(
-    #       per_var = meta_per_var,
-    #       per_col = colmeta_chunks
-    #     )
-    #   )
-    # },
 
 
     update_cross_validation_argument= function(nfold){
@@ -1382,10 +1071,13 @@ Learner_hal <- setRefClass(
       if (!all(vars %in% names(DT_new))) stop("DT_new is missing required variables")
 
       DT_local <- DT_new[, ..vars]
-      # Coerce char/logical to factor for consistency
       for (v in vars) {
         x <- DT_local[[v]]
         if (is.character(x) || is.logical(x)) DT_local[[v]] <- factor(x)
+      }
+
+      if (!exists("interN_cpp", mode = "function", inherits = TRUE)) {
+        stop("interN_cpp() not found. Ensure the C++ code is compiled and loaded.")
       }
 
       n <- nrow(DT_local)
@@ -1393,31 +1085,10 @@ Learner_hal <- setRefClass(
       colmeta <- hal_obj$meta$per_col
       if (length(colmeta) != length(colnames_tr)) stop("hal_obj meta mismatch")
 
-      # Helper: two-pointer intersection on sorted integer vectors
-      inter2 <- function(a, b) {
-        i <- 1L; j <- 1L; la <- length(a); lb <- length(b)
-        if (!la || !lb) return(integer())
-        out <- integer(min(la, lb)); k <- 0L
-        while (i <= la && j <= lb) {
-          ai <- a[i]; bj <- b[j]
-          if (ai < bj) { i <- i + 1L
-          } else if (ai > bj) { j <- j + 1L
-          } else { k <- k + 1L; out[k] <- ai; i <- i + 1L; j <- j + 1L }
-        }
-        if (k) out[seq_len(k)] else integer()
-      }
-      interN <- function(lst) {
-        if (length(lst) == 1L) return(lst[[1L]])
-        acc <- inter2(lst[[1L]], lst[[2L]])
-        if (!length(acc) || length(lst) == 2L) return(acc)
-        for (i in 3L:length(lst)) {
-          acc <- inter2(acc, lst[[i]])
-          if (!length(acc)) break
-        }
-        acc
-      }
+      # Stable key for numeric cutpoints (must be used consistently)
+      key_num <- function(z) formatC(z, digits = 17, format = "fg")
 
-      # Precompute, per variable, all primitives needed anywhere in per_col
+      # Precompute which primitives are needed
       need_num <- lapply(vars, function(v) numeric())
       names(need_num) <- vars
       need_fac <- lapply(vars, function(v) character())
@@ -1432,7 +1103,9 @@ Learner_hal <- setRefClass(
             if (p$kind == "numeric") need_num[[p$var]] <- unique(c(need_num[[p$var]], p$cutpoint))
             else                     need_fac[[p$var]] <- unique(c(need_fac[[p$var]], p$level))
           }
-        } else stop("Unknown column meta type")
+        } else {
+          stop("Unknown column meta type")
+        }
       }
 
       # Build index maps: var -> key -> sorted row indices
@@ -1441,21 +1114,25 @@ Learner_hal <- setRefClass(
 
       for (v in vars) {
         x <- DT_local[[v]]
-        # numeric
+
+        # numeric (match mk_main behavior: ignore NA and non-finite)
         if (is.numeric(x) && length(need_num[[v]])) {
           cuts <- sort(unique(need_num[[v]]))
-          nn <- which(!is.na(x))
+          nn <- which(!is.na(x) & is.finite(x))
           if (length(nn)) {
             ord <- nn[order(x[nn])]
             xs <- x[ord]
             pos <- findInterval(cuts, xs, rightmost.closed = TRUE, all.inside = TRUE)
-            idxs <- lapply(pos, function(k) if (k > 0L) ord[seq_len(k)] else integer())
+            idxs <- lapply(pos, function(k) {
+              if (k > 0L) sort.int(ord[seq_len(k)], method = "quick") else integer()
+            })
           } else {
-            idxs <- lapply(cuts, function(k) integer())
+            idxs <- lapply(cuts, function(.) integer())
           }
-          names(idxs) <- formatC(cuts, digits = 15, format = "fg")  # stable keys
+          names(idxs) <- key_num(cuts)
           num_map[[v]] <- idxs
         }
+
         # factor
         if (is.factor(x) && length(need_fac[[v]])) {
           chr <- as.character(x)
@@ -1472,27 +1149,37 @@ Learner_hal <- setRefClass(
 
       for (j in seq_along(colmeta)) {
         m <- colmeta[[j]]
+
         if (m$type == "main") {
           if (m$kind == "numeric") {
-            key <- formatC(m$cutpoint, digits = 15, format = "fg")
-            idx <- num_map[[m$var]][[key]]
+            idx <- num_map[[m$var]][[key_num(m$cutpoint)]]
           } else {
             idx <- fac_map[[m$var]][[m$level]]
           }
+
         } else { # interaction
           parts_idx <- vector("list", length(m$parts))
+          ok <- TRUE
+
           for (k in seq_along(m$parts)) {
             p <- m$parts[[k]]
             if (p$kind == "numeric") {
-              key <- formatC(p$cutpoint, digits = 15, format = "fg")
-              parts_idx[[k]] <- num_map[[p$var]][[key]]
+              parts_idx[[k]] <- num_map[[p$var]][[key_num(p$cutpoint)]]
             } else {
               parts_idx[[k]] <- fac_map[[p$var]][[p$level]]
             }
-            if (is.null(parts_idx[[k]]) || !length(parts_idx[[k]])) { parts_idx <- list(integer()); break }
+            if (is.null(parts_idx[[k]]) || !length(parts_idx[[k]])) { ok <- FALSE; break }
           }
-          idx <- if (length(parts_idx) == 1L) parts_idx[[1L]] else interN(parts_idx)
+
+          if (!ok) {
+            idx <- integer()
+          } else if (length(parts_idx) == 1L) {
+            idx <- parts_idx[[1L]]
+          } else {
+            idx <- interN_cpp(parts_idx)
+          }
         }
+
         if (length(idx)) {
           I_chunks[[j]] <- idx
           J_chunks[[j]] <- rep.int(j, length(idx))
@@ -1505,14 +1192,13 @@ Learner_hal <- setRefClass(
       i_vec <- unlist(I_chunks, use.names = FALSE)
       j_vec <- unlist(J_chunks, use.names = FALSE)
 
-      X <- Matrix::sparseMatrix(
+      Matrix::sparseMatrix(
         i = if (length(i_vec)) i_vec else integer(),
         j = if (length(j_vec)) j_vec else integer(),
         x = if (length(i_vec)) 1L else integer(),
         dims = c(n, length(colnames_tr)),
         dimnames = list(NULL, colnames_tr)
       )
-      X
     },
 
 
@@ -1526,6 +1212,7 @@ Learner_hal <- setRefClass(
 
       data_copy<-data_copy[complete.cases(data_copy),]
 
+
       x_pp <- hal_basis(
         vars = c(group_cols,"node"),
         DT = data_copy,
@@ -1533,9 +1220,9 @@ Learner_hal <- setRefClass(
         knots_per_order = .self$num_knots
       )
 
-      .self$fit_arguments[['y']] <- as.numeric(data_copy[['deltaij']])
+      # .self$fit_arguments[['y']] <- as.numeric(data_copy[['deltaij']])
 
-      .self$fit_arguments[['offset']] <-  log(data_copy[['tij']])
+      # .self$fit_arguments[['offset']] <-  log(data_copy[['tij']])
 
 
       if(!.self$penalise_nodes){
@@ -1544,9 +1231,10 @@ Learner_hal <- setRefClass(
 
       }
 
-      .self$fit_arguments[['x']] <- x_pp$X
+      # .self$fit_arguments[['x']] <- x_pp$X
 
-      .self$covariates_attributes_matrix <-x_pp
+      .self$covariates_attributes_matrix <-x_pp[c("colnames",
+                                                  "meta" )]
 
       if (.self$cross_validation) {
 
@@ -1556,7 +1244,11 @@ Learner_hal <- setRefClass(
           prefit_args[['maxit']] <- .self$maxit_prefit
         }
 
-        cv_fit <- do.call(cv.glmnet, prefit_args)
+        cv_fit <- do.call(cv.glmnet, c(prefit_args,
+                                       list(y=as.numeric(data_copy[['deltaij']]),
+                                            offset=log(data_copy[['tij']]),
+                                            x=x_pp$X
+                                            )))
 
         lambda_grid_prefit <- cv_fit$lambda
 
@@ -1585,7 +1277,11 @@ Learner_hal <- setRefClass(
         glmnet_args[['lambda']] <- lambda_opt
         glmnet_args[['nfolds']] <- NULL
 
-        fit <- do.call(glmnet, glmnet_args)
+        fit <- do.call(glmnet, c(glmnet_args,
+                                 list(y=as.numeric(data_copy[['deltaij']]),
+                                      offset=log(data_copy[['tij']]),
+                                      x=x_pp$X
+                                 )))
       } else {
         fit <- tryCatch(
           withCallingHandlers(

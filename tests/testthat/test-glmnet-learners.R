@@ -22,20 +22,20 @@ library(riskRegression)
 test_that("rigde works", {
 
     Xvars <- paste0("X", 1:10)
-    d <- sampleData(n = 3000,formula = ~ f(X1, 2) + f(X2, 0) + f(X3, 0) + f(X6, 0) + f(X7, 0) + f(X8, 0) + f(X9, 0))
+    d <- sampleData(n = 3000,formula = ~ f(X1, 2) + f(X2, 0) + f(X3, 0) + f(X6, 0) + f(X7, 0) + f(X8, 0) + f(X9, 0)+ f(X10, 0))
 
-    fit_cox <- coxph(Surv(time, event == 1) ~ X1+X7,data = d,x = TRUE,y = TRUE)
-    fit_pen_cox <- GLMnet(formula = Surv(time, event == 1) ~ X1+X7,data = d,lambda = 0)
-    fit_rigde_cox <- GLMnet(formula = Surv(time, event == 1) ~ X1+X7,data = d,alpha = 0)
-    fit_lasso_cox <- GLMnet(formula = Surv(time, event == 1) ~ X1+X7,data = d,alpha = 1)
+    fit_cox <- coxph(Surv(time, event == 1) ~ X1+X2+X3+X4+X5+X6+X7+X8+X9+X10,data = d,x = TRUE,y = TRUE)
+    fit_pen_cox <- GLMnet(formula = Surv(time, event == 1) ~ X1+X2+X3+X4+X5+X6+X7+X8+X9+X10,data = d,lambda = 0)
+    fit_rigde_cox <- GLMnet(formula = Surv(time, event == 1) ~ X1+X2+X3+X4+X5+X6+X7+X8+X9+X10,data = d,alpha = 0)
+    fit_lasso_cox <- GLMnet(formula = Surv(time, event == 1) ~ X1+X2+X3+X4+X5+X6+X7+X8+X9+X10,data = d,alpha = 1)
 
     # Here you define the learner
-    lridge <- Learner_glmnet(covariates = c("X1","X7"),
+    lridge <- Learner_glmnet(covariates =  paste0("X", 1:9),
                               cross_validation=TRUE,
-                              lambda_grid =seq(0.01,.9,by=0.002),
+                              lambda_grid =seq(0,.9,by=0.001),
                               alpha=0,
                               intercept=TRUE,
-                              penalise_nodes=FALSE)
+                              penalise_nodes=TRUE)
 
     # Here you call the method that fits the learner to the data.
 
@@ -43,10 +43,13 @@ test_that("rigde works", {
     dupdated <- copy(d)
     dupdated[,event:=as.numeric(event==1)]
 
+
     lridge$fit(data = dupdated,
                event_time = "time",
                status = "event",
                number_of_nodes=20)
+
+    lridge$model_fit$lambda
 
     # The model fit is saved as an attribute (model_fit) of the reference class Learner_glmnet.
     # It essentially works like a Python class.
@@ -54,7 +57,7 @@ test_that("rigde works", {
     head(coef(lridge$model_fit[[1]]))
 
 
-    lcox <- Learner_glmnet(covariates = c("X1","X7"),
+    lcox <- Learner_glmnet(covariates = Xvars,
                              cross_validation=FALSE,
                              lambda=0,
                              alpha=0,
@@ -69,9 +72,9 @@ test_that("rigde works", {
     head(coef(lcox$model_fit[[1]]))
 
 
-    llasso <- Learner_glmnet(covariates = c("X1","X7"),
+    llasso <- Learner_glmnet(covariates = Xvars,
                              cross_validation=TRUE,
-                             lambda_grid =seq(0.01,.9,by=0.002),
+                             lambda_grid =seq(0,.2,by=0.0001),
                              alpha=1,
                              intercept=TRUE,
                              penalise_nodes=FALSE)
@@ -81,9 +84,10 @@ test_that("rigde works", {
              status = "event",
              number_of_nodes = 20)
 
+    head(coef(llasso$model_fit[[1]]))
+    llasso$lambda
 
-
-    lgam <- Learner_gam(covariates = c("X1","X7"))
+    lgam <- Learner_gam(covariates = Xvars)
 
     out_gam <- Superlearner(
       data = dupdated,
@@ -93,6 +97,25 @@ test_that("rigde works", {
       learners = list(lgam),
       nfold = 20,
       number_of_nodes = 20
+    )
+
+    lhal0 <- Learner_hal(covariates =Xvars,
+                         intercept=FALSE,
+                         lambda_grid=seq(.001,.2,.002),
+                         max_degree=2L,
+                         cross_validation=TRUE,
+                         maxit_prefit = 1000,
+                         num_knots=c(400, 100),
+                         penalise_nodes=FALSE)
+
+    out_hal0 <- Superlearner(      data = dupdated,
+                                   event_time = "time",
+                                   status = "event",
+                                   id = "id",
+                             learners=list(lhal0),
+                             number_of_nodes = 10 ,
+                             meta_learner_algorithms = c("glm"),
+                             nfold = 10
     )
 
    cbind( lasso=head(coef(llasso$model_fit[[1]])),

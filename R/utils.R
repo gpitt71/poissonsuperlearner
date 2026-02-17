@@ -257,7 +257,6 @@ data_pre_processing <- function(data,
   ## we create an artificial k index. Table specific.
   dt_fit <- dt_fit[, k := rep(1:n_crisks, each = dim(data)[1])]
 
-
     # Data Transformation ----
     tmp <- c(id, "k")
     dt_fit <- dt_fit[ , {
@@ -294,8 +293,8 @@ data_pre_processing <- function(data,
             "k"):=list(factor(node, levels=lvls),
                        as.factor(k))]
 
-
   dt_fit[,node:=relevel(node,ref=as.character(maxn))]
+
   # dt_fit[,node:=relevel(node,ref=as.character(last(nodes)))]
 
   return(dt_fit)
@@ -1470,4 +1469,74 @@ learners_hat <- function(crisk_cause,superlearner,newdata,learners){
 
 
 }
+
+# Hal helpers ----
+
+
+mk_main <- function(x, v, K) {
+  if (is.numeric(x)) {
+    out <- mk_main_numeric_cpp(x, as.integer(K))
+    cps <- out$cutpoints
+    idxs <- out$idxs
+
+    cps <- as.numeric(cps)
+    if (!length(cps)) {
+      return(list(idxs = list(), names = character(),
+                  prim_meta = list(), var_meta = list(cutpoints = numeric())))
+    }
+
+    nms <- sprintf("I(%s<=%.10g)", v, cps)
+    prim_meta <- lapply(cps, function(cu) list(var = v, kind = "numeric", cutpoint = cu))
+    list(
+      idxs = idxs,
+      names = nms,
+      prim_meta = prim_meta,
+      var_meta = list(cutpoints = cps)
+    )
+
+  } else if (is.factor(x)) {
+    lv <- levels(x)
+    if (!length(lv)) {
+      return(list(idxs = list(), names = character(),
+                  prim_meta = list(), var_meta = list(levels = character())))
+    }
+
+    out <- mk_main_factor_cpp(as.integer(x), length(lv))
+    idxs <- out$idxs
+
+    nms <- sprintf("I(%s==%s)", v, make.names(lv, unique = TRUE))
+    prim_meta <- lapply(lv, function(L) list(var = v, kind = "factor", level = L))
+    list(
+      idxs = idxs,
+      names = nms,
+      prim_meta = prim_meta,
+      var_meta = list(levels = lv)
+    )
+
+  } else {
+    stop(sprintf("Unsupported type for %s", v))
+  }
+}
+
+##
+add_cols <- function(state, idxs_list, nm_vec, col_meta_list) {
+  out <- add_cols_cpp(idxs_list, p_start = state$p)
+  ncol_added <- out$ncol
+  if (!ncol_added) return(state)
+
+  keep <- out$keep
+  nm_vec <- nm_vec[keep]
+  col_meta_list <- col_meta_list[keep]
+
+  state$chunk_used <- state$chunk_used + 1L
+  state$I_chunks[[state$chunk_used]] <- out$i
+  state$J_chunks[[state$chunk_used]] <- out$j
+  state$name_chunks[[state$chunk_used]] <- nm_vec
+  state$colmeta_chunks[[state$chunk_used]] <- col_meta_list
+
+  state$p <- state$p + ncol_added
+  state
+}
+
+
 

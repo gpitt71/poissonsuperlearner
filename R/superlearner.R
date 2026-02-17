@@ -429,7 +429,6 @@ Superlearner <- function(data,
   }
 
 
-
   # Train your models in the training set ----
   for (ix in 1:nfold) {
 
