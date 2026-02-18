@@ -99,24 +99,6 @@ test_that("rigde works", {
       number_of_nodes = 20
     )
 
-    lhal0 <- Learner_hal(covariates =Xvars,
-                         intercept=FALSE,
-                         lambda_grid=seq(.001,.2,.002),
-                         max_degree=2L,
-                         cross_validation=TRUE,
-                         maxit_prefit = 1000,
-                         num_knots=c(400, 100),
-                         penalise_nodes=FALSE)
-
-    out_hal0 <- Superlearner(      data = dupdated,
-                                   event_time = "time",
-                                   status = "event",
-                                   id = "id",
-                             learners=list(lhal0),
-                             number_of_nodes = 10 ,
-                             meta_learner_algorithms = c("glm"),
-                             nfold = 10
-    )
 
    cbind( lasso=head(coef(llasso$model_fit[[1]])),
     ridge=head(coef(lridge$model_fit[[1]])),

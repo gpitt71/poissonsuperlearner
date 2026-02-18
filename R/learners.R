@@ -189,161 +189,6 @@ Learner_xgboost <- setRefClass(
 
     ))
 
-#' \code{glm} learner class
-#'
-#' @export Learner_glm
-#' @exportClass Learner_glm
-Learner_glm <- setRefClass(
-  "Learner_glm",
-  fields = list(
-    covariates = "character",
-    treatment = "character",
-    cross_validation = "logical",
-    intercept ="logical",
-    formula ="character",
-    learner="function",
-    add_nodes="logical"
-  ),
-  methods = list(
-    initialize = function(covariates = NA_character_,
-                          treatment = NA_character_,
-                          cross_validation = FALSE,
-                          intercept = TRUE,
-                          add_nodes= TRUE,
-                          ...) {
-      .self$covariates <- covariates
-
-      .self$treatment <- treatment
-
-      .self$cross_validation <- cross_validation
-
-      .self$add_nodes <- add_nodes
-
-      .self$intercept<-intercept
-
-      # create formula for competing risks. It is correct in the fit method if survival.
-      .self$formula <- create_formula(covariates = .self$covariates,
-                                      treatment = .self$treatment,
-                                      intercept = .self$intercept,
-                                      add_nodes=.self$add_nodes)
-
-
-      if (.self$cross_validation) {
-        .self$learner = glm
-        warning("There is no cross-validation procedure for a glm model. This learner is a simple glm.")
-
-      } else{
-        .self$learner = glm
-      }
-    },
-
-    private_fit = function(data, ...) {
-
-
-      out <- glm.fit(x=sparse.model.matrix(formula(.self$formula),
-                                           data),#[ss,]
-                     y=data[['deltaij']], #[ss]
-                     offset = log(data[['tij']]), #[ss]
-                     family = poisson())
-
-      return(out)
-
-    },
-
-    # private_fit = function(data, validation_data=NULL, ...) {
-
-      # survival_01 <- length(unique(data[['k']])) < 2
-
-
-      # practical correction in case it is a survival problem
-      # if(survival_01){
-      #
-      #   .self$formula <- create_formula(covariates = .self$covariates,
-      #                                   treatment = .self$treatment,
-      #                                   competing_risks =FALSE,
-      #                                   add_nodes=.self$add_nodes)
-      #
-      # }
-
-
-
-
-    #   out<- .self$learner(.self$formula,
-    #                       data=rbind(data,
-    #                                  validation_data),
-    #                       family = "poisson",
-    #                       subset = rep(TRUE,dim(data)[1]))
-    #
-    #   return(out)
-    #
-    # },
-
-
-    private_fit = function(data, ...) {
-
-      # out<- .self$learner(.self$formula,
-      #                     data=data,
-      #                     family = "poisson", ...)
-
-      # ss <- data[['train_01']]
-      out <- glm.fit(x=sparse.model.matrix(formula(.self$formula),
-                                           data),#[ss,]
-                     y=data[['deltaij']], #[ss]
-                     offset = log(data[['tij']]), #[ss]
-                     family = poisson())
-
-      return(out)
-
-    },
-
-    predictor = function(model, newdata,...) {
-
-      newdata<-newdata[complete.cases(newdata),]
-
-      newx=sparse.model.matrix(formula(.self$formula),
-                               newdata)
-
-      newoffset = log(newdata[['tij']])
-
-      out <-exp(newx %*% model$coefficients + newoffset)
-
-
-      return(as.numeric(out))
-
-
-
-    },
-
-    private_predictor = function(model, newdata, ...) {
-
-
-
-      newdata<-newdata[complete.cases(newdata),]
-
-
-      newx=sparse.model.matrix(formula(.self$formula),
-                               newdata)#[ss,]
-
-      newoffset = log(newdata[['tij']])#[ss])
-
-
-      out <-exp(newx %*% model$coefficients + newoffset)
-
-
-      return(as.numeric(out))
-
-
-
-
-
-
-    }
-
-  )
-)
-
-
-
 #' \code{glmnet} learner class
 #'
 #' @export Learner_glmnet
@@ -753,7 +598,8 @@ Learner_glmnet <- setRefClass(
       out <- predict(model,
                      ...,
                    newx=sparse.model.matrix(formula(.self$formula),
-                                            newdata),
+                              newdata,
+                              contrasts.arg = NULL)[,-1],
                    newoffset = log(newdata[['tij']]),
                    type = "response")
 
@@ -785,7 +631,8 @@ Learner_glmnet <- setRefClass(
       out <- predict(model,
                      ...,
                      newx=sparse.model.matrix(formula(.self$formula),
-                                              newdata),#[ss,],
+                                              newdata,
+                                              contrasts.arg = NULL)[,-1],#[ss,],
                      newoffset = log(1),#log(newdata[['tij']]),#[ss]),
                      type = "response")
 
