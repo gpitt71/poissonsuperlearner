@@ -72,6 +72,7 @@ List mk_main_numeric_cpp(NumericVector x, int K) {
 
   std::sort(vals.begin(), vals.end());
   const int m = (int)vals.size();
+  const double min_x = vals.front();
 
   // Type=1 quantiles at probs seq(0,1,length=K+2)
   std::vector<double> cps;
@@ -79,7 +80,7 @@ List mk_main_numeric_cpp(NumericVector x, int K) {
 
   if (K > 0) {
     for (int j = 0; j < K + 2; ++j) {
-      double p = (K + 1 == 0) ? 0.0 : (double)j / (double)(K + 1);
+      double p = (double)j / (double)(K + 1);
       // type=1: index = max(1, ceil(p*m))
       int idx = (int)std::ceil(p * m);
       if (idx < 1) idx = 1;
@@ -87,7 +88,7 @@ List mk_main_numeric_cpp(NumericVector x, int K) {
       cps.push_back(vals[idx - 1]);
     }
   } else {
-    // K=0 -> seq(0,1,length=2): endpoints only, then you drop them -> no cutpoints
+    // K=0 -> endpoints only, then you drop them -> no cutpoints
     cps.push_back(vals.front());
     cps.push_back(vals.back());
   }
@@ -97,8 +98,8 @@ List mk_main_numeric_cpp(NumericVector x, int K) {
                            [](double z){ return !std::isfinite(z); }),
                            cps.end());
 
+  // Drop endpoints
   if ((int)cps.size() >= 2) {
-    // drop first & last (endpoints)
     cps.erase(cps.begin());
     cps.pop_back();
   } else {
@@ -114,6 +115,12 @@ List mk_main_numeric_cpp(NumericVector x, int K) {
 
   std::sort(cps.begin(), cps.end());
   unique_sorted_in_place(cps);
+
+  // Standard HAL primitive is I(x >= c).
+  // If c == min(x) then the column is all-1; drop it (and anything below, for safety under ties).
+  cps.erase(std::remove_if(cps.begin(), cps.end(),
+                           [&](double c){ return c <= min_x; }),
+                                                    cps.end());
 
   if (cps.empty()) {
     return List::create(
@@ -135,25 +142,33 @@ List mk_main_numeric_cpp(NumericVector x, int K) {
     return x[a - 1] < x[b - 1];
   });
 
-  // Precompute sorted xs
+  // Precompute sorted xs aligned with ord
   std::vector<double> xs;
   xs.reserve(ord.size());
   for (int idx : ord) xs.push_back(x[idx - 1]);
 
-  // For each cutpoint c: k = last index with xs[k-1] <= c (rightmost.closed)
-  // idxs[[j]] = ord[1:k]
+  // For each cutpoint c: take indices with xs >= c (I(x >= c))
   List idxs((int)cps.size());
+  const int N = (int)xs.size();
+
   for (int j = 0; j < (int)cps.size(); ++j) {
     double c = cps[j];
-    auto it = std::upper_bound(xs.begin(), xs.end(), c); // first > c
-    int k = (int)(it - xs.begin());
-    if (k <= 0) {
+    auto it = std::lower_bound(xs.begin(), xs.end(), c); // first >= c
+    int pos = (int)(it - xs.begin());
+    int len = N - pos;
+
+    if (len <= 0) {
       idxs[j] = IntegerVector(0);
-    } else {
-      IntegerVector out(k);
-      for (int t = 0; t < k; ++t) out[t] = ord[t];
-      idxs[j] = out;
+      continue;
     }
+
+    // Collect row indices, then SORT ASCENDING by row index for inter2_cpp compatibility
+    IntegerVector out(len);
+    for (int t = 0; t < len; ++t) out[t] = ord[pos + t];
+
+    std::sort(out.begin(), out.end());  // critical for correct intersections
+
+    idxs[j] = out;
   }
 
   return List::create(

@@ -1472,7 +1472,6 @@ learners_hat <- function(crisk_cause,superlearner,newdata,learners){
 
 # Hal helpers ----
 
-
 mk_main <- function(x, v, K) {
   if (is.numeric(x)) {
     out <- mk_main_numeric_cpp(x, as.integer(K))
@@ -1485,7 +1484,9 @@ mk_main <- function(x, v, K) {
                   prim_meta = list(), var_meta = list(cutpoints = numeric())))
     }
 
-    nms <- sprintf("I(%s<=%.10g)", v, cps)
+    # nms <- sprintf("I(%s<=%.10g)", v, cps)
+    nms <- sprintf("I(%s>=%.10g)", v, cps)
+
     prim_meta <- lapply(cps, function(cu) list(var = v, kind = "numeric", cutpoint = cu))
     list(
       idxs = idxs,
@@ -1498,25 +1499,90 @@ mk_main <- function(x, v, K) {
     lv <- levels(x)
     if (!length(lv)) {
       return(list(idxs = list(), names = character(),
-                  prim_meta = list(), var_meta = list(levels = character())))
+                  prim_meta = list(), var_meta = list(levels = character(), ref = NA_character_)))
     }
 
-    out <- mk_main_factor_cpp(as.integer(x), length(lv))
-    idxs <- out$idxs
+    # Drop a reference level (default: first level)
+    ref <- lv[1]
+    keep <- setdiff(lv, ref)
 
-    nms <- sprintf("I(%s==%s)", v, make.names(lv, unique = TRUE))
-    prim_meta <- lapply(lv, function(L) list(var = v, kind = "factor", level = L))
+    # If only one level, nothing to add
+    if (!length(keep)) {
+      return(list(
+        idxs = list(),
+        names = character(),
+        prim_meta = list(),
+        var_meta = list(levels = lv, ref = ref)
+      ))
+    }
+
+    # Compute idxs for all levels, then drop the reference entry
+    out_all <- mk_main_factor_cpp(as.integer(x), length(lv))
+    idxs_all <- out_all$idxs
+
+    # Map level -> position (mk_main_factor_cpp is assumed to return in level order)
+    pos_keep <- match(keep, lv)
+
+    idxs <- idxs_all[pos_keep]
+    nms <- sprintf("I(%s==%s)", v, make.names(keep, unique = TRUE))
+    prim_meta <- lapply(keep, function(L) list(var = v, kind = "factor", level = L, ref = ref))
+
     list(
       idxs = idxs,
       names = nms,
       prim_meta = prim_meta,
-      var_meta = list(levels = lv)
+      var_meta = list(levels = lv, ref = ref)
     )
 
   } else {
     stop(sprintf("Unsupported type for %s", v))
   }
 }
+
+# mk_main <- function(x, v, K) {
+#   if (is.numeric(x)) {
+#     out <- mk_main_numeric_cpp(x, as.integer(K))
+#     cps <- out$cutpoints
+#     idxs <- out$idxs
+#
+#     cps <- as.numeric(cps)
+#     if (!length(cps)) {
+#       return(list(idxs = list(), names = character(),
+#                   prim_meta = list(), var_meta = list(cutpoints = numeric())))
+#     }
+#
+#     nms <- sprintf("I(%s<=%.10g)", v, cps)
+#     prim_meta <- lapply(cps, function(cu) list(var = v, kind = "numeric", cutpoint = cu))
+#     list(
+#       idxs = idxs,
+#       names = nms,
+#       prim_meta = prim_meta,
+#       var_meta = list(cutpoints = cps)
+#     )
+#
+#   } else if (is.factor(x)) {
+#     lv <- levels(x)
+#     if (!length(lv)) {
+#       return(list(idxs = list(), names = character(),
+#                   prim_meta = list(), var_meta = list(levels = character())))
+#     }
+#
+#     out <- mk_main_factor_cpp(as.integer(x), length(lv))
+#     idxs <- out$idxs
+#
+#     nms <- sprintf("I(%s==%s)", v, make.names(lv, unique = TRUE))
+#     prim_meta <- lapply(lv, function(L) list(var = v, kind = "factor", level = L))
+#     list(
+#       idxs = idxs,
+#       names = nms,
+#       prim_meta = prim_meta,
+#       var_meta = list(levels = lv)
+#     )
+#
+#   } else {
+#     stop(sprintf("Unsupported type for %s", v))
+#   }
+# }
 
 ##
 add_cols <- function(state, idxs_list, nm_vec, col_meta_list) {

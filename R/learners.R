@@ -769,6 +769,7 @@ Learner_hal <- setRefClass(
                          max_interaction = 2L,
                          knots_per_order = rep(10L, 2L)) {
 
+
       stopifnot(requireNamespace("data.table", quietly = TRUE))
       stopifnot(requireNamespace("Matrix", quietly = TRUE))
 
@@ -907,7 +908,6 @@ Learner_hal <- setRefClass(
       .self$fit_arguments[['nfolds']] <- nfold
 
     },
-
     hal_prepare_new = function(DT_new, hal_obj) {
       stopifnot(requireNamespace("data.table", quietly = TRUE))
       stopifnot(requireNamespace("Matrix", quietly = TRUE))
@@ -918,10 +918,6 @@ Learner_hal <- setRefClass(
       if (!all(vars %in% names(DT_new))) stop("DT_new is missing required variables")
 
       DT_local <- DT_new[, ..vars]
-      for (v in vars) {
-        x <- DT_local[[v]]
-        if (is.character(x) || is.logical(x)) DT_local[[v]] <- factor(x)
-      }
 
       if (!exists("interN_cpp", mode = "function", inherits = TRUE)) {
         stop("interN_cpp() not found. Ensure the C++ code is compiled and loaded.")
@@ -935,11 +931,37 @@ Learner_hal <- setRefClass(
       # Stable key for numeric cutpoints (must be used consistently)
       key_num <- function(z) formatC(z, digits = 17, format = "fg")
 
-      # Precompute which primitives are needed
-      need_num <- lapply(vars, function(v) numeric())
-      names(need_num) <- vars
-      need_fac <- lapply(vars, function(v) character())
-      names(need_fac) <- vars
+      # --- coerce DT_local types using training meta_per_var ---
+      for (v in vars) {
+        per <- hal_obj$meta$per_var[[v]]
+
+        if (!is.null(per$levels)) {
+          # factor variables: enforce training levels
+          x <- DT_local[[v]]
+
+          if (is.character(x) || is.logical(x)) x <- as.character(x)
+          if (!is.factor(x)) x <- as.character(x)
+
+          lv_tr <- per$levels
+          DT_local[[v]] <- factor(x, levels = lv_tr)
+
+          if (anyNA(DT_local[[v]])) {
+            bad <- unique(as.character(x[is.na(DT_local[[v]])]))
+            stop(sprintf("DT_new has unseen level(s) in %s: %s", v, paste(bad, collapse = ", ")))
+          }
+
+        } else if (!is.null(per$cutpoints)) {
+          DT_local[[v]] <- as.numeric(DT_local[[v]])
+        } else {
+          x <- DT_local[[v]]
+          if (is.character(x) || is.logical(x)) DT_local[[v]] <- factor(x)
+        }
+      }
+      # -------------------------------------------------------------
+
+      # Precompute which primitives are needed (from per_col)
+      need_num <- lapply(vars, function(v) numeric()); names(need_num) <- vars
+      need_fac <- lapply(vars, function(v) character()); names(need_fac) <- vars
 
       for (m in colmeta) {
         if (m$type == "main") {
@@ -962,20 +984,29 @@ Learner_hal <- setRefClass(
       for (v in vars) {
         x <- DT_local[[v]]
 
-        # numeric (match mk_main behavior: ignore NA and non-finite)
+        # numeric: STANDARD HAL uses I(x >= cut)
         if (is.numeric(x) && length(need_num[[v]])) {
           cuts <- sort(unique(need_num[[v]]))
           nn <- which(!is.na(x) & is.finite(x))
+
           if (length(nn)) {
             ord <- nn[order(x[nn])]
             xs <- x[ord]
-            pos <- findInterval(cuts, xs, rightmost.closed = TRUE, all.inside = TRUE)
-            idxs <- lapply(pos, function(k) {
-              if (k > 0L) sort.int(ord[seq_len(k)], method = "quick") else integer()
+            N <- length(ord)
+
+            # k_lt[j] = number of xs < cuts[j]
+            # (left.open=TRUE makes equality go to previous interval => strict <)
+            k_lt <- findInterval(cuts, xs, left.open = TRUE)
+
+            idxs <- lapply(k_lt, function(k) {
+              start <- k + 1L
+              if (start <= N) sort.int(ord[start:N], method = "quick") else integer()
             })
+
           } else {
             idxs <- lapply(cuts, function(.) integer())
           }
+
           names(idxs) <- key_num(cuts)
           num_map[[v]] <- idxs
         }
@@ -1048,6 +1079,146 @@ Learner_hal <- setRefClass(
       )
     },
 
+    # hal_prepare_new = function(DT_new, hal_obj) {
+    #   stopifnot(requireNamespace("data.table", quietly = TRUE))
+    #   stopifnot(requireNamespace("Matrix", quietly = TRUE))
+    #
+    #   if (!data.table::is.data.table(DT_new)) DT_new <- data.table::as.data.table(DT_new)
+    #
+    #   vars <- names(hal_obj$meta$per_var)
+    #   if (!all(vars %in% names(DT_new))) stop("DT_new is missing required variables")
+    #
+    #   DT_local <- DT_new[, ..vars]
+    #   for (v in vars) {
+    #     x <- DT_local[[v]]
+    #     if (is.character(x) || is.logical(x)) DT_local[[v]] <- factor(x)
+    #   }
+    #
+    #   if (!exists("interN_cpp", mode = "function", inherits = TRUE)) {
+    #     stop("interN_cpp() not found. Ensure the C++ code is compiled and loaded.")
+    #   }
+    #
+    #   n <- nrow(DT_local)
+    #   colnames_tr <- hal_obj$colnames
+    #   colmeta <- hal_obj$meta$per_col
+    #   if (length(colmeta) != length(colnames_tr)) stop("hal_obj meta mismatch")
+    #
+    #   # Stable key for numeric cutpoints (must be used consistently)
+    #   key_num <- function(z) formatC(z, digits = 17, format = "fg")
+    #
+    #   # Precompute which primitives are needed
+    #   need_num <- lapply(vars, function(v) numeric())
+    #   names(need_num) <- vars
+    #   need_fac <- lapply(vars, function(v) character())
+    #   names(need_fac) <- vars
+    #
+    #   for (m in colmeta) {
+    #     if (m$type == "main") {
+    #       if (m$kind == "numeric") need_num[[m$var]] <- unique(c(need_num[[m$var]], m$cutpoint))
+    #       else                     need_fac[[m$var]] <- unique(c(need_fac[[m$var]], m$level))
+    #     } else if (m$type == "interaction") {
+    #       for (p in m$parts) {
+    #         if (p$kind == "numeric") need_num[[p$var]] <- unique(c(need_num[[p$var]], p$cutpoint))
+    #         else                     need_fac[[p$var]] <- unique(c(need_fac[[p$var]], p$level))
+    #       }
+    #     } else {
+    #       stop("Unknown column meta type")
+    #     }
+    #   }
+    #
+    #   # Build index maps: var -> key -> sorted row indices
+    #   num_map <- vector("list", length(vars)); names(num_map) <- vars
+    #   fac_map <- vector("list", length(vars)); names(fac_map) <- vars
+    #
+    #   for (v in vars) {
+    #     x <- DT_local[[v]]
+    #
+    #     # numeric (match mk_main behavior: ignore NA and non-finite)
+    #     if (is.numeric(x) && length(need_num[[v]])) {
+    #       cuts <- sort(unique(need_num[[v]]))
+    #       nn <- which(!is.na(x) & is.finite(x))
+    #       if (length(nn)) {
+    #         ord <- nn[order(x[nn])]
+    #         xs <- x[ord]
+    #         pos <- findInterval(cuts, xs, rightmost.closed = TRUE, all.inside = TRUE)
+    #         idxs <- lapply(pos, function(k) {
+    #           if (k > 0L) sort.int(ord[seq_len(k)], method = "quick") else integer()
+    #         })
+    #       } else {
+    #         idxs <- lapply(cuts, function(.) integer())
+    #       }
+    #       names(idxs) <- key_num(cuts)
+    #       num_map[[v]] <- idxs
+    #     }
+    #
+    #     # factor
+    #     if (is.factor(x) && length(need_fac[[v]])) {
+    #       chr <- as.character(x)
+    #       lv_needed <- need_fac[[v]]
+    #       idxs <- lapply(lv_needed, function(L) which(!is.na(chr) & chr == L))
+    #       names(idxs) <- lv_needed
+    #       fac_map[[v]] <- idxs
+    #     }
+    #   }
+    #
+    #   # Assemble sparse triplets in training column order
+    #   I_chunks <- vector("list", length(colmeta))
+    #   J_chunks <- vector("list", length(colmeta))
+    #
+    #   for (j in seq_along(colmeta)) {
+    #     m <- colmeta[[j]]
+    #
+    #     if (m$type == "main") {
+    #       if (m$kind == "numeric") {
+    #         idx <- num_map[[m$var]][[key_num(m$cutpoint)]]
+    #       } else {
+    #         idx <- fac_map[[m$var]][[m$level]]
+    #       }
+    #
+    #     } else { # interaction
+    #       parts_idx <- vector("list", length(m$parts))
+    #       ok <- TRUE
+    #
+    #       for (k in seq_along(m$parts)) {
+    #         p <- m$parts[[k]]
+    #         if (p$kind == "numeric") {
+    #           parts_idx[[k]] <- num_map[[p$var]][[key_num(p$cutpoint)]]
+    #         } else {
+    #           parts_idx[[k]] <- fac_map[[p$var]][[p$level]]
+    #         }
+    #         if (is.null(parts_idx[[k]]) || !length(parts_idx[[k]])) { ok <- FALSE; break }
+    #       }
+    #
+    #       if (!ok) {
+    #         idx <- integer()
+    #       } else if (length(parts_idx) == 1L) {
+    #         idx <- parts_idx[[1L]]
+    #       } else {
+    #         idx <- interN_cpp(parts_idx)
+    #       }
+    #     }
+    #
+    #     if (length(idx)) {
+    #       I_chunks[[j]] <- idx
+    #       J_chunks[[j]] <- rep.int(j, length(idx))
+    #     } else {
+    #       I_chunks[[j]] <- integer()
+    #       J_chunks[[j]] <- integer()
+    #     }
+    #   }
+    #
+    #   i_vec <- unlist(I_chunks, use.names = FALSE)
+    #   j_vec <- unlist(J_chunks, use.names = FALSE)
+    #
+    #   Matrix::sparseMatrix(
+    #     i = if (length(i_vec)) i_vec else integer(),
+    #     j = if (length(j_vec)) j_vec else integer(),
+    #     x = if (length(i_vec)) 1L else integer(),
+    #     dims = c(n, length(colnames_tr)),
+    #     dimnames = list(NULL, colnames_tr)
+    #   )
+    # },
+    #
 
     private_fit = function(data, ...) {
 
@@ -1059,13 +1230,13 @@ Learner_hal <- setRefClass(
 
       data_copy<-data_copy[complete.cases(data_copy),]
 
-
       x_pp <- hal_basis(
         vars = c(group_cols,"node"),
         DT = data_copy,
         max_interaction = .self$max_degree,
         knots_per_order = .self$num_knots
       )
+
 
       # .self$fit_arguments[['y']] <- as.numeric(data_copy[['deltaij']])
 
@@ -1083,6 +1254,7 @@ Learner_hal <- setRefClass(
       .self$covariates_attributes_matrix <-x_pp[c("colnames",
                                                   "meta" )]
 
+
       if (.self$cross_validation) {
 
         prefit_args <- .self$fit_arguments
@@ -1091,11 +1263,11 @@ Learner_hal <- setRefClass(
           prefit_args[['maxit']] <- .self$maxit_prefit
         }
 
-        cv_fit <- do.call(cv.glmnet, c(prefit_args,
+        suppressWarnings(cv_fit <- do.call(cv.glmnet, c(prefit_args,
                                        list(y=as.numeric(data_copy[['deltaij']]),
                                             offset=log(data_copy[['tij']]),
                                             x=x_pp$X
-                                            )))
+                                            ))))
 
         lambda_grid_prefit <- cv_fit$lambda
 
@@ -1166,8 +1338,9 @@ Learner_hal <- setRefClass(
         return(rep(NA_real_, nrow(newdata)))
       }
 
-      X_new <- .self$hal_prepare_new(newdata, .self$covariates_attributes_matrix)
 
+
+      X_new <- .self$hal_prepare_new(newdata, .self$covariates_attributes_matrix)
 
 
       out <- predict(model,
