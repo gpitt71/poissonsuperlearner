@@ -683,6 +683,7 @@ Learner_hal <- setRefClass(
     add_nodes="logical",
     max_degree="integer",
     lambda_grid="numeric",
+    lambda_opt="numeric",
     penalise_nodes= "logical",
     maxit_prefit="numeric",
     fit_arguments = "list",
@@ -1254,54 +1255,106 @@ Learner_hal <- setRefClass(
       .self$covariates_attributes_matrix <-x_pp[c("colnames",
                                                   "meta" )]
 
+      #
+      # if (.self$cross_validation) {
+      #
+      #   prefit_args <- .self$fit_arguments
+      #
+      #   if (!is.na(.self$maxit_prefit)) {
+      #     prefit_args[['maxit']] <- .self$maxit_prefit
+      #   }
+      #
+      #   suppressWarnings(cv_fit <- do.call(cv.glmnet, c(prefit_args,
+      #                                  list(y=as.numeric(data_copy[['deltaij']]),
+      #                                       offset=log(data_copy[['tij']]),
+      #                                       x=x_pp$X,
+      #                                       maxit=5000
+      #                                       ))))
+      #
+      #   lambda_grid_prefit <- cv_fit$lambda
+      #   browser()
+      #   if (!all(is.na(.self$lambda_grid))) {
+      #     lambda_grid_prefit <- c(.self$lambda_grid, lambda_grid_prefit)
+      #     lambda_grid_prefit <- lambda_grid_prefit[complete.cases(lambda_grid_prefit)]
+      #     lambda_grid_prefit <- sort(unique(lambda_grid_prefit), decreasing = TRUE)
+      #   }
+      #
+      #   preds <- predict(cv_fit$glmnet.fit,
+      #                    newx = x_pp$X,
+      #                    newoffset = log(data_copy[['tij']]),
+      #                    type = "response",
+      #                    s = lambda_grid_prefit)
+      #
+      #   if (is.null(dim(preds))) {
+      #     preds <- matrix(preds, ncol = 1L)
+      #   }
+      #
+      #   mu <- pmax(preds, 1e-12)
+      #   y_vec <- as.numeric(data_copy[['deltaij']])
+      #   nll <- -colSums(y_vec * log(mu) - mu)
+      #   # lambda_opt <- lambda_grid_prefit[which.min(nll)]
+      #
+      #   glmnet_args <- .self$fit_arguments
+      #   glmnet_args[['lambda']] <- lambda_opt
+      #   glmnet_args[['nfolds']] <- NULL
+      #
+      #   fit <- cv_fit
+      #   .self$lambda_opt <- lambda_grid_prefit[which.min(nll)]
+      #   fit <- do.call(glmnet, c(glmnet_args,
+      #                            list(y=as.numeric(data_copy[['deltaij']]),
+      #                                 offset=log(data_copy[['tij']]),
+      #                                 x=x_pp$X
+      #                            )))
+      # }
+      #
 
       if (.self$cross_validation) {
 
+        ## 1) Prefit with cv.glmnet to obtain the lambda path + CV curve
         prefit_args <- .self$fit_arguments
 
         if (!is.na(.self$maxit_prefit)) {
-          prefit_args[['maxit']] <- .self$maxit_prefit
+          prefit_args[["maxit"]] <- .self$maxit_prefit
         }
 
-        suppressWarnings(cv_fit <- do.call(cv.glmnet, c(prefit_args,
-                                       list(y=as.numeric(data_copy[['deltaij']]),
-                                            offset=log(data_copy[['tij']]),
-                                            x=x_pp$X
-                                            ))))
+        suppressWarnings(
+          cv_fit <- do.call(
+            cv.glmnet,
+            c(
+              prefit_args,
+              list(
+                x      = x_pp$X,
+                y      = as.numeric(data_copy[["deltaij"]]),
+                offset = log(data_copy[["tij"]])
+              )
+            )
+          )
+        )
 
-        lambda_grid_prefit <- cv_fit$lambda
+        ## 2) Choose lambda that minimizes cvm (this is cv_fit$lambda.min)
+        lambda_min_cvm <- cv_fit$lambda.min
+        .self$lambda_opt <- lambda_min_cvm
 
-        if (!all(is.na(.self$lambda_grid))) {
-          lambda_grid_prefit <- c(.self$lambda_grid, lambda_grid_prefit)
-          lambda_grid_prefit <- lambda_grid_prefit[complete.cases(lambda_grid_prefit)]
-          lambda_grid_prefit <- sort(unique(lambda_grid_prefit), decreasing = TRUE)
-        }
-
-        preds <- predict(cv_fit$glmnet.fit,
-                         newx = x_pp$X,
-                         newoffset = log(data_copy[['tij']]),
-                         type = "response",
-                         s = lambda_grid)
-
-        if (is.null(dim(preds))) {
-          preds <- matrix(preds, ncol = 1L)
-        }
-
-        mu <- pmax(preds, 1e-12)
-        y_vec <- as.numeric(data_copy[['deltaij']])
-        nll <- -colSums(y_vec * log(mu) - mu)
-        lambda_opt <- lambda_grid[which.min(nll)]
-
+        ## 3) Refit a plain glmnet at that single lambda (no CV)
         glmnet_args <- .self$fit_arguments
-        glmnet_args[['lambda']] <- lambda_opt
-        glmnet_args[['nfolds']] <- NULL
+        glmnet_args[["lambda"]] <- lambda_min_cvm
+        glmnet_args[["nfolds"]] <- NULL  # not used by glmnet, but remove if present
 
-        fit <- do.call(glmnet, c(glmnet_args,
-                                 list(y=as.numeric(data_copy[['deltaij']]),
-                                      offset=log(data_copy[['tij']]),
-                                      x=x_pp$X
-                                 )))
-      } else {
+        suppressWarnings(
+          fit <- do.call(
+            glmnet,
+            c(
+              glmnet_args,
+              list(
+                x      = x_pp$X,
+                y      = as.numeric(data_copy[["deltaij"]]),
+                offset = log(data_copy[["tij"]])
+              )
+            )
+          )
+        )
+
+      }else {
         fit <- tryCatch(
           withCallingHandlers(
             do.call(.self$learner, .self$fit_arguments),
@@ -1342,12 +1395,14 @@ Learner_hal <- setRefClass(
 
       X_new <- .self$hal_prepare_new(newdata, .self$covariates_attributes_matrix)
 
-
+      # if(.self$cross_validation){
       out <- predict(model,
                      ...,
+                     # s=.self$lambda_opt,
                      newx=X_new,
                      newoffset = log(newdata[['tij']]),
                      type = "response")
+      #}
 
       return(out)
 
@@ -1371,12 +1426,16 @@ Learner_hal <- setRefClass(
 
       X_new <- .self$hal_prepare_new(newdata, .self$covariates_attributes_matrix)
 
-
+      # if(.self$cross_validation){
       out <- predict(model,
                      ...,
+                     # s=.self$lambda_opt,
                      newx=X_new,
                      newoffset = log(1),
                      type = "response")
+
+
+      # }
 
       return(out)
 
