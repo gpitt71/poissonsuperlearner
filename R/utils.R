@@ -61,59 +61,59 @@ stratified_sampling <- function(dt,id,status,nfold){
 }
 
 
-create_offset_variable_survival <- function(nodes, delta, time_to_event){
+# create_offset_variable_survival <- function(nodes, delta, time_to_event){
+#
+#   tmp <- c(nodes[nodes < time_to_event],
+#            first(nodes[nodes >= time_to_event]))
+#
+#   if(delta == 1){tmp[length(tmp)] <- time_to_event}
+#
+#   tij <- diff(c(tmp))
+#
+#   grid_nodes <- c(nodes[nodes < time_to_event])
+#
+#   return(cbind(grid_nodes,tij))
+# }
+#
+# create_response_variable_survival <- function(nodes, time_to_event, delta, event_type){
+#
+#
+#   l <- sum(nodes < time_to_event)
+#
+#   out <- c(rep(0,l-1),
+#            delta)
+#
+#   return(out)
+# }
 
-  tmp <- c(nodes[nodes < time_to_event],
-           first(nodes[nodes >= time_to_event]))
-
-  if(delta == 1){tmp[length(tmp)] <- time_to_event}
-
-  tij <- diff(c(tmp))
-
-  grid_nodes <- c(nodes[nodes < time_to_event])
-
-  return(cbind(grid_nodes,tij))
-}
-
-create_response_variable_survival <- function(nodes, time_to_event, delta, event_type){
-
-
-  l <- sum(nodes < time_to_event)
-
-  out <- c(rep(0,l-1),
-           delta)
-
-  return(out)
-}
-
-preprocess_minmax <- function(varData) {
-  X <- as.numeric(varData)
-  2 * (X - min(X)) / (max(X) - min(X)) - 1
-}
-
-
-preprocess_catdummy <- function(varData, prefix) {
-
-  X <- as.integer(varData)
-  n0 <- length(unique(X))
-  n1 <- 2:n0
-  addCols <- purrr::map(n1, function(x, y) {as.integer(y == x)}, y = X) %>%
-    rlang::set_names(paste0(prefix, n1))
-  cbind(data, addCols)
-}
-
-poisson_nll <- function(y_true, y_pred, ...) {
-
-  # K        <- backend()
-
-  # y_true   <- K$eval(y_true)
-  # y_pred   <- K$eval(y_pred)
-
-  out <- -sum(y_true * log(y_pred[2] * y_pred[1]) - y_pred[2] * y_pred[1])
-
-  return(out)
-
-}
+# preprocess_minmax <- function(varData) {
+#   X <- as.numeric(varData)
+#   2 * (X - min(X)) / (max(X) - min(X)) - 1
+# }
+#
+#
+# preprocess_catdummy <- function(varData, prefix) {
+#
+#   X <- as.integer(varData)
+#   n0 <- length(unique(X))
+#   n1 <- 2:n0
+#   addCols <- purrr::map(n1, function(x, y) {as.integer(y == x)}, y = X) %>%
+#     rlang::set_names(paste0(prefix, n1))
+#   cbind(data, addCols)
+# }
+#
+# poisson_nll <- function(y_true, y_pred, ...) {
+#
+#   # K        <- backend()
+#
+#   # y_true   <- K$eval(y_true)
+#   # y_pred   <- K$eval(y_pred)
+#
+#   out <- -sum(y_true * log(y_pred[2] * y_pred[1]) - y_pred[2] * y_pred[1])
+#
+#   return(out)
+#
+# }
 
 
 create_response_variable_c_risks <- function(nodes, time_to_event, delta, event_type){
@@ -176,65 +176,65 @@ create_offset_variable_interval_data <- function(nodes, start_time, end_time) {
   return(cbind(grid_nodes, tij))
 }
 
-data_pre_processing <- function(data,
-                                id,
-                                status,
-                                event_time,
-                                nodes=NULL,
-                                uncensored_01=FALSE
-){
-
-
-  setDT(data)
-  # Handle competing risks ----
-  ## for each of the competing risks (CR) we need to create a table
-  n_crisks <- pmax(length(unique(data[[status]])) - 1+uncensored_01,1)
-  ## the CR tables are stuck on top of each other to allow for possible interactions
-  dt_fit <- do.call(rbind, replicate(n_crisks, data, simplify = FALSE))
-  ## we create an artificial k index. Table specific.
-  dt_fit <- dt_fit[, k := rep(1:n_crisks, each = dim(data)[1])]
-
-
-  # Data Transformation ----
-  tmp <- c(id, "k")
-
-  dt_fit <- eval(parse(text = paste("dt_fit[, .(node = create_offset_variable(nodes, time_to_event = ",
-                                    event_time,
-                                    ")[, 1]",
-                                    ", tij = create_offset_variable(nodes, time_to_event = ",
-                                    event_time,
-                                    ")[,2]",
-                                    ", deltaij = create_response_variable_c_risks(nodes,time_to_event = ",
-                                    event_time,
-                                    ", delta=",
-                                    status,
-                                    ", event_type = k)",
-                                    ")",
-                                    ", by = .(",
-                                    id,
-                                    ", k)",
-                                    "]")))
-
-  ## Retrieve covariates
-
-  dt_fit <- merge(dt_fit, data, by = id, all.x = TRUE)
-
-  setnames(dt_fit, c(id),c("id"))
-
-  maxn <- max(dt_fit$node)
-  lvls <- as.character(sort(unique(dt_fit$node)))
-
-  dt_fit[,c("node",
-            "k"):=list(factor(node, levels=lvls),
-                       as.factor(k))]
-
-
-  dt_fit[,node:=relevel(node,ref=as.character(maxn))]
-  # dt_fit[,node:=relevel(node,ref=as.character(last(nodes)))]
-
-  return(dt_fit)
-
-}
+# data_pre_processing <- function(data,
+#                                 id,
+#                                 status,
+#                                 event_time,
+#                                 nodes=NULL,
+#                                 uncensored_01=FALSE
+# ){
+#
+#
+#   setDT(data)
+#   # Handle competing risks ----
+#   ## for each of the competing risks (CR) we need to create a table
+#   n_crisks <- pmax(length(unique(data[[status]])) - 1+uncensored_01,1)
+#   ## the CR tables are stuck on top of each other to allow for possible interactions
+#   dt_fit <- do.call(rbind, replicate(n_crisks, data, simplify = FALSE))
+#   ## we create an artificial k index. Table specific.
+#   dt_fit <- dt_fit[, k := rep(1:n_crisks, each = dim(data)[1])]
+#
+#
+#   # Data Transformation ----
+#   tmp <- c(id, "k")
+#
+#   dt_fit <- eval(parse(text = paste("dt_fit[, .(node = create_offset_variable(nodes, time_to_event = ",
+#                                     event_time,
+#                                     ")[, 1]",
+#                                     ", tij = create_offset_variable(nodes, time_to_event = ",
+#                                     event_time,
+#                                     ")[,2]",
+#                                     ", deltaij = create_response_variable_c_risks(nodes,time_to_event = ",
+#                                     event_time,
+#                                     ", delta=",
+#                                     status,
+#                                     ", event_type = k)",
+#                                     ")",
+#                                     ", by = .(",
+#                                     id,
+#                                     ", k)",
+#                                     "]")))
+#
+#   ## Retrieve covariates
+#
+#   dt_fit <- merge(dt_fit, data, by = id, all.x = TRUE)
+#
+#   setnames(dt_fit, c(id),c("id"))
+#
+#   maxn <- max(dt_fit$node)
+#   lvls <- as.character(sort(unique(dt_fit$node)))
+#
+#   dt_fit[,c("node",
+#             "k"):=list(factor(node, levels=lvls),
+#                        as.factor(k))]
+#
+#
+#   dt_fit[,node:=relevel(node,ref=as.character(maxn))]
+#   # dt_fit[,node:=relevel(node,ref=as.character(last(nodes)))]
+#
+#   return(dt_fit)
+#
+# }
 
 
 data_pre_processing <- function(data,
@@ -1246,19 +1246,6 @@ meta_learner_cross_validation <- function(dt,
 
 }
 
-
-evaluate_lkh_cv <- function(data,
-                            object){
-
-
-
-
-
-
-return(NULL)
-
-
-}
 
 
 

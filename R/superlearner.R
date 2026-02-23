@@ -261,58 +261,6 @@ Superlearner <- function(data,
 
   }
 
-
-  # .extract_symbols <- function(term) {
-  #   # try as a bare expression, then as a RHS of a formula
-  #   out <- tryCatch(
-  #     all.vars(str2lang(term)),
-  #     error = function(e) {
-  #       tryCatch(
-  #         all.vars(stats::terms(stats::as.formula(paste("~", term)))),
-  #         error = function(e2) character(0)
-  #       )
-  #     }
-  #   )
-  #   out
-  # }
-
-  ## Exploit Poisson likelihood and try to simplify (where possible) the covariates combinations to make the implementation faster
-
-  # columns_of_interest <- unlist(lapply(learners, function(x) {
-  #   vars <- unique(c(x$covariates, x$treatment))
-  #   vars <- vars[is.character(vars) & !is.na(vars) & nzchar(vars)]
-  #   unlist(lapply(vars, .extract_symbols), use.names = FALSE)
-  # }), use.names = FALSE)
-  #
-  #
-  # # if(!is.null(columns_of_interest)){
-  # # columns_of_interest <- unique(columns_of_interest[(complete.cases(columns_of_interest))])
-  # # }
-  #
-  # base_cols <- unique(c(columns_of_interest, lhs_string))
-  # grp_cols  <- c(base_cols, "node", "k")
-  #
-  # dt <- dt[, .(tij = sum(tij), deltaij = sum(deltaij),number_of_observations_tmp=.N,id=max(id)), by =grp_cols  ]
-  #
-  #
-  # if (dt[, any(number_of_observations_tmp > 1L)]) {
-  #   start <- suppressWarnings(max(dt$id, na.rm = TRUE))
-  #   if (!is.finite(start)) start <- 0L
-  #
-  #   # mapping: one new id per unique base_cols combo
-  #   map <- unique(dt[, ..base_cols])
-  #   setorderv(map, base_cols)
-  #   map[, id := start + seq_len(.N)]
-  #
-  #
-  #   dt[, id := NULL]
-  #   dt <- map[dt, on = base_cols]
-  # }
-  #
-  # dt[,number_of_observations_tmp:=NULL]
-
-  #### fino a qui.
-
   ## Splitting in folds ----
 
   if (stratified_k_fold) {
