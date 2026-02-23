@@ -18,8 +18,8 @@
 #' pch_survival(id, dt, haz)
 #'
 #' @export
-#' @useDynLib tmlensemble, .registration = TRUE
+#' @useDynLib poissonsuperlearner, .registration = TRUE
 #' @importFrom Rcpp evalCpp
 pch_survival <- function(id, dt, haz, na_is_zero = FALSE) {
-  .Call(`_tmlensemble_pch_survival`, id, dt, haz, na_is_zero)
+  .Call(`_poissonsuperlearner_pch_survival`, id, dt, haz, na_is_zero)
 }

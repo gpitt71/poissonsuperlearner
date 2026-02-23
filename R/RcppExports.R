@@ -2,38 +2,38 @@
 # Generator token: 10BE3573-1514-4C36-9D1C-5A225CD40393
 
 inter2_cpp <- function(a, b) {
-    .Call(`_tmlensemble_inter2_cpp`, a, b)
+    .Call(`_poissonsuperlearner_inter2_cpp`, a, b)
 }
 
 interN_cpp <- function(lst) {
-    .Call(`_tmlensemble_interN_cpp`, lst)
+    .Call(`_poissonsuperlearner_interN_cpp`, lst)
 }
 
 mk_main_numeric_cpp <- function(x, K) {
-    .Call(`_tmlensemble_mk_main_numeric_cpp`, x, K)
+    .Call(`_poissonsuperlearner_mk_main_numeric_cpp`, x, K)
 }
 
 mk_main_factor_cpp <- function(x_int, n_levels) {
-    .Call(`_tmlensemble_mk_main_factor_cpp`, x_int, n_levels)
+    .Call(`_poissonsuperlearner_mk_main_factor_cpp`, x_int, n_levels)
 }
 
 add_cols_cpp <- function(idxs_list, p_start) {
-    .Call(`_tmlensemble_add_cols_cpp`, idxs_list, p_start)
+    .Call(`_poissonsuperlearner_add_cols_cpp`, idxs_list, p_start)
 }
 
 pch_absolute_risk <- function(id, dt, haz, cause_idx, one_based = TRUE, na_is_zero = FALSE) {
-    .Call(`_tmlensemble_pch_absolute_risk`, id, dt, haz, cause_idx, one_based, na_is_zero)
+    .Call(`_poissonsuperlearner_pch_absolute_risk`, id, dt, haz, cause_idx, one_based, na_is_zero)
 }
 
 pch_absolute_risk_euler <- function(id, dt, haz, cause_idx, one_based = TRUE, na_is_zero = FALSE) {
-    .Call(`_tmlensemble_pch_absolute_risk_euler`, id, dt, haz, cause_idx, one_based, na_is_zero)
+    .Call(`_poissonsuperlearner_pch_absolute_risk_euler`, id, dt, haz, cause_idx, one_based, na_is_zero)
 }
 
 pch_survival <- function(id, dt, haz, na_is_zero = FALSE) {
-    .Call(`_tmlensemble_pch_survival`, id, dt, haz, na_is_zero)
+    .Call(`_poissonsuperlearner_pch_survival`, id, dt, haz, na_is_zero)
 }
 
 poisson_deviance_cpp <- function(folder, learner, lambda, tij, delta) {
-    .Call(`_tmlensemble_poisson_deviance_cpp`, folder, learner, lambda, tij, delta)
+    .Call(`_poissonsuperlearner_poisson_deviance_cpp`, folder, learner, lambda, tij, delta)
 }
 

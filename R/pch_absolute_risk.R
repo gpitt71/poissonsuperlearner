@@ -21,10 +21,10 @@
 #' cif2 <- pch_absolute_risk(dt_long$id, dt_long$deltatime, haz, cause_idx = 2)
 #'
 #' @export
-#' @useDynLib tmlensemble, .registration = TRUE
+#' @useDynLib poissonsuperlearner, .registration = TRUE
 #' @importFrom Rcpp evalCpp
 pch_absolute_risk <- function(id, dt, haz, cause_idx, one_based = TRUE, na_is_zero = FALSE) {
-  .Call(`_tmlensemble_pch_absolute_risk`, id, dt, haz, as.integer(cause_idx),
+  .Call(`_poissonsuperlearner_pch_absolute_risk`, id, dt, haz, as.integer(cause_idx),
         one_based, na_is_zero)
 }
 
@@ -53,10 +53,10 @@ pch_absolute_risk <- function(id, dt, haz, cause_idx, one_based = TRUE, na_is_ze
 #' cif1_euler <- pch_absolute_risk_euler(dt_long$id, dt_long$deltatime, haz, cause_idx = 1)
 #'
 #' @export
-#' @useDynLib tmlensemble, .registration = TRUE
+#' @useDynLib poissonsuperlearner, .registration = TRUE
 #' @importFrom Rcpp evalCpp
 pch_absolute_risk_euler <- function(id, dt, haz, cause_idx, one_based = TRUE, na_is_zero = FALSE) {
-  .Call(`_tmlensemble_pch_absolute_risk_euler`, id, dt, haz, as.integer(cause_idx),
+  .Call(`_poissonsuperlearner_pch_absolute_risk_euler`, id, dt, haz, as.integer(cause_idx),
         one_based, na_is_zero)
 }
 
