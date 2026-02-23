@@ -317,13 +317,21 @@ Learner_glmnet <- setRefClass(
 
       }
 
-
-
-
-
       if (.self$cross_validation) {
+        # Cross-validation is done using cv.glmnet's internally generated
+        # lambda path. We then refit a glmnet model at the lambda that minimizes
+        # the (Poisson) deviance, matching the approach used for Learner_hal.
+
+        cv_args <- .self$fit_arguments
+
+        # Ensure deviance is used unless the user explicitly provided another
+        # type.measure.
+        if (is.null(cv_args[['type.measure']])) {
+          cv_args[['type.measure']] <- 'deviance'
+        }
+
         suppressWarnings(cv_fit <- do.call(cv.glmnet, c(
-          .self$fit_arguments,
+          cv_args,
           list(
             x = x,
             y = as.numeric(data[["deltaij"]]),
@@ -331,34 +339,24 @@ Learner_glmnet <- setRefClass(
           )
         )))
 
-        lambda_grid_prefit <- cv_fit$lambda
+        # lambda.min corresponds to the minimizer of cvm (expected deviance)
+        # over cv.glmnet's lambda path.
+        lambda_opt <- cv_fit$lambda.min
 
+        # Store selected lambda for potential downstream use.
+        .self$lambda <- as.numeric(lambda_opt)
 
-        if (!all(is.na(.self$lambda_grid))) {
-          lambda_grid_prefit <- c(.self$lambda_grid, lambda_grid_prefit)
-          lambda_grid_prefit <- lambda_grid_prefit[complete.cases(lambda_grid_prefit)]
-          lambda_grid_prefit <- sort(unique(lambda_grid_prefit), decreasing = TRUE)
-        }
-        preds <- glmnet::predict.glmnet(
-          cv_fit$glmnet.fit,
-          newx = x,
-          newoffset = log(data[['tij']]),
-          type = "response",
-          s = lambda_grid_prefit
-        )
-
-        if (is.null(dim(preds))) {
-          preds <- matrix(preds, ncol = 1L)
-        }
-
-        mu <- pmax(preds, 1e-12)
-        y_vec <- as.numeric(data[['deltaij']])
-        nll <- -colSums(y_vec * log(mu) - mu)
-        lambda_opt <- lambda_grid_prefit[which.min(nll)]
-
+        # Refit glmnet at the selected lambda.
         glmnet_args <- .self$fit_arguments
-        glmnet_args[['lambda']] <- lambda_opt
+        glmnet_args[['lambda']] <- as.numeric(lambda_opt)
+
+        # Remove CV-only arguments if present.
         glmnet_args[['nfolds']] <- NULL
+        glmnet_args[['foldid']] <- NULL
+        glmnet_args[['type.measure']] <- NULL
+        glmnet_args[['keep']] <- NULL
+        glmnet_args[['grouped']] <- NULL
+        glmnet_args[['parallel']] <- NULL
 
         out <- do.call(glmnet, c(glmnet_args, list(
           x = x,
@@ -366,7 +364,7 @@ Learner_glmnet <- setRefClass(
           offset = log(data[["tij"]])
         )))
 
-      } else {
+      }else {
         out <- do.call(.self$learner, c(
           .self$fit_arguments,
           list(
@@ -1322,21 +1320,31 @@ Learner_hal <- setRefClass(
           )
         )))
 
-      } else {
-        fit <- tryCatch(
-          withCallingHandlers(
-            do.call(.self$learner, .self$fit_arguments),
-            warning = function(w) {
-              if (grepl("Convergence", conditionMessage(w), ignore.case = TRUE) ||
-                  grepl("empty model", conditionMessage(w), ignore.case = TRUE)) {
-                invokeRestart("muffleWarning")
-              }
+       } else {
+        glmnet_args <- .self$fit_arguments
+
+        # If user supplied lambda_grid (single lambda or vector), use it directly
+        if (!all(is.na(.self$lambda_grid))) {
+          lambda_user <- as.numeric(.self$lambda_grid)
+          lambda_user <- lambda_user[complete.cases(lambda_user)]
+
+          if (length(lambda_user) > 0L) {
+            glmnet_args[["lambda"]] <- lambda_user
+
+            # store lambda_opt only if a single lambda was provided
+            if (length(lambda_user) == 1L) {
+              .self$lambda_opt <- lambda_user
             }
-          ),
-          error = function(e) {
-            return(NULL)
           }
-        )
+        }
+
+        suppressWarnings(fit <- do.call(glmnet, c(
+          glmnet_args, list(
+            x      = x_pp$X,
+            y      = as.numeric(data_copy[["deltaij"]]),
+            offset = log(data_copy[["tij"]])
+          )
+        )))
       }
 
       return(fit)

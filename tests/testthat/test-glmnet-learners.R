@@ -16,197 +16,185 @@
 ### Code:
 library(testthat)
 library(tmlensemble)
-## library(glmnet)
+library(data.table)
 library(survival)
 library(riskRegression)
-test_that("rigde works", {
-
-    Xvars <- paste0("X", 1:10)
-    d <- sampleData(n = 3000,formula = ~ f(X1, 2) + f(X2, 0) + f(X3, 0) + f(X6, 0) + f(X7, 0) + f(X8, 0) + f(X9, 0)+ f(X10, 0))
-
-    fit_cox <- coxph(Surv(time, event == 1) ~ X1+X2+X3+X4+X5+X6+X7+X8+X9+X10,data = d,x = TRUE,y = TRUE)
-    fit_pen_cox <- GLMnet(formula = Surv(time, event == 1) ~ X1+X2+X3+X4+X5+X6+X7+X8+X9+X10,data = d,lambda = 0)
-    fit_rigde_cox <- GLMnet(formula = Surv(time, event == 1) ~ X1+X2+X3+X4+X5+X6+X7+X8+X9+X10,data = d,alpha = 0)
-    fit_lasso_cox <- GLMnet(formula = Surv(time, event == 1) ~ X1+X2+X3+X4+X5+X6+X7+X8+X9+X10,data = d,alpha = 1)
-
-    # Here you define the learner
-    lridge <- Learner_glmnet(covariates =  paste0("X", 1:9),
-                              cross_validation=TRUE,
-                              lambda_grid =seq(0,.9,by=0.001),
-                              alpha=0,
-                              intercept=TRUE,
-                              penalise_nodes=TRUE)
-
-    # Here you call the method that fits the learner to the data.
-
-    # In my package you need explicit coding of the event.
-    dupdated <- copy(d)
-    dupdated[,event:=as.numeric(event==1)]
 
 
-    lridge$fit(data = dupdated,
-               event_time = "time",
-               status = "event",
-               number_of_nodes=20)
+test_that("data_pre_processing preserves time at risk and covariates", {
 
-    lridge$model_fit$lambda
+  skip_if_not_installed("riskRegression")
+  skip_if_not_installed("data.table")
 
-    # The model fit is saved as an attribute (model_fit) of the reference class Learner_glmnet.
-    # It essentially works like a Python class.
+  {set.seed(42)
 
-    head(coef(lridge$model_fit[[1]]))
+  # Synthetic data
+  Xvars <- paste0("X", 1:10)
+  d <- riskRegression::sampleData(
+    n = 100,
+    formula = ~ f(X1, 2) + f(X2, 0) + f(X3, 0) + f(X6, 0) + f(X7, 0) +
+      f(X8, 0) + f(X9, 0) + f(X10, 0)
+  )}
 
+  d <- as.data.table(d)
+  #make it survival data set
+  d[,event:=as.numeric(event==1)]
+  d[,id:=1:.N]
 
-    lcox <- Learner_glmnet(covariates = Xvars,
-                             cross_validation=FALSE,
-                             lambda=0,
-                             alpha=0,
-                             intercept=TRUE,
-                             penalise_nodes=FALSE)
+  id_col <- "id"
+  time_col <- "time"
+  status_col <- "event"
 
-    lcox$fit(data = dupdated,
-               event_time = "time",
-               status = "event",
-             number_of_nodes = 20)
+  # Sanity: unique id in input
+  testthat::expect_equal(nrow(d), uniqueN(d[[id_col]]))
 
-    head(coef(lcox$model_fit[[1]]))
+  # Define 10 time knots
+  qs <- as.numeric(stats::quantile(d[[time_col]], probs = seq(0.1, 1, by = 0.1), na.rm = TRUE))
+  nodes <- sort(unique(c(0,qs)))
+  testthat::expect_true(length(nodes) >= 2)  # otherwise intervals are degenerate
 
-
-    llasso <- Learner_glmnet(covariates = Xvars,
-                             cross_validation=TRUE,
-                             lambda_grid =seq(0,.2,by=0.0001),
-                             alpha=1,
-                             intercept=TRUE,
-                             penalise_nodes=FALSE)
-
-    llasso$fit(data = dupdated,
-             event_time = "time",
-             status = "event",
-             number_of_nodes = 20)
-
-    head(coef(llasso$model_fit[[1]]))
-    llasso$lambda
-
-    lgam <- Learner_gam(covariates = Xvars)
-
-    out_gam <- Superlearner(
-      data = dupdated,
-      event_time = "time",
-      status = "event",
-      id = "id",
-      learners = list(lgam),
-      nfold = 20,
-      number_of_nodes = 20
-    )
-
-
-   cbind( lasso=head(coef(llasso$model_fit[[1]])),
-    ridge=head(coef(lridge$model_fit[[1]])),
-    cox=head(coef(lcox$model_fit[[1]])),
-    gam=head(coef(out_gam$superlearner[[1]]$learners_fit)))
-
-
-})
-
-
-test_that("rigde works in Steno1", {
-    covariates <- c("sex","age","diabetes_duration","value_SBP","value_LDL","value_HBA1C","value_Smoking","value_Motion","value_Albuminuria","eGFR")
-    d <- simulateStenoT1(n = 300,beta_age_rate_cvd = .1,beta_age_rate_death = 0,keep = c("time","event",covariates))
-    fit_cox <- coxph(Surv(time,event == 1)~age,data = d,x = TRUE,y = TRUE)
-    lasso_fish <- fishNet(data = d,event_time = "time",status = "event",covariates = covariates,alpha = 1,lambda = seq(.001,.9,.0002),penalise_nodes = FALSE,number_of_nodes=20,nfold = 20)
-    ridge_fish <- fishNet(data = d,event_time = "time",status = "event",covariates = covariates,alpha = 0,lambda = seq(.001,.9,.0002),penalise_nodes = FALSE,number_of_nodes=20,nfold = 20)
-    np_ridge_fish <- fishNet(data = d,event_time = "time",status = "event",covariates = covariates,alpha = 0,lambda = seq(.001,.9,.0002),penalise_nodes = TRUE,number_of_nodes=20,nfold = 20)
-    cbind(lasso_fish$superlearner[[1]]$learners_fit$beta,
-          ridge_fish$superlearner[[1]]$learners_fit$beta,
-          np_ridge_fish$superlearner[[1]]$learners_fit$beta)
-})
-
-
-
-
-test_that("glmnet convergence issues veteran", {
-
-  veteran_data <- as.data.table(survival::veteran)
-  veteran_data <- veteran_data[complete.cases(veteran_data), ]
-  veteran_data[, id := 1:.N]
-  veteran_data[,prior:=as.factor(prior)]
-
-  veteran_data <- veteran_data[,.SD[1],by="time"] # disregard ties
-
-  covariates <- c("age","celltype")
-
-  fit_cox <- coxph(Surv(time,status )~age+celltype,data = veteran_data,x = TRUE,y = TRUE)
-
-  fit_rigde_cox <- GLMnet(formula = Surv(time, status == 1) ~ age+celltype,data = veteran_data,alpha = 0)
-  fit_lasso_cox <- GLMnet(formula = Surv(time, status == 1) ~ age+celltype,data = veteran_data,alpha = 1)
-
-  lglmnet <- Learner_glmnet(covariates = covariates,
-                                  cross_validation=FALSE,
-                                  lambda=0,
-                                  lambda_grid =seq(.001,.9,.0002),
-                                  intercept=FALSE,
-                                  penalise_nodes=FALSE)
-
-  lglmnet$fit(veteran_data,
-              id="id",
-              status="status",
-              stratified_k_fold=FALSE,
-              event_time = "time")
-
-  lglmnet_yt <- Learner_glmnet(covariates = covariates,
-                            cross_validation=FALSE,
-                            alpha=1,
-                            lambda=0,
-                            lambda_grid =seq(.001,.9,.0002),
-                            intercept=FALSE,
-                            thresh = 1e-15,
-                            penalise_nodes=FALSE)
-
-
-  lglmnet_yt$fit(veteran_data,
-              id="id",
-              status="status",
-              stratified_k_fold=FALSE,
-              event_time = "time")
-
-
-  llasso <- Learner_glmnet(covariates = covariates,
-                               cross_validation=T,
-                               alpha=1,
-                               # lambda=0,
-                               lambda_grid =seq(.001,.9,.0002),
-                               intercept=FALSE,
-                               thresh = 1e-15,
-                               penalise_nodes=TRUE)
-
-
-  llasso$fit(veteran_data,
-                 id="id",
-                 status="status",
-                 stratified_k_fold=FALSE,
-                 event_time = "time")
-
-
-  lgam <- Learner_gam(covariates = c("age","celltype"))
-
-  out_gam <- Superlearner(veteran_data,
-                                      id="id",
-                                      status="status",
-                                      stratified_k_fold=FALSE,
-                                      event_time = "time",
-                                      learners=list(lgam),
-                                      meta_learner_algorithms = c("glm"),
-                                      nfold = 20
+  # Run preprocessing
+  dt_fit <- data_pre_processing(
+    data = d,
+    id = id_col,
+    status = status_col,
+    event_time = time_col,
+    nodes = nodes,
+    predictions = FALSE,
+    uncensored_01 = FALSE
   )
 
-  cbind(coef(fit_cox),
-        lglmnet$model_fit$beta[1:5,],
-        lglmnet_yt$model_fit$beta[1:5,],
-        llasso$model_fit$beta[1:5,],
-        out_gam$superlearner[[1]]$learners_fit$coefficients[2:5]
+  dt_fit <- as.data.table(dt_fit)
+
+  # ---------- 1) Time preservation ----------
+  # For each subject: sum(tij) should equal the observed time
+  time_check <- dt_fit[, .(sum_tij = sum(tij)), by = id][
+    d[, .(id = get(id_col), obs_time = get(time_col))],
+    on = "id"
+  ]
+
+  testthat::expect_true(all(is.finite(time_check$sum_tij)))
+  testthat::expect_true(all(is.finite(time_check$obs_time)))
+
+  testthat::expect_true(
+    all(abs(time_check$sum_tij - time_check$obs_time) < 1e-10)
   )
+
+  # ---------- 2) Covariate preservation ----------
+  # Each covariate must be constant within id in the expanded data,
+  # and equal to its value in the original data.
+  for (v in Xvars) {
+    if (!v %in% names(d)) next
+    if (!v %in% names(dt_fit)) {
+      testthat::fail(paste0("Covariate '", v, "' missing from preprocessed data"))
+    }
+
+    # constant within id
+    varying <- dt_fit[, data.table::uniqueN(get(v)), by = id][V1 != 1]
+    testthat::expect_equal(nrow(varying), 0)
+
+    # matches original
+    merged <- unique(dt_fit[, .(id, val_fit = get(v))])[
+      d[, .(id = get(id_col), val_orig = get(v))],
+      on = "id"
+    ]
+
+    # handle factors vs numeric gracefully
+    if (is.factor(merged$val_fit) || is.character(merged$val_fit)) {
+      testthat::expect_true(all(as.character(merged$val_fit) == as.character(merged$val_orig)))
+    } else {
+      testthat::expect_true(all(abs(merged$val_fit - merged$val_orig) < 1e-12))
+    }
+  }
+
+  # ---------- 3) Structural checks ----------
+  testthat::expect_true("tij" %in% names(dt_fit))
+  testthat::expect_true("deltaij" %in% names(dt_fit))
+  testthat::expect_true("node" %in% names(dt_fit))
+  testthat::expect_true("k" %in% names(dt_fit))
+
+  # Node levels match what preprocessing decided (predictions=FALSE uses dt_fit$node max)
+  testthat::expect_true(is.factor(dt_fit$node))
+  testthat::expect_true(is.factor(dt_fit$k))
 
 })
 
-######################################################################
-### test-glmnet-learners.R ends here
+test_that("Poisson piecewise-constant fit reproduces Cox coefficient (X1)", {
+
+  skip_if_not_installed("riskRegression")
+  skip_if_not_installed("survival")
+  skip_if_not_installed("glmnet")
+  skip_if_not_installed("data.table")
+
+  library(data.table)
+
+  {set.seed(42)
+  d <- riskRegression::sampleData(
+    n = 50,
+    formula = ~ f(X1, 2)
+  )
+  d <- as.data.table(d)}
+
+  # sampleData sometimes has competing risks in 'event' (0,1,2,...).
+  # For this test, reduce to a standard survival endpoint:
+  # event of interest = 1, everything else treated as censored.
+  if (!("id" %in% names(d))) d[, id := .I]
+  if (!("time" %in% names(d))) stop("sampleData did not produce a 'time' column; adjust the test.")
+  if (!("event" %in% names(d))) stop("sampleData did not produce an 'event' column; adjust the test.")
+  if (!("X1" %in% names(d))) stop("sampleData did not produce 'X1'; adjust the test.")
+
+  d[, status := as.integer(event == 1L)]
+
+  # ---- Cox model ----
+  fit_cox <- survival::coxph(
+    survival::Surv(time, status) ~ X1,
+    data = d,
+    ties = "breslow"
+  )
+  beta_cox <- unname(coef(fit_cox)[["X11"]])
+
+  # ---- Poisson piecewise-constant hazard model via your infrastructure ----
+  # Use all observed times as nodes by leaving nodes=NULL and number_of_nodes=NULL
+  # Ensure unpenalized fit: lambda=0.
+  learner <- Learner_glmnet(
+    covariates = "X1",
+    cross_validation = FALSE,
+    intercept = FALSE,
+    add_nodes = TRUE,
+    penalise_nodes = FALSE,
+    lambda = 0,
+    alpha = 1
+  )
+
+  fit_ps <- fit_learner(
+    data = d,
+    learner = learner,
+    id = "id",
+    status = "status",
+    event_time = "time",
+    nodes = NULL,
+    number_of_nodes = NULL
+  )
+
+  # fit_ps$learner_fit is a list by competing-risk stratum k.
+  # For survival (after status recode), k should be length 1.
+  testthat::expect_true(inherits(fit_ps, "base_learner"))
+  testthat::expect_true(length(fit_ps$learner_fit) >= 1)
+
+  glmnet_fit <- fit_ps$learner_fit[[1]]
+
+  # Extract coefficient for X1 from glmnet fit.
+  # coef(glmnet_fit) returns a sparse matrix with rownames including "X1".
+  beta_pois <- as.matrix(stats::coef(glmnet_fit))
+  testthat::expect_true("X11" %in% rownames(beta_pois))
+  beta_pois <- unname(beta_pois["X11", 1])
+
+  # ---- compare ----
+  # Numerical equality depends on ties + discretization at all observed times;
+  # this should be close, but allow a small tolerance.
+  testthat::expect_equal(beta_pois, beta_cox, tolerance = 1e-3)
+})
+
+
+
+
