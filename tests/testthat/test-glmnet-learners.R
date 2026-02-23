@@ -15,7 +15,7 @@
 ##
 ### Code:
 library(testthat)
-library(tmlensemble)
+library(poissonsuperlearner)
 library(data.table)
 library(survival)
 library(riskRegression)

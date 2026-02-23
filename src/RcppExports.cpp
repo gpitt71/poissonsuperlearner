@@ -12,7 +12,7 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 
 // inter2_cpp
 IntegerVector inter2_cpp(IntegerVector a, IntegerVector b);
-RcppExport SEXP _tmlensemble_inter2_cpp(SEXP aSEXP, SEXP bSEXP) {
+RcppExport SEXP _poissonsuperlearner_inter2_cpp(SEXP aSEXP, SEXP bSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -24,7 +24,7 @@ END_RCPP
 }
 // interN_cpp
 IntegerVector interN_cpp(List lst);
-RcppExport SEXP _tmlensemble_interN_cpp(SEXP lstSEXP) {
+RcppExport SEXP _poissonsuperlearner_interN_cpp(SEXP lstSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -35,7 +35,7 @@ END_RCPP
 }
 // mk_main_numeric_cpp
 List mk_main_numeric_cpp(NumericVector x, int K);
-RcppExport SEXP _tmlensemble_mk_main_numeric_cpp(SEXP xSEXP, SEXP KSEXP) {
+RcppExport SEXP _poissonsuperlearner_mk_main_numeric_cpp(SEXP xSEXP, SEXP KSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -47,7 +47,7 @@ END_RCPP
 }
 // mk_main_factor_cpp
 List mk_main_factor_cpp(IntegerVector x_int, int n_levels);
-RcppExport SEXP _tmlensemble_mk_main_factor_cpp(SEXP x_intSEXP, SEXP n_levelsSEXP) {
+RcppExport SEXP _poissonsuperlearner_mk_main_factor_cpp(SEXP x_intSEXP, SEXP n_levelsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -59,7 +59,7 @@ END_RCPP
 }
 // add_cols_cpp
 List add_cols_cpp(List idxs_list, int p_start);
-RcppExport SEXP _tmlensemble_add_cols_cpp(SEXP idxs_listSEXP, SEXP p_startSEXP) {
+RcppExport SEXP _poissonsuperlearner_add_cols_cpp(SEXP idxs_listSEXP, SEXP p_startSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -71,7 +71,7 @@ END_RCPP
 }
 // pch_absolute_risk
 NumericVector pch_absolute_risk(IntegerVector id, NumericVector dt, NumericMatrix haz, int cause_idx, const bool one_based, const bool na_is_zero);
-RcppExport SEXP _tmlensemble_pch_absolute_risk(SEXP idSEXP, SEXP dtSEXP, SEXP hazSEXP, SEXP cause_idxSEXP, SEXP one_basedSEXP, SEXP na_is_zeroSEXP) {
+RcppExport SEXP _poissonsuperlearner_pch_absolute_risk(SEXP idSEXP, SEXP dtSEXP, SEXP hazSEXP, SEXP cause_idxSEXP, SEXP one_basedSEXP, SEXP na_is_zeroSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -87,7 +87,7 @@ END_RCPP
 }
 // pch_absolute_risk_euler
 NumericVector pch_absolute_risk_euler(IntegerVector id, NumericVector dt, NumericMatrix haz, int cause_idx, const bool one_based, const bool na_is_zero);
-RcppExport SEXP _tmlensemble_pch_absolute_risk_euler(SEXP idSEXP, SEXP dtSEXP, SEXP hazSEXP, SEXP cause_idxSEXP, SEXP one_basedSEXP, SEXP na_is_zeroSEXP) {
+RcppExport SEXP _poissonsuperlearner_pch_absolute_risk_euler(SEXP idSEXP, SEXP dtSEXP, SEXP hazSEXP, SEXP cause_idxSEXP, SEXP one_basedSEXP, SEXP na_is_zeroSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -103,7 +103,7 @@ END_RCPP
 }
 // pch_survival
 NumericVector pch_survival(IntegerVector id, NumericVector dt, NumericMatrix haz, const bool na_is_zero);
-RcppExport SEXP _tmlensemble_pch_survival(SEXP idSEXP, SEXP dtSEXP, SEXP hazSEXP, SEXP na_is_zeroSEXP) {
+RcppExport SEXP _poissonsuperlearner_pch_survival(SEXP idSEXP, SEXP dtSEXP, SEXP hazSEXP, SEXP na_is_zeroSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -117,7 +117,7 @@ END_RCPP
 }
 // poisson_deviance_cpp
 DataFrame poisson_deviance_cpp(IntegerVector folder, CharacterVector learner, NumericMatrix lambda, NumericVector tij, IntegerMatrix delta);
-RcppExport SEXP _tmlensemble_poisson_deviance_cpp(SEXP folderSEXP, SEXP learnerSEXP, SEXP lambdaSEXP, SEXP tijSEXP, SEXP deltaSEXP) {
+RcppExport SEXP _poissonsuperlearner_poisson_deviance_cpp(SEXP folderSEXP, SEXP learnerSEXP, SEXP lambdaSEXP, SEXP tijSEXP, SEXP deltaSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -132,19 +132,19 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_tmlensemble_inter2_cpp", (DL_FUNC) &_tmlensemble_inter2_cpp, 2},
-    {"_tmlensemble_interN_cpp", (DL_FUNC) &_tmlensemble_interN_cpp, 1},
-    {"_tmlensemble_mk_main_numeric_cpp", (DL_FUNC) &_tmlensemble_mk_main_numeric_cpp, 2},
-    {"_tmlensemble_mk_main_factor_cpp", (DL_FUNC) &_tmlensemble_mk_main_factor_cpp, 2},
-    {"_tmlensemble_add_cols_cpp", (DL_FUNC) &_tmlensemble_add_cols_cpp, 2},
-    {"_tmlensemble_pch_absolute_risk", (DL_FUNC) &_tmlensemble_pch_absolute_risk, 6},
-    {"_tmlensemble_pch_absolute_risk_euler", (DL_FUNC) &_tmlensemble_pch_absolute_risk_euler, 6},
-    {"_tmlensemble_pch_survival", (DL_FUNC) &_tmlensemble_pch_survival, 4},
-    {"_tmlensemble_poisson_deviance_cpp", (DL_FUNC) &_tmlensemble_poisson_deviance_cpp, 5},
+    {"_poissonsuperlearner_inter2_cpp", (DL_FUNC) &_poissonsuperlearner_inter2_cpp, 2},
+    {"_poissonsuperlearner_interN_cpp", (DL_FUNC) &_poissonsuperlearner_interN_cpp, 1},
+    {"_poissonsuperlearner_mk_main_numeric_cpp", (DL_FUNC) &_poissonsuperlearner_mk_main_numeric_cpp, 2},
+    {"_poissonsuperlearner_mk_main_factor_cpp", (DL_FUNC) &_poissonsuperlearner_mk_main_factor_cpp, 2},
+    {"_poissonsuperlearner_add_cols_cpp", (DL_FUNC) &_poissonsuperlearner_add_cols_cpp, 2},
+    {"_poissonsuperlearner_pch_absolute_risk", (DL_FUNC) &_poissonsuperlearner_pch_absolute_risk, 6},
+    {"_poissonsuperlearner_pch_absolute_risk_euler", (DL_FUNC) &_poissonsuperlearner_pch_absolute_risk_euler, 6},
+    {"_poissonsuperlearner_pch_survival", (DL_FUNC) &_poissonsuperlearner_pch_survival, 4},
+    {"_poissonsuperlearner_poisson_deviance_cpp", (DL_FUNC) &_poissonsuperlearner_poisson_deviance_cpp, 5},
     {NULL, NULL, 0}
 };
 
-RcppExport void R_init_tmlensemble(DllInfo *dll) {
+RcppExport void R_init_poissonsuperlearner(DllInfo *dll) {
     R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
     R_useDynamicSymbols(dll, FALSE);
 }

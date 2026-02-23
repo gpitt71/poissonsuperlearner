@@ -16,7 +16,7 @@ knitr::opts_chunk$set(
 
 ```{r setup}
 knitr::opts_chunk$set(eval = FALSE, include = FALSE)
-library(tmlensemble)
+library(poissonsuperlearner)
 library(survival)
 library(prodlim)
 library(riskRegression)

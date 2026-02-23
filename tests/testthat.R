@@ -7,6 +7,6 @@
 # * https://testthat.r-lib.org/articles/special-files.html
 
 library(testthat)
-library(tmlensemble)
+library(poissonsuperlearner)
 
-test_check("tmlensemble")
+test_check("poissonsuperlearner")
