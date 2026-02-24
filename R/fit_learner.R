@@ -45,21 +45,13 @@ fit_learner <- function(data,
                     learner,
                     id = "id",
                     stratified_k_fold = FALSE,
-                    start_time = NULL,
-                    end_time = NULL,
                     status = "status",
                     event_time = NULL,
                     number_of_nodes = NULL,
                     nodes = NULL,
                     variable_transformation = NULL,
-                    nfold = 3,
                     ...) {
   # Multiple checks about the input ----
-  ############
-  check_1 <- is.null(start_time) & !is.null(end_time)
-  check_2 <- !is.null(start_time) & is.null(end_time)
-  check_3 <- (!is.null(start_time) ||
-                !is.null(end_time)) & !is.null(event_time)
 
 
   if (!(id %in% names(data))) {
@@ -68,28 +60,8 @@ fit_learner <- function(data,
   }
 
 
+  maximum_followup = max(data[[event_time]])
 
-  if (check_1 || check_2) {
-    stop("For interval data, both start_time and end_time are required.")
-
-  }
-
-  if (check_3) {
-    stop("Either provide interval data or censored data")
-
-  }
-
-  if (!is.null(start_time) & !is.null(end_time)) {
-    interval_data_type = TRUE
-
-    maximum_followup = max(data[[end_time]])
-
-  } else{
-    interval_data_type = FALSE
-
-    maximum_followup = max(data[[event_time]])
-
-  }
 
   n <- length(unique(data[[id]]))
 
@@ -110,47 +82,9 @@ fit_learner <- function(data,
   }
 
 
-  if (interval_data_type) {
-    # Compute here the nodes checking
-    if (!is.null(number_of_nodes)) {
-      observed_times <- c(data[[start_time]], data[[end_time]])
-      grid_nodes <- seq(min(observed_times),
-                        max(observed_times) + 1,
-                        length.out = as.integer(number_of_nodes))
-
-    } else{
-      if (is.null(nodes)) {
-        observed_times <- c(data[[start_time]], data[[end_time]])
-        grid_nodes <- sort(unique(observed_times))
-      } else {
-        grid_nodes <- sort(nodes)
-      }
-    }
-
-    if (!(0 %in% grid_nodes)) {
-      grid_nodes <- c(0, grid_nodes)
-    }
-
-    # Actual data pp
-    dt <- data_pre_processing_interval_data(
-      data = data,
-      id = id,
-      status = status,
-      start_time = start_time,
-      nodes = grid_nodes,
-      end_time = end_time
-    )
-
-
-
-
-  } else{
     #  Handle nodes
     ##Either the nodes are given or we take all of the realised times
     if (!is.null(number_of_nodes)) {
-      # grid_nodes <- seq(min(data[[event_time]]), max(data[[event_time]]) + 1, length.out = as.integer(number_of_nodes))
-      # grid_nodes <- unique(sort(sample(data[[event_time]],
-      #                      as.integer(number_of_nodes))))
 
       grid_nodes = quantile(
         data[[event_time]],
@@ -193,7 +127,7 @@ fit_learner <- function(data,
 
 
 
-  }
+
 
 
   lhs_string = NULL
@@ -217,15 +151,10 @@ fit_learner <- function(data,
       id = id,
       status = status,
       event_time = event_time,
-      start_time = start_time,
-      end_time = end_time,
       nodes = sort(unique(as.numeric(levels(dt$node)))),
-      nfold = nfold,
       maximum_followup = maximum_followup,
       n_crisks=n_crisks,
-      variable_transformation = variable_transformation,
-      interval_data_type = interval_data_type
-    )
+      variable_transformation = variable_transformation    )
   )
 
   class(out) <- "base_learner"

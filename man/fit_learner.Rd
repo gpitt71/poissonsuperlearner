@@ -9,14 +9,11 @@ fit_learner(
   learner,
   id = "id",
   stratified_k_fold = FALSE,
-  start_time = NULL,
-  end_time = NULL,
   status = "status",
   event_time = NULL,
   number_of_nodes = NULL,
   nodes = NULL,
   variable_transformation = NULL,
-  nfold = 3,
   ...
 )
 }
@@ -26,10 +23,6 @@ fit_learner(
 \item{id}{\code{character}, identifier column.}
 
 \item{stratified_k_fold}{\code{logical}, if TRUE we stratify the V-folds in order to obtain the same number of competing events in each folder.}
-
-\item{start_time}{\code{character}, for left-truncated and right-censored data, the starting point of each observation.}
-
-\item{end_time}{\code{character}, for left-truncated and right-censored data, the end point of each observation.}
 
 \item{status}{\code{character}, status column.}
 
@@ -41,13 +34,17 @@ fit_learner(
 
 \item{variable_transformation}{\code{list}, variable transformation(s) to apply to the data. Each element of the list is a character \code{"new_variable ~ some_function(variable_in_the_data)"}}
 
-\item{nfold}{\code{numeric}, number of V-folds to construct the ensemble.}
+\item{start_time}{\code{character}, for left-truncated and right-censored data, the starting point of each observation.}
+
+\item{end_time}{\code{character}, for left-truncated and right-censored data, the end point of each observation.}
 
 \item{learners}{\code{list}, list of learners to include in the ensemble. If only one learner is provided, the learner is applied to the full data.}
 
 \item{min_depth}{\code{numeric}, minimum number of learners included in the ensemble.}
 
 \item{meta_learner_algorithms}{\code{character}, the ensemble is estimated using one of the given algorithms. If more than one algorithm is provided, the best performing algorithm is selected based on the Poisson Deviance. Currently, options are \code{"glm"} and \code{"glmnet"}.}
+
+\item{nfold}{\code{numeric}, number of V-folds to construct the ensemble.}
 }
 \value{
 A \code{poisson_superlearner} object contains the following output

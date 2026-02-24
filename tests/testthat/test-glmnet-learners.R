@@ -119,7 +119,7 @@ test_that("data_pre_processing preserves time at risk and covariates", {
 
 })
 
-test_that("Poisson piecewise-constant fit reproduces Cox coefficient (X1)", {
+test_that("Poisson piecewise-constant fit reproduces Cox coefficient (X1) - both Superlearner and fit_learner", {
 
   skip_if_not_installed("riskRegression")
   skip_if_not_installed("survival")
@@ -166,6 +166,14 @@ test_that("Poisson piecewise-constant fit reproduces Cox coefficient (X1)", {
     alpha = 1
   )
 
+  olcheck <- Superlearner(d,
+                          learner = list(learner),
+                          id = "id",
+                          status = "status",
+                          event_time = "time",
+                          nodes = NULL,
+                          number_of_nodes = NULL)
+
   fit_ps <- fit_learner(
     data = d,
     learner = learner,
@@ -189,10 +197,15 @@ test_that("Poisson piecewise-constant fit reproduces Cox coefficient (X1)", {
   testthat::expect_true("X11" %in% rownames(beta_pois))
   beta_pois <- unname(beta_pois["X11", 1])
 
+
+  ## superlearner w one learner
+  beta_ol <- coef(olcheck$superlearner[[1]]$learners_fit)["X11", 1]
+
   # ---- compare ----
   # Numerical equality depends on ties + discretization at all observed times;
   # this should be close, but allow a small tolerance.
   testthat::expect_equal(beta_pois, beta_cox, tolerance = 1e-3)
+  testthat::expect_equal(beta_ol, beta_cox, tolerance = 1e-3)
 })
 
 

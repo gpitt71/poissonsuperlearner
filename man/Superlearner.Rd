@@ -7,9 +7,6 @@
 Superlearner(
   data,
   id = "id",
-  stratified_k_fold = FALSE,
-  start_time = NULL,
-  end_time = NULL,
   status = "status",
   event_time = NULL,
   learners,
@@ -27,12 +24,6 @@ Superlearner(
 
 \item{id}{\code{character}, identifier column.}
 
-\item{stratified_k_fold}{\code{logical}, if TRUE we stratify the V-folds in order to obtain the same number of competing events in each folder.}
-
-\item{start_time}{\code{character}, for left-truncated and right-censored data, the starting point of each observation.}
-
-\item{end_time}{\code{character}, for left-truncated and right-censored data, the end point of each observation.}
-
 \item{status}{\code{character}, status column.}
 
 \item{event_time}{\code{character}, time-to-event column in competing risks and survival applications.}
@@ -42,10 +33,6 @@ Superlearner(
 \item{number_of_nodes}{\code{numeric}, number of time points sampled from the observed time to construct the nodes. Alternative to \code{nodes}, if both NULL we take all the observed time points as nodes.}
 
 \item{nodes}{\code{numeric}, time grid to construct the piece-wise constant model. Alternative to \code{number_of_nodes}, if both NULL we take all the observed time points as nodes.}
-
-\item{min_depth}{\code{numeric}, minimum number of learners included in the ensemble.}
-
-\item{meta_learner_algorithms}{\code{character}, the ensemble is estimated using one of the given algorithms. If more than one algorithm is provided, the best performing algorithm is selected based on the Poisson Deviance. Currently, options are \code{"glm"} and \code{"glmnet"}.}
 
 \item{variable_transformation}{\code{list}, variable transformation(s) to apply to the data. Each element of the list is a character \code{"new_variable ~ some_function(variable_in_the_data)"}}
 
@@ -63,9 +50,6 @@ A \code{poisson_superlearner} object contains the following output
 \item{\code{id}: \code{character}, name of the covariate in the data that contains the id variable.}
 \item{\code{status}: \code{character}, name of the covariate in the data that contains the status variable.}
 \item{\code{event_time}: \code{character}, for competing risks or survival data it contains the name of the covariate containing the event time.}
-\item{\code{start_time}: \code{character}, for interval data it contains the name of the covariate containing the starting time.}
-\item{\code{end_time}: \code{character}, for interval data it contains the name of the covariate containing the ending time.}
-\item{\code{nodes}: \code{numeric}, it contains the time nodes.}
 \item{\code{nfold}: \code{integer} denoting the number of V-Folds.}
 \item{\code{maximum_followup}: \code{numeric} denoting the maximum follow-up time observed.}
 \item{\code{n_crisks}, \code{integer} denoting the number of competing risks.}

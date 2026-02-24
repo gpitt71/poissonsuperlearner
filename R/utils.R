@@ -1137,59 +1137,18 @@ fit_meta_learner <- function(dt,
                              z_covariates){
 
 
-  # setorder(dt_z, id, "folder")
-  # setorder(dt, id, "folder")
-  #
-
-
   dt_z <- merge(dt_z,dt,by=c("id","folder","node"))
 
-
-
-  # dt_z[, virtual_seq := seq_len(.N), by = .(id, folder)]
-  # dt[, virtual_seq := seq_len(.N), by = .(id, folder)]
-  #
-  # dt_z <- merge(dt_z,dt,
-  #               by=c("id","folder","virtual_seq"))
-  #
-  # dt_z[, virtual_seq := NULL]
-
   meta_learner_fit <- meta_learner$private_fit(dt_z)
-
-  fitted_values <- meta_learner$predictor(meta_learner_fit,
-                                          dt_z)
 
   # learners on the full dataset ----
 
   full_train_list <- lapply(learners, function(f) f$private_fit(dt))
 
-  # step_0_predictions <- mapply(
-  #   function(f, model, newdata)
-  #     f$predictor(model = model, newdata = newdata),
-  #   learners,
-  #   full_train_list,
-  #   MoreArgs = list(newdata = dt)
-  # )
-  #
-  # step_0_predictions<- apply(as.matrix(step_0_predictions),
-  #                            MARGIN = 2,
-  #                            log)
-
-  # Name the columns
-  # colnames(step_0_predictions) <- z_covariates
-
-  # step_0_predictions <- cbind(as.data.frame.matrix(step_0_predictions), dt[, c("node", "tij","deltaij")])
-  #
-  # setDT(step_0_predictions)
-  #
-  # fitted_values <- meta_learner$predictor(meta_learner_fit,
-  #                                         step_0_predictions)
-
   out <- list(
     model = meta_learner,
     learners_fit=full_train_list,
-    meta_learner_fit = meta_learner_fit,
-    fitted_values = fitted_values
+    meta_learner_fit = meta_learner_fit
   )
 
 

@@ -4,14 +4,9 @@
 #'
 #' @param data \code{data.frame}, input data to be pre-processed.
 #' @param id \code{character}, identifier column.
-#' @param stratified_k_fold \code{logical}, if TRUE we stratify the V-folds in order to obtain the same number of competing events in each folder.
-#' @param start_time \code{character}, for left-truncated and right-censored data, the starting point of each observation.
-#' @param end_time \code{character}, for left-truncated and right-censored data, the end point of each observation.
 #' @param status \code{character}, status column.
 #' @param event_time \code{character}, time-to-event column in competing risks and survival applications.
 #' @param learners \code{list}, list of learners to include in the ensemble. If only one learner is provided, the learner is applied to the full data.
-#' @param min_depth \code{numeric}, minimum number of learners included in the ensemble.
-#' @param meta_learner_algorithms \code{character}, the ensemble is estimated using one of the given algorithms. If more than one algorithm is provided, the best performing algorithm is selected based on the Poisson Deviance. Currently, options are \code{"glm"} and \code{"glmnet"}.
 #' @param variable_transformation \code{list}, variable transformation(s) to apply to the data. Each element of the list is a character \code{"new_variable ~ some_function(variable_in_the_data)"}
 #' @param nfold \code{numeric}, number of V-folds to construct the ensemble.
 #' @param number_of_nodes \code{numeric}, number of time points sampled from the observed time to construct the nodes. Alternative to \code{nodes}, if both NULL we take all the observed time points as nodes.
@@ -28,9 +23,6 @@
 #'    \item{\code{id}: \code{character}, name of the covariate in the data that contains the id variable.}
 #'    \item{\code{status}: \code{character}, name of the covariate in the data that contains the status variable.}
 #'    \item{\code{event_time}: \code{character}, for competing risks or survival data it contains the name of the covariate containing the event time.}
-#'    \item{\code{start_time}: \code{character}, for interval data it contains the name of the covariate containing the starting time.}
-#'    \item{\code{end_time}: \code{character}, for interval data it contains the name of the covariate containing the ending time.}
-#'    \item{\code{nodes}: \code{numeric}, it contains the time nodes.}
 #'    \item{\code{nfold}: \code{integer} denoting the number of V-Folds.}
 #'    \item{\code{maximum_followup}: \code{numeric} denoting the maximum follow-up time observed.}
 #'    \item{\code{n_crisks}, \code{integer} denoting the number of competing risks.}
@@ -43,9 +35,6 @@
 #' @export
 Superlearner <- function(data,
                          id = "id", #
-                         stratified_k_fold = FALSE, #
-                         start_time = NULL, #
-                         end_time = NULL, #
                          status = "status", #
                          event_time = NULL, #
                          learners,
@@ -58,17 +47,6 @@ Superlearner <- function(data,
                          ...) {
 
 
-
-    # Multiple checks about the input ----
-    ############
-    check_1 <- is.null(start_time) & !is.null(end_time)
-    check_2 <- !is.null(start_time) & is.null(end_time)
-    check_3 <- (!is.null(start_time) ||
-                !is.null(end_time)) & !is.null(event_time)
-    # GABRIELE: why do you want the user to
-    #           create an id variable?
-
-    # One of the planned extensions is using time varying covariates. I thought it would be easier with an id.
     if (!(id %in% names(data))) {
         data[["id"]] <- 1:NROW(data)
         id <- "id"
@@ -79,43 +57,7 @@ Superlearner <- function(data,
     names(learners) <- paste0("learner_",1:length(learners))
   }
 
-
-  if (check_1 || check_2) {
-    stop("For interval data, both start_time and end_time are required.")
-
-  }
-
-  if (check_3) {
-    stop("Either provide interval data or censored data")
-
-  }
-
-  if (!is.null(start_time) & !is.null(end_time)) {
-    interval_data_type = TRUE
-
-    maximum_followup = max(data[[end_time]])
-
-  } else{
-    interval_data_type = FALSE
-
     maximum_followup = max(data[[event_time]])
-
-  }
-
-  if (is.null(min_depth)) {
-    min_depth <- length(learners)
-
-  }
-
-  if (min_depth < 2 & length(learners) > 1) {
-    warning("The minimum number of learners to build an ensemble is two: min_depth will be set to two.")
-
-  }
-
-
-
-  ############
-
 
   # Data pre-processing ----
 
@@ -141,49 +83,12 @@ Superlearner <- function(data,
     uncensored_01 <-FALSE
   }
 
-  # Pre-process the data
 
-  if (interval_data_type) {
-    # Compute here the nodes checking
-    if (!is.null(number_of_nodes)) {
-      observed_times <- c(data[[start_time]], data[[end_time]])
-      grid_nodes <- seq(min(observed_times),
-                        max(observed_times) + 1,
-                        length.out = as.integer(number_of_nodes))
+    # Data pre-processing ----
 
-    } else{
-      if (is.null(nodes)) {
-        observed_times <- c(data[[start_time]], data[[end_time]])
-        grid_nodes <- sort(unique(observed_times))
-      } else {
-        grid_nodes <- sort(nodes)
-      }
-    }
-
-    if (!(0 %in% grid_nodes)) {
-      grid_nodes <- c(0, grid_nodes)
-    }
-
-    # Actual data pp
-    dt <- data_pre_processing_interval_data(
-      data = data,
-      id = id,
-      status = status,
-      start_time = start_time,
-      nodes = grid_nodes,
-      end_time = end_time
-    )
-
-
-
-
-  } else{
     #  Handle nodes
     ##Either the nodes are given or we take all of the realised times
     if (!is.null(number_of_nodes)) {
-      # grid_nodes <- seq(min(data[[event_time]]), max(data[[event_time]]) + 1, length.out = as.integer(number_of_nodes))
-      # grid_nodes <- unique(sort(sample(data[[event_time]],
-      #                      as.integer(number_of_nodes))))
 
       grid_nodes = quantile(data[[event_time]], probs = seq(0, 1, length.out = as.integer(number_of_nodes)+1), type = 1, names = FALSE)
 
@@ -221,73 +126,23 @@ Superlearner <- function(data,
 
 
 
-  }
+
 
 
   lhs_string = NULL
 
 
   ## Transform the variables if needed ----
-  if (!is.null(variable_transformation)) {
-
-
-    apply_transformations(dt,variable_transformation)
-
-
-    # Take the variable that we transform
-#
-#     lhs_vars <- trimws(unlist(strsplit(
-#       strsplit(variable_transformation, "~")[[1]][1], "\\+"
-#     )))
-#     lhs_string <- paste(lhs_vars, collapse = ", ")
-#
-#     # Take the transformation
-#     rhs_vars <- trimws(unlist(strsplit(
-#       strsplit(variable_transformation, "~")[[1]][2], "\\+"
-#     )))
-#     rhs_string <- paste(rhs_vars, collapse = ", ")
-#
-#
-#     eval(parse(
-#       text = paste0("
-#                dt[,c('", lhs_string
-#
-#                     , "'):=list(", rhs_string
-#                     , ")]
-#                ")
-#     ))
-
-
-
-  }
+  if (!is.null(variable_transformation)) {apply_transformations(dt,variable_transformation)}
 
   ## Splitting in folds ----
 
-  if (stratified_k_fold) {
-    setDT(data)
-
-    dt_id <- eval(parse(text = paste0(
-      "data[,last(", status, "),by = ", id, "]"
-    )))
-
-    eval(parse(text = paste0(
-      "setnames(dt_id,'V1','", status, "')"
-    )))
-
-    dt_id <- stratified_sampling(dt_id, id, status, nfold)
-
-    dt_id[order(id)]
-
-
-  } else{
-    id_fold <- sample(1:nfold,
+  id_fold <- sample(1:nfold,
                       n,
                       replace = TRUE,
                       prob = rep(1 / nfold, nfold))
 
-    dt_id <- data.table(folder = id_fold, id = unique(data[[id]]))
-  }
-
+  dt_id <- data.table(folder = id_fold, id = unique(data[[id]]))
 
   dt <- merge(dt, dt_id, by = "id", all.x = T)
 
@@ -296,20 +151,10 @@ Superlearner <- function(data,
 
   z_covariates <- paste0("Z", 1:length(learners))
 
-
-  # Save data information in the learners ----
-
-  lapply(learners, function(f) f$save_meta_data(id))
-
   # if only one learner is present, we simply perform a CV ----
   if (length(learners) == 1) {
-      warning("Only one learner was provided.")
 
-    if (learners[[1]]$cross_validation == TRUE) {
-
-      learners[[1]]$update_cross_validation_argument(nfold)
-
-    }
+    message("Only one base learner supplied. Fitting the learner directly; no ensemble constructed.")
 
     # The learner on the full dataset ----
     training_data <- split(dt, by = "k")
@@ -322,18 +167,6 @@ Superlearner <- function(data,
     SIMPLIFY = FALSE
       )
 
-    # The learner on the full dataset ----
-    fitted_values <- mapply(function(x,newdata){
-      learners[[1]]$predictor(model=x,
-                              newdata=newdata)
-    },
-    learner_fit,
-    MoreArgs = list(newdata=dt),
-    SIMPLIFY = FALSE
-    )
-
-
-
     one_learner_out <- list()
 
     for(causes in 1:n_crisks){
@@ -342,14 +175,10 @@ Superlearner <- function(data,
       one_learner_out[[causes]] <- list(
         model = NULL,
         learners_fit=learner_fit[[causes]],
-        meta_learner_fit = NULL,
-        fitted_values = fitted_values[[causes]]
+        meta_learner_fit = NULL
       )
 
     }
-
-    #lapply(learners, function(f) f$predictor(model= model, newdata = newdata))
-
 
     out <- list(
       learners = learners,
@@ -359,14 +188,11 @@ Superlearner <- function(data,
         id = id,
         status = status,
         event_time = event_time,
-        start_time = start_time,
-        end_time = end_time,
         nodes = sort(unique(as.numeric(levels(dt$node)))),
         nfold = nfold,
         maximum_followup = maximum_followup,
         n_crisks=n_crisks,
-        variable_transformation = variable_transformation,
-        interval_data_type = interval_data_type
+        variable_transformation = variable_transformation
       )
     )
 
@@ -388,9 +214,6 @@ Superlearner <- function(data,
     tmp_val <- dt[folder == ix, ]
     validation_data <- split(tmp_val, by = "k")
 
-    # dt[, train_01:=folder != ix]
-    # fd <- split(dt, by = "k")
-
     # we find the pseudo observations for each fold ----
     pseudo_observations <- mapply(
       function(training_data,
@@ -400,8 +223,6 @@ Superlearner <- function(data,
                z_covariates,
                ix)
         create_pseudo_observations(training_data, validation_data, competing_risk, learners, z_covariates, ix),
-      # create_pseudo_observations(data, learners, z_covariates, ix),
-      # fd,
       training_data = training_data,
       validation_data = validation_data,
       competing_risk=as.list(1:n_crisks),
@@ -417,14 +238,6 @@ Superlearner <- function(data,
 
     dt_z <- mapply(function(x, y)
       rbind(x, y), dt_z, pseudo_observations, SIMPLIFY = FALSE)
-
-    # dt_z <- mapply(
-    #   function(existing, newly)
-    #     data.table::rbindlist(list(existing, newly), fill = TRUE),
-    #   dt_z,
-    #   pseudo_observations,
-    #   SIMPLIFY = FALSE
-    # )
 
   }
 
@@ -548,38 +361,6 @@ Superlearner <- function(data,
 
 
   z_covariates_list <- select_covariate_path(dt_learners, z_covariates, min_depth = min_depth)
-
-
-
-
-  # We do another round of glmnet (or glm) for combining the predictors ----
-  ## In the future we can add options for using any algorithm.
-  # if (meta_learner_algorithms == "glmnet") {
-  #
-    # meta_learner <- Learner_glmnet(
-    #   covariates = meta_learner_covariates,
-    #   cross_validation = nested_cross_validation_meta_learner,
-    #   intercept = add_intercept_metalearner,
-    #   add_nodes = add_nodes_metalearner,
-    #   penalise_nodes = penalise_nodes_metalearner,
-    #   ...
-    # )
-  # } else{
-  #   # meta_learner <- Learner_glm(covariates = z_covariates,
-  #   #                             add_nodes = add_nodes_metalearner,
-  #   #                             intercept = add_intercept_metalearner)
-  #   meta_learner <- Metalearner_glm(
-  #     covariates = "node:I(Z1-Z2)", #c(z_covariates,paste0(z_covariates,":node")),
-  #     intercept = add_intercept_metalearner,
-  #     add_nodes = add_nodes_metalearner
-  #
-  #   )
-  #
-  # }
-
-
-
-
 
 
 #### THIS if-else cycle will be removed for production version of the package: we will only keep the else part.
@@ -778,15 +559,11 @@ Superlearner <- function(data,
     data_info = list(
       id = id,
       status = status,
-      event_time = event_time,
-      start_time = start_time,
-      end_time = end_time,
       nodes = sort(unique(as.numeric(levels(dt$node)))),
       nfold = nfold,
       maximum_followup = maximum_followup,
       n_crisks=n_crisks,
-      variable_transformation = variable_transformation,
-      interval_data_type = interval_data_type
+      variable_transformation = variable_transformation
     )
   )
 
