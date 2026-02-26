@@ -61,15 +61,6 @@ predict.poisson_superlearner <- function(object,
       )
     ))
 
-    # # no problem writing over id
-    # if (is.null(tmp[[object$data_info$id]])) {
-    #   tmp[[object$data_info$id]] <- 1:nrow(tmp)
-    # }
-    #
-    # if (is.null(tmp[[object$data_info$status]])) {
-    #   tmp[[object$data_info$status]] <- 0
-    # }
-
     tmp[, dummy := 1]
     vec_dt[, dummy := 1]
 
@@ -111,38 +102,8 @@ predict.poisson_superlearner <- function(object,
   )
 
 
-
-  #  ()
-  if (!is.null(object$data_info$variable_transformation)) {
-    #
-
-
-
-    # Take the variable that we transform
-
-    apply_transformations(data_pp, object$data_info$variable_transformation)
-    ## old
-    # lhs_vars <- trimws(unlist(strsplit(strsplit(object$data_info$variable_transformation, "~")[[1]][1], "\\+")))
-    # lhs_string <- paste(lhs_vars, collapse = ", ")
-    #
-    # # Take the transformation
-    # rhs_vars <- trimws(unlist(strsplit(strsplit(object$data_info$variable_transformation, "~")[[1]][2], "\\+")))
-    # rhs_string <- paste(rhs_vars, collapse = ", ")
-    #
-    #
-    # eval(parse(text = paste0(
-    #   "
-    #            data_pp[,c('", lhs_string
-    #
-    #   , "'):=list(", rhs_string
-    #   , ")]
-    #            "
-    # )))
-
-
-
-
-  }
+  # In case of variable transformations ----
+  if (!is.null(object$data_info$variable_transformation)) {apply_transformations(data_pp, object$data_info$variable_transformation)}
 
 
   # Set covariates for metalearner
@@ -161,17 +122,6 @@ predict.poisson_superlearner <- function(object,
         model = sl_fit$learners_fit, newdata = data_pp)
     })
 
-    # dt_pred <- mapply(
-    #   function(crisk_cause,
-    #            model,
-    #            superl_fit,
-    #            newdata)
-    #     model$private_predictor(model = superl_fit$learners_fit, newdata = data_pp),
-    #   as.list(1:object$data_info$n_crisks),
-    #   object$superlearner,
-    #   MoreArgs = list(newdata = data_pp, model = object$learners[[1]]),
-    #   SIMPLIFY = F
-    # )
 
   } else{
     #
@@ -253,33 +203,6 @@ predict.poisson_superlearner <- function(object,
 
 
   data_pp[, absolute_risk := pch_absolute_risk(id, deltatime, haz, cause_idx = cause)]
-
-  # abs_risk approx
-  # data_pp[, survival_function_shift := shift(survival_function, fill = 1), by =
-  #           id]
-  # absolute_risk_string <- paste0(
-  #   "data_pp[, absolute_risk_2 := cumsum(survival_function_shift * pwch_",
-  #   cause,
-  #   "*deltatime), by = id]"
-  # )
-  # eval(parse(text = absolute_risk_string))
-
-
-  ## non c++
-  # hazard_terms <- paste0("cumulative_hazard_", 1:object$data_info$n_crisks)
-  # sum_expr <- paste(pwch_cols, collapse = " + ")
-  # survival_function_string <- paste0("data_pp[, survival_function := exp(-cumsum((", sum_expr, ")*deltatime)),by=id]")
-  # eval(parse(text = survival_function_string))
-
-  # shift survival function
-  # data_pp[, survival_function_shift := shift(survival_function, fill = 1), by =
-  #           id]
-  # absolute_risk_string <- paste0(
-  #   "data_pp[, absolute_risk := cumsum(survival_function_shift * pwch_",
-  #   cause,
-  #   "/pwch_dot * (1-exp(-pwch_dot*deltatime))), by = id]"
-  # )
-  # eval(parse(text = absolute_risk_string))
 
   ####
   data_pp <- data_pp[, .SD[.N], by = id][, times := as.numeric(as.character(node)) +
