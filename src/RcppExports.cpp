@@ -10,6 +10,22 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
+// poisson_deviance_by_folder_cols
+NumericMatrix poisson_deviance_by_folder_cols(List log_hazard_cols, NumericVector tij, IntegerVector delta, IntegerVector folder, int nfold, double eps);
+RcppExport SEXP _poissonsuperlearner_poisson_deviance_by_folder_cols(SEXP log_hazard_colsSEXP, SEXP tijSEXP, SEXP deltaSEXP, SEXP folderSEXP, SEXP nfoldSEXP, SEXP epsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< List >::type log_hazard_cols(log_hazard_colsSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type tij(tijSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type delta(deltaSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type folder(folderSEXP);
+    Rcpp::traits::input_parameter< int >::type nfold(nfoldSEXP);
+    Rcpp::traits::input_parameter< double >::type eps(epsSEXP);
+    rcpp_result_gen = Rcpp::wrap(poisson_deviance_by_folder_cols(log_hazard_cols, tij, delta, folder, nfold, eps));
+    return rcpp_result_gen;
+END_RCPP
+}
 // inter2_cpp
 IntegerVector inter2_cpp(IntegerVector a, IntegerVector b);
 RcppExport SEXP _poissonsuperlearner_inter2_cpp(SEXP aSEXP, SEXP bSEXP) {
@@ -115,23 +131,25 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// poisson_deviance_cpp
-DataFrame poisson_deviance_cpp(IntegerVector folder, CharacterVector learner, NumericMatrix lambda, NumericVector tij, IntegerMatrix delta);
-RcppExport SEXP _poissonsuperlearner_poisson_deviance_cpp(SEXP folderSEXP, SEXP learnerSEXP, SEXP lambdaSEXP, SEXP tijSEXP, SEXP deltaSEXP) {
+// poisson_deviance_by_folder
+NumericMatrix poisson_deviance_by_folder(const NumericMatrix& log_hazard, const NumericVector& tij, const IntegerVector& delta, const IntegerVector& folder, const int F, const double eps);
+RcppExport SEXP _poissonsuperlearner_poisson_deviance_by_folder(SEXP log_hazardSEXP, SEXP tijSEXP, SEXP deltaSEXP, SEXP folderSEXP, SEXP FSEXP, SEXP epsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< IntegerVector >::type folder(folderSEXP);
-    Rcpp::traits::input_parameter< CharacterVector >::type learner(learnerSEXP);
-    Rcpp::traits::input_parameter< NumericMatrix >::type lambda(lambdaSEXP);
-    Rcpp::traits::input_parameter< NumericVector >::type tij(tijSEXP);
-    Rcpp::traits::input_parameter< IntegerMatrix >::type delta(deltaSEXP);
-    rcpp_result_gen = Rcpp::wrap(poisson_deviance_cpp(folder, learner, lambda, tij, delta));
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type log_hazard(log_hazardSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type tij(tijSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type delta(deltaSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type folder(folderSEXP);
+    Rcpp::traits::input_parameter< const int >::type F(FSEXP);
+    Rcpp::traits::input_parameter< const double >::type eps(epsSEXP);
+    rcpp_result_gen = Rcpp::wrap(poisson_deviance_by_folder(log_hazard, tij, delta, folder, F, eps));
     return rcpp_result_gen;
 END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
+    {"_poissonsuperlearner_poisson_deviance_by_folder_cols", (DL_FUNC) &_poissonsuperlearner_poisson_deviance_by_folder_cols, 6},
     {"_poissonsuperlearner_inter2_cpp", (DL_FUNC) &_poissonsuperlearner_inter2_cpp, 2},
     {"_poissonsuperlearner_interN_cpp", (DL_FUNC) &_poissonsuperlearner_interN_cpp, 1},
     {"_poissonsuperlearner_mk_main_numeric_cpp", (DL_FUNC) &_poissonsuperlearner_mk_main_numeric_cpp, 2},
@@ -140,7 +158,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_poissonsuperlearner_pch_absolute_risk", (DL_FUNC) &_poissonsuperlearner_pch_absolute_risk, 6},
     {"_poissonsuperlearner_pch_absolute_risk_euler", (DL_FUNC) &_poissonsuperlearner_pch_absolute_risk_euler, 6},
     {"_poissonsuperlearner_pch_survival", (DL_FUNC) &_poissonsuperlearner_pch_survival, 4},
-    {"_poissonsuperlearner_poisson_deviance_cpp", (DL_FUNC) &_poissonsuperlearner_poisson_deviance_cpp, 5},
+    {"_poissonsuperlearner_poisson_deviance_by_folder", (DL_FUNC) &_poissonsuperlearner_poisson_deviance_by_folder, 6},
     {NULL, NULL, 0}
 };
 

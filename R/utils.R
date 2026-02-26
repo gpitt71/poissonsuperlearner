@@ -8,57 +8,6 @@
 
 
 # Data preprocessing ----
-#
-# stratified_sampling <- function(dt,id,status,nfold){
-#
-#   eval(parse(text=paste("setorder(dt,",status,")")))
-#
-#   proportions_to_tab <- floor(table(dt[[status]])/nfold)
-#
-#   missing_to_tot <- table(dt[[status]])-proportions_to_tab*nfold
-#
-#   replicated_list <- replicate(nfold, proportions_to_tab, simplify = FALSE)
-#
-#   if(sum(missing_to_tot)>0){replicated_list[[length(replicated_list)]] <- replicated_list[[length(replicated_list)]]+missing_to_tot}
-#
-#   cols <- c(id,status)
-#   tmp <- dt[,..cols]
-#
-#   eval(parse(text=paste("setorder(tmp,",status,")")))
-#
-#   out <- NULL
-#
-#   for(v in (1:nfold)){
-#
-#     stratified_v <- sampling::strata(tmp,c(status),size=replicated_list[[v]],method="srswor")
-#
-#     stratified_v <-getdata(tmp,stratified_v)
-#
-#     cond <- tmp[[id]]%in%setdiff(tmp[[id]],
-#             stratified_v[[id]])
-#
-#     tmp <- tmp[cond,]
-#
-#
-#
-#
-#     setDT(stratified_v)
-#
-#     stratified_v[,folder:=v]
-#
-#     out <- rbind(out,stratified_v)
-#
-#
-#
-#   }
-#
-#   setnames(out,id,"id")
-#   subset_cols<-c("id","folder")
-#   out<-out[,..subset_cols]
-#   return(out)
-#
-#
-# }
 
 create_response_variable_c_risks <- function(nodes, time_to_event, delta, event_type){
 
@@ -101,86 +50,6 @@ create_offset_variable <- function(nodes, delta, time_to_event){
 
   # }
 }
-
-#
-# create_offset_variable_interval_data <- function(nodes, start_time, end_time) {
-#   nodes <- sort(unique(nodes))
-#   nodes_in_range <- nodes[nodes >= start_time & nodes < end_time]
-#
-#   # Add boundaries if needed
-#   if (!start_time %in% nodes_in_range) nodes_in_range <- c(start_time, nodes_in_range)
-#   nodes_after <- nodes[nodes >= end_time]
-#   first_after <- if (length(nodes_after) > 0) min(nodes_after) else end_time
-#   tmp <- sort(unique(c(nodes_in_range, end_time, first_after)))
-#
-#   tmp[tmp > end_time] <- end_time
-#   tmp <- unique(tmp)
-#
-#   tij <- diff(tmp)
-#   grid_nodes <- tmp[-length(tmp)]
-#   return(cbind(grid_nodes, tij))
-# }
-
-# data_pre_processing <- function(data,
-#                                 id,
-#                                 status,
-#                                 event_time,
-#                                 nodes=NULL,
-#                                 uncensored_01=FALSE
-# ){
-#
-#
-#   setDT(data)
-#   # Handle competing risks ----
-#   ## for each of the competing risks (CR) we need to create a table
-#   n_crisks <- pmax(length(unique(data[[status]])) - 1+uncensored_01,1)
-#   ## the CR tables are stuck on top of each other to allow for possible interactions
-#   dt_fit <- do.call(rbind, replicate(n_crisks, data, simplify = FALSE))
-#   ## we create an artificial k index. Table specific.
-#   dt_fit <- dt_fit[, k := rep(1:n_crisks, each = dim(data)[1])]
-#
-#
-#   # Data Transformation ----
-#   tmp <- c(id, "k")
-#
-#   dt_fit <- eval(parse(text = paste("dt_fit[, .(node = create_offset_variable(nodes, time_to_event = ",
-#                                     event_time,
-#                                     ")[, 1]",
-#                                     ", tij = create_offset_variable(nodes, time_to_event = ",
-#                                     event_time,
-#                                     ")[,2]",
-#                                     ", deltaij = create_response_variable_c_risks(nodes,time_to_event = ",
-#                                     event_time,
-#                                     ", delta=",
-#                                     status,
-#                                     ", event_type = k)",
-#                                     ")",
-#                                     ", by = .(",
-#                                     id,
-#                                     ", k)",
-#                                     "]")))
-#
-#   ## Retrieve covariates
-#
-#   dt_fit <- merge(dt_fit, data, by = id, all.x = TRUE)
-#
-#   setnames(dt_fit, c(id),c("id"))
-#
-#   maxn <- max(dt_fit$node)
-#   lvls <- as.character(sort(unique(dt_fit$node)))
-#
-#   dt_fit[,c("node",
-#             "k"):=list(factor(node, levels=lvls),
-#                        as.factor(k))]
-#
-#
-#   dt_fit[,node:=relevel(node,ref=as.character(maxn))]
-#   # dt_fit[,node:=relevel(node,ref=as.character(last(nodes)))]
-#
-#   return(dt_fit)
-#
-# }
-
 
 data_pre_processing <- function(data,
                                 id,
@@ -751,7 +620,7 @@ create_pseudo_observations <- function(training_data,
   colnames(val_list) <- z_covariates
 
 
-  dt_z <-  data.table(val_list)[, c("id", "folder","node",paste0("delta_",competing_risk)) := validation_data[,.(id,folder,node,deltaij)]] #
+  dt_z <-  data.table(val_list)[, c("id", "folder","node",paste0("deltaij"), "tij") := validation_data[,.(id,folder,node,deltaij,tij)]] #
 
   dt_z[,competing_risk:= competing_risk]
 
@@ -1083,10 +952,9 @@ fit_meta_learner <- function(dt,
                              learners,
                              z_covariates){
 
+  tmp <- merge(dt_z[, !c("tij", "deltaij"), with = FALSE],dt,by=c("id","folder","node"))
 
-  dt_z <- merge(dt_z,dt,by=c("id","folder","node"))
-
-  meta_learner_fit <- meta_learner$private_fit(dt_z)
+  meta_learner_fit <- meta_learner$private_fit(tmp)
 
   # learners on the full dataset ----
 
@@ -1152,197 +1020,7 @@ meta_learner_cross_validation <- function(dt,
 
 }
 
-cv_subject_specific_hazard <- function(cause,
-                                       object,
-                                       newdata,
-                                       ...) {
 
-
-  setDT(newdata)
-
-  tmp <- copy(newdata)
-
-
-  cond_zero <- 0 %in% tmp[[object$data_info$event_time]]
-
-  cond_times_larger_than_max <- tmp[[object$data_info$event_time]] > object$data_info$maximum_followup
-
-
-  # if(all(cond_times_larger_than_max)){
-  #
-  #   warning(paste0("All the entries in the input times are larger than the maximum follow-up: ",
-  #                  as.character(object$data_info$maximum_followup)))
-  #   d <- NULL
-  #
-  # }else
-  #
-  #   {
-
-  #   eval(parse(
-  #     text = paste0(
-  #       "
-  #   vec_dt <- data.table(
-  #
-  #   ",
-  #       object$data_info$event_time,
-  #       " = times[times <= object$data_info$maximum_followup]
-  # )
-  #   "
-  #     )
-  #   ))
-
-    # tmp[, dummy := 1]
-    # vec_dt[, dummy := 1]
-
-    # Merge on dummy to create Cartesian product
-    # data_pp <- merge(tmp, vec_dt, by = "dummy", allow.cartesian = TRUE)[, dummy := NULL]
-
-
-
-    # if (is.null(data_pp[[object$data_info$id]])) {
-    # data_pp[[object$data_info$id]] <- 1:nrow(data_pp)
-    # }
-
-    # no problem writing over id
-    # data_pp[[object$data_info$id]] <- 1:nrow(data_pp)
-
-
-    # if (is.null(data_pp[[object$data_info$status]])) {
-    # data_pp[[object$data_info$status]] <- 0
-    # }
-
-    data_pp <- data_pre_processing(
-      newdata,
-      id = object$data_info$id,
-      status = object$data_info$status,
-      event_time = object$data_info$event_time,
-      nodes = object$data_info$nodes
-    )
-
-
-
-
-    if(object$data_info$matrix_transformation){
-
-
-      columns_of_interest <- unlist(lapply(object$learners, function(x){return(unique(c(x$covariates,x$treatment)))}))
-
-      columns_of_interest <- unique(columns_of_interest[(complete.cases(columns_of_interest))])
-
-      # Take the variable that we transform
-
-      lhs_vars <- trimws(unlist(strsplit(strsplit(object$data_info$variable_transformation, "~")[[1]][1], "\\+")))
-      lhs_string <- paste(lhs_vars, collapse = ", ")
-
-      # Take the transformation
-      rhs_vars <- trimws(unlist(strsplit(strsplit(object$data_info$variable_transformation, "~")[[1]][2], "\\+")))
-      rhs_string <- paste(rhs_vars, collapse = ", ")
-
-
-      eval(parse(text = paste0(
-        "
-               data_pp[,c('", lhs_string
-
-        , "'):=list(", rhs_string
-        , ")]
-               "
-      )))
-
-
-      # data_pp <- data_pp[,.(tij = sum(tij),
-      #             deltaij=sum(deltaij)), by = c(unique(c(columns_of_interest,lhs_string)),"node","k")]
-      #
-      #
-      # data_pp[,c("id"):=1:nrow(data_pp)]
-
-
-
-    }
-
-
-    # Set covariates for metalearner
-    z_covariates <- paste0("Z", 1:length(object$learners))
-
-
-    # Predict on the validation set your pseudo-observations ----
-    # data_pp[,deltatime:=tij][,tij:=1]
-
-    learners_predictions <- mapply(
-      function(f, model, newdata)
-        f$predictor(model = model, newdata = data_pp),
-      object$learners,
-      object$superlearner[[cause]]$learners_fit,
-      MoreArgs = list(newdata = data_pp)
-    )
-
-
-
-    pseudo_observations_data <- matrix(apply(as.matrix(learners_predictions, nrow=nrow(newdata), ncol=length(z_covariates)), MARGIN = 2, log),
-                                       nrow=nrow(data_pp),
-                                       ncol=length(z_covariates))
-
-
-
-    # Name the columns
-
-    colnames(pseudo_observations_data) <- z_covariates
-
-    setDT(as.data.frame.matrix(pseudo_observations_data))
-
-    dt_pred <- object$superlearner[[cause]]$model$predictor(object$superlearner[[cause]]$meta_learner_fit,
-                                                            newdata =
-                                                              cbind(pseudo_observations_data, data_pp))
-
-
-
-
-    data_pp[['pwch']] <- dt_pred
-
-
-    data_pp <- copy(data_pp)
-    # data_pp[,survival_function:=pmin(exp(-cumsum(pwch*deltatime)),1), by=.(id)]
-
-
-    data_pp <- data_pp[,times:=as.numeric(as.character(node))+tij]
-
-
-    if(cond_zero){
-
-      data_pp[time==0,
-              c('pwch',
-                'survival_function'):=list(0,1)]
-
-
-
-    }
-
-
-
-    columns_ss <- unique(c(colnames(newdata),"times","pwch","deltaij","k"))
-
-    d <- data_pp[,..columns_ss]
-
-  # }
-
-
-    if(any(cond_times_larger_than_max)){
-
-
-      d[times > object$data_info$maximum_followup ,c('pwch','survival_function'):=list(NA,NA)]
-
-
-    }
-
-
-
-
-
-  return(d)
-
-
-
-
-}
 
 learners_hat <- function(crisk_cause,superlearner,newdata,learners){
 

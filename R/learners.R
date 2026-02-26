@@ -221,42 +221,6 @@ Learner_glmnet <- setRefClass(
 
     },
 
-    predictor = function(model, newdata, ...) {
-      is_empty_model <- function(model) {
-        if (is.null(model))
-          return(TRUE)
-        if (inherits(model, "cv.glmnet")) {
-          if (is.null(model$glmnet.fit))
-            return(TRUE)
-          beta <- model$glmnet.fit$beta
-        } else {
-          beta <- model$beta
-        }
-        if (is.null(beta))
-          return(TRUE)
-        if (!is.matrix(beta) &&
-            !inherits(beta, "Matrix"))
-          return(FALSE)
-        nrow(beta) == 0 || ncol(beta) == 0
-      }
-
-      if (is_empty_model(model)) {
-        return(rep(NA_real_, nrow(newdata)))
-      }
-
-      out <- predict(
-        model,
-        ...,
-        newx = sparse.model.matrix(formula(.self$formula), newdata, contrasts.arg = NULL)[, -1],
-        newoffset = log(newdata[['tij']]),
-        type = "response"
-      )
-
-      return(out)
-
-
-    },
-
     private_predictor = function(model, newdata, ...) {
       is_empty_model <- function(model) {
         if (is.null(model))
@@ -953,49 +917,6 @@ Learner_hal <- setRefClass(
 
     },
 
-
-    predictor = function(model, newdata, ...) {
-      is_empty_model <- function(fit) {
-        if (is.null(fit))
-          return(TRUE)
-        df <- if (inherits(fit, "cv.glmnet"))
-          fit$glmnet.fit$df
-        else
-          fit$df
-        if (!is.null(df))
-          return(all(df == 0))
-        beta <- if (inherits(fit, "cv.glmnet"))
-          fit$glmnet.fit$beta
-        else
-          fit$beta
-        if (is.null(beta))
-          return(TRUE)
-        all(beta == 0)
-      }
-
-      if (is_empty_model(model)) {
-        return(rep(NA_real_, nrow(newdata)))
-      }
-
-
-
-      X_new <- .self$hal_prepare_new(newdata, .self$covariates_attributes_matrix)
-
-      # if(.self$cross_validation){
-      out <- predict(
-        model,
-        ...,
-        newx = X_new,
-        newoffset = log(newdata[['tij']]),
-        type = "response"
-      )
-      #}
-
-      return(out)
-
-
-    },
-
     private_predictor = function(model, newdata, ...) {
       is_empty_model <- function(fit) {
         if (is.null(fit))
@@ -1140,17 +1061,6 @@ Learner_gam <- setRefClass(
         data = data, offset = log(data[['tij']])
       )))
       return(fit)
-    },
-
-    predictor = function(model, newdata, ...) {
-      pred <- predict(
-        model,
-        newdata = newdata,
-        type = "response",
-        offset = log(newdata[['tij']]),
-        ...
-      )
-      return(pred)
     },
 
     private_predictor = function(model, newdata, ...) {
