@@ -363,167 +363,16 @@ Superlearner <- function(data,
   z_covariates_list <- select_covariate_path(dt_learners, z_covariates, min_depth = min_depth)
 
 
-#### THIS if-else cycle will be removed for production version of the package: we will only keep the else part.
-  if(length(meta_learner_algorithms)==1){
-
-    warning('Only one meta_learner was supplied. Cross-validation on the pseudo-observations will not be performed.')
-
-    # meta_learner <- meta_learner_algorithms
-
-    meta_learner <- meta_learners_candidates(meta_learner_algorithms,
-                                              z_covariates)
-
-    meta_learner<-meta_learner[[1]]
-    dt_cv_out <- NULL
-
-  }else{
-
-
-    meta_learners <- lapply(z_covariates_list, function(x) meta_learners_candidates(meta_learner_algorithms,x))
-
-    meta_learners <- unlist(meta_learners, recursive=FALSE)
-
-    # meta_learners <- meta_learners_candidates(meta_learner_algorithms,z_covariates)
-
-    # A second round of cross-validation
-
-    # id_fold <- sample(1:nfold,
-    #                   n,
-    #                   replace = TRUE,
-    #                   prob = rep(1 / nfold, nfold))
-    #
-    # dt_id <- data.table(folder = id_fold, id = unique(data[[id]]))
-    #
-    # for (k in seq_along(dt_z)) {
-    #   dt_z[[k]][dt_id, on = "id", folder := i.folder]
-    #   data_by_competing_risk[[k]][dt_id, on = "id", folder := i.folder]
-    # }
-
-
-    # Fast mapply used for the cr index. The cycle is on the meta learners and the folders (cannot avoid these two).
-    ## output data.table
-
-    dt_cv_out <- NULL
-
-
-    for(meta_l_ix in seq_along(meta_learners)){
-
-
-      ## Make predictions in each fold
-
-      tmp_cv <- mapply(
-        function(dt,
-                 dt_z,
-                 cr_ix,
-                 nfold,
-                 meta_learner
-                 )
-          meta_learner_cross_validation(dt, dt_z,cr_ix,nfold, meta_learner),
-        data_by_competing_risk,
-        dt_z,
-        as.list(1:n_crisks),
-        MoreArgs = list(
-          nfold = nfold,
-          meta_learner = meta_learners[[meta_l_ix]]
-
-        ),
-        SIMPLIFY = FALSE
-      )
-
-
-      # Compute the deviance ----
-      ## !!!!!!!!!! This needs to be automated!! Now only for two CR ----
-      tmp_cv[[1]][, rn := seq_len(.N), by=.(id, folder,node)]
-      tmp_cv[[2]][, rn := seq_len(.N), by=.(id, folder,node)]
-
-      tmp_cv <- merge(tmp_cv[[1]], tmp_cv[[2]], by = c("id", "folder", "node","rn"))[
-        , rn := NULL][]
-      ## !!!!!!!!!!
-
-      tmp_cv[,node:=factor(node,levels = sort(as.numeric(levels(node))),ordered=TRUE)]
-
-      tmp_cv<- tmp_cv[order(id,node),]
-
-      pwch_cols <- paste0("pwch_",1:n_crisks)
-
-      # save sum of pwch
-
-      sum_of_hazards <- paste(pwch_cols, collapse = " + ")
-
-      pwch_dot_string <- paste0("tmp_cv[, pwch_dot :=",sum_of_hazards,"]")
-
-      eval(parse(text = pwch_dot_string))
-
-      tmp_cv<- merge(tmp_cv, dt[k==1,.(id,node,tij)], by = c("id", "node"))
-
-
-      # compute cumulative hazard
-
-      mapply(function(pwch, name) {
-        tmp_cv[, (paste0("cumulative_hazard_", name)) := cumsum(get(pwch) * tij), by = id]
-      }, pwch_cols, gsub("pwch_", "", pwch_cols))
-
-      # compute survival function
-
-      tmp_cv<- tmp_cv[complete.cases(tmp_cv),]
-      hazard_terms <- paste0("cumulative_hazard_", 1:n_crisks)
-      sum_expr <- paste(hazard_terms, collapse = " + ")
-      survival_function_string <- paste0("tmp_cv[, survival_function := exp(-(", sum_expr, "))]")
-
-      eval(parse(text = survival_function_string))
-
-      mapply(function(pwch, name) {
-        tmp_cv[, (paste0("hazard_times_time_", name)) := (get(pwch) * tij)]
-      }, pwch_cols, gsub("pwch_", "", pwch_cols))
-
-
-
-      #first term
-
-      mapply(function(name) {
-        tmp_cv[,paste0("cr_contribution_",name):=get(paste0("delta_", name))*log(get(paste0("delta_", name))/get(paste0("hazard_times_time_", name)))]
-        tmp_cv[,paste0("cr_contribution_",name):=fifelse(is.nan(get(paste0("cr_contribution_",name))),0,get(paste0("cr_contribution_",name)))]
-        tmp_cv[,paste0("cr_contribution_",name):=get(paste0("cr_contribution_",name))-(get(paste0("delta_", name))-get(paste0("hazard_times_time_", name)))]
-
-      }, as.list(1:n_crisks))
-
-      # second term
-
-      crc_terms <- paste0("cr_contribution_", 1:n_crisks)
-      sum_expr <- paste(crc_terms, collapse = " + ")
-      crc_string <- paste0("tmp_cv[, cr_contribution_tot := ",sum_expr,"]")
-
-      eval(parse(text = crc_string))
-
-
-      tmp_cv<-tmp_cv[,.(deviance_i=sum(cr_contribution_tot)),by=id]
-
-
-      tmp_cv <- merge(tmp_cv,dt_id,by="id")
-
-      setkey(tmp_cv,NULL)
-
-
-      tmp_cv<-tmp_cv[, .(deviance_v = 2*sum(deviance_i, na.rm = TRUE)), by = folder][,.(deviance=mean(deviance_v))]
-
-      tmp_cv[['meta_learner']] <- names(meta_learners)[meta_l_ix]
-
-      dt_cv_out <- rbind(dt_cv_out,
-                         tmp_cv)
-
-
-    }
-
-
-    meta_learner <- dt_cv_out[which.min(deviance)][['meta_learner']]
-
-
-    meta_learner <- meta_learners[[meta_learner]]
-
-
-    setnames(dt_cv_out,"meta_learner","model")
-
-    }
+  ## Meta learning
+
+  meta_learner <- Learner_glmnet(
+    covariates = z_covariates,
+    cross_validation = FALSE,
+    intercept = FALSE,
+    add_nodes = FALSE,
+    penalise_nodes = TRUE,
+    lambda=0
+  )
 
   meta_learner_fits <- mapply(
     function(dt,
@@ -554,11 +403,12 @@ Superlearner <- function(data,
     learners = learners,
     metalearner = meta_learner,
     superlearner = meta_learner_fits,
-    meta_learner_cross_validation=rbind(dt_cv_out,
-                                        dt_learners),
+    # meta_learner_cross_validation=rbind(dt_cv_out,
+    #                                     dt_learners),
     data_info = list(
       id = id,
       status = status,
+      event_time=event_time,
       nodes = sort(unique(as.numeric(levels(dt$node)))),
       nfold = nfold,
       maximum_followup = maximum_followup,

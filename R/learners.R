@@ -124,8 +124,9 @@ Learner_glmnet <- setRefClass(
       x = sparse.model.matrix(formula(.self$formula), data, contrasts.arg = NULL)[, -1]
 
 
+
       if (!.self$penalise_nodes) {
-        .self$fit_arguments[['penalty.factor']] <- 1 - (grepl("node", colnames(x)))#& !grepl("node:", colnames(x))& !grepl(":node", colnames(x)))
+        pf <- 1 - (grepl("node", colnames(x)))
 
       }
 
@@ -142,14 +143,41 @@ Learner_glmnet <- setRefClass(
           cv_args[['type.measure']] <- 'deviance'
         }
 
-        suppressWarnings(cv_fit <- do.call(cv.glmnet, c(
-          cv_args,
-          list(
-            x = x,
-            y = as.numeric(data[["deltaij"]]),
-            offset = log(data[["tij"]])
-          )
-        )))
+        cv_fit <- tryCatch(
+          suppressWarnings(
+            do.call(cv.glmnet, c(
+              list(
+                x = x,
+                y = as.vector(data[["deltaij"]]),
+                offset = log(as.vector(data[["tij"]])),
+                penalty.factor =pf
+              ),
+              cv_args
+            ))
+          ),
+          error = function(e) {
+            suppressWarnings(
+              do.call(cv.glmnet, c(
+                list(
+                  x = x,
+                  y = as.vector(data[["deltaij"]]),
+                  offset = log(as.vector(data[["tij"]])),
+                  penalty.factor = rep(1, ncol(x))
+                ),
+                cv_args
+              ))
+            )
+          }
+        )
+
+        # suppressWarnings(cv_fit <- do.call(cv.glmnet, c(
+        #   list(
+        #     x = x,
+        #     y = as.vector(data[["deltaij"]]),
+        #     offset = log(as.vector(data[["tij"]]))
+        #   ),cv_args
+        # ))
+
 
         # lambda.min corresponds to the minimizer of cvm (expected deviance)
         # over cv.glmnet's lambda path.
@@ -169,22 +197,24 @@ Learner_glmnet <- setRefClass(
         glmnet_args[['keep']] <- NULL
         glmnet_args[['grouped']] <- NULL
         glmnet_args[['parallel']] <- NULL
+        glmnet_args[['penalty.factor']] <- pf
 
-        out <- do.call(glmnet, c(glmnet_args, list(
+
+        suppressWarnings(out <- do.call(glmnet, c(glmnet_args, list(
           x = x,
           y = as.numeric(data[["deltaij"]]),
           offset = log(data[["tij"]])
-        )))
+        ))))
 
       }else {
-        out <- do.call(.self$learner, c(
+        suppressWarnings(out <- do.call(.self$learner, c(
           .self$fit_arguments,
           list(
             x = x,
             y = as.numeric(data[["deltaij"]]),
             offset = log(data[["tij"]])
           )
-        ))
+        )))
       }
 
       return(out)
@@ -766,7 +796,7 @@ Learner_hal <- setRefClass(
       )
 
       if (!.self$penalise_nodes) {
-        .self$fit_arguments[['penalty.factor']] <- 1 - grepl('^I\\(\\s*node\\s*==[^)]*\\)$', x_pp$colnames)
+        pf <- 1 - grepl('^I\\(\\s*node\\s*==[^)]*\\)$', x_pp$colnames)
 
       }
 
@@ -833,13 +863,45 @@ Learner_hal <- setRefClass(
           prefit_args[["maxit"]] <- .self$maxit_prefit
         }
 
-        suppressWarnings(cv_fit <- do.call(cv.glmnet, c(
-          prefit_args, list(
-            x      = x_pp$X,
-            y      = as.numeric(data_copy[["deltaij"]]),
-            offset = log(data_copy[["tij"]])
-          )
-        )))
+        # suppressWarnings(cv_fit <- do.call(cv.glmnet, c(
+        #   prefit_args, list(
+        #     x      = x_pp$X,
+        #     y      = as.numeric(data_copy[["deltaij"]]),
+        #     offset = log(data_copy[["tij"]])
+        #   )
+        # )))
+
+
+        cv_fit <- tryCatch(
+          suppressWarnings(
+            do.call(cv.glmnet, c(
+              list(
+                x      = x_pp$X,
+                y      = as.numeric(data_copy[["deltaij"]]),
+                offset = log(data_copy[["tij"]]),
+                penalty.factor =pf
+              ),
+              prefit_args
+            ))
+          ),
+          error = function(e) {
+            suppressWarnings(
+              do.call(cv.glmnet, c(
+                list(
+                  x = x,
+                  y = as.vector(data[["deltaij"]]),
+                  offset = log(as.vector(data[["tij"]])),
+                  penalty.factor = rep(1, ncol(x))
+                ),
+                prefit_args
+              ))
+            )
+          }
+        )
+
+
+
+
 
         ## 2) Choose lambda that minimizes cvm (this is cv_fit$lambda.min)
         lambda_min_cvm <- cv_fit$lambda.min
@@ -849,6 +911,8 @@ Learner_hal <- setRefClass(
         glmnet_args <- .self$fit_arguments
         glmnet_args[["lambda"]] <- lambda_min_cvm
         glmnet_args[["nfolds"]] <- NULL  # not used by glmnet, but remove if present
+        glmnet_args[["penalty.factor"]] <- pf
+
 
         suppressWarnings(fit <- do.call(glmnet, c(
           glmnet_args, list(
@@ -1035,29 +1099,6 @@ Learner_gam <- setRefClass(
       .self$fit_arguments <- list(...)
       .self$fit_arguments[['family']] <- poisson()
     },
-    datapp = function(train_data = NULL,
-                      validation_data = NULL) {
-      if (!is.null(train_data)) {
-        train.mf <- model.frame(
-          as.formula(.self$formula),
-          rbind(train_data, validation_data),
-          drop.unused.levels = FALSE
-        )
-        x <- model.matrix(attr(train.mf, "terms"), data = train_data)
-        y <- train_data[['deltaij']]
-        offset <- log(train_data[['tij']])
-        .self$covariates_attributes_matrix[['train.mf']] <- train.mf
-        .self$recycle_information <- TRUE
-      } else {
-        x <- model.matrix(attr(.self$covariates_attributes_matrix[['train.mf']], "terms"),
-                          data = validation_data)
-        y <- validation_data[['deltaij']]
-        offset <- log(validation_data[['tij']])
-      }
-
-      return(list(x = x, y = y, offset = offset))
-    },
-
     private_fit = function(data, ...) {
       .extract_symbols <- function(term) {
         # try as a bare expression, then as a RHS of a formula

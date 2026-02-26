@@ -8,113 +8,57 @@
 
 
 # Data preprocessing ----
-
-stratified_sampling <- function(dt,id,status,nfold){
-
-  eval(parse(text=paste("setorder(dt,",status,")")))
-
-  proportions_to_tab <- floor(table(dt[[status]])/nfold)
-
-  missing_to_tot <- table(dt[[status]])-proportions_to_tab*nfold
-
-  replicated_list <- replicate(nfold, proportions_to_tab, simplify = FALSE)
-
-  if(sum(missing_to_tot)>0){replicated_list[[length(replicated_list)]] <- replicated_list[[length(replicated_list)]]+missing_to_tot}
-
-  cols <- c(id,status)
-  tmp <- dt[,..cols]
-
-  eval(parse(text=paste("setorder(tmp,",status,")")))
-
-  out <- NULL
-
-  for(v in (1:nfold)){
-
-    stratified_v <- sampling::strata(tmp,c(status),size=replicated_list[[v]],method="srswor")
-
-    stratified_v <-getdata(tmp,stratified_v)
-
-    cond <- tmp[[id]]%in%setdiff(tmp[[id]],
-            stratified_v[[id]])
-
-    tmp <- tmp[cond,]
-
-
-
-
-    setDT(stratified_v)
-
-    stratified_v[,folder:=v]
-
-    out <- rbind(out,stratified_v)
-
-
-
-  }
-
-  setnames(out,id,"id")
-  subset_cols<-c("id","folder")
-  out<-out[,..subset_cols]
-  return(out)
-
-
-}
-
-
-# create_offset_variable_survival <- function(nodes, delta, time_to_event){
 #
-#   tmp <- c(nodes[nodes < time_to_event],
-#            first(nodes[nodes >= time_to_event]))
+# stratified_sampling <- function(dt,id,status,nfold){
 #
-#   if(delta == 1){tmp[length(tmp)] <- time_to_event}
+#   eval(parse(text=paste("setorder(dt,",status,")")))
 #
-#   tij <- diff(c(tmp))
+#   proportions_to_tab <- floor(table(dt[[status]])/nfold)
 #
-#   grid_nodes <- c(nodes[nodes < time_to_event])
+#   missing_to_tot <- table(dt[[status]])-proportions_to_tab*nfold
 #
-#   return(cbind(grid_nodes,tij))
-# }
+#   replicated_list <- replicate(nfold, proportions_to_tab, simplify = FALSE)
 #
-# create_response_variable_survival <- function(nodes, time_to_event, delta, event_type){
+#   if(sum(missing_to_tot)>0){replicated_list[[length(replicated_list)]] <- replicated_list[[length(replicated_list)]]+missing_to_tot}
+#
+#   cols <- c(id,status)
+#   tmp <- dt[,..cols]
+#
+#   eval(parse(text=paste("setorder(tmp,",status,")")))
+#
+#   out <- NULL
+#
+#   for(v in (1:nfold)){
+#
+#     stratified_v <- sampling::strata(tmp,c(status),size=replicated_list[[v]],method="srswor")
+#
+#     stratified_v <-getdata(tmp,stratified_v)
+#
+#     cond <- tmp[[id]]%in%setdiff(tmp[[id]],
+#             stratified_v[[id]])
+#
+#     tmp <- tmp[cond,]
 #
 #
-#   l <- sum(nodes < time_to_event)
-#
-#   out <- c(rep(0,l-1),
-#            delta)
-#
-#   return(out)
-# }
-
-# preprocess_minmax <- function(varData) {
-#   X <- as.numeric(varData)
-#   2 * (X - min(X)) / (max(X) - min(X)) - 1
-# }
 #
 #
-# preprocess_catdummy <- function(varData, prefix) {
+#     setDT(stratified_v)
 #
-#   X <- as.integer(varData)
-#   n0 <- length(unique(X))
-#   n1 <- 2:n0
-#   addCols <- purrr::map(n1, function(x, y) {as.integer(y == x)}, y = X) %>%
-#     rlang::set_names(paste0(prefix, n1))
-#   cbind(data, addCols)
-# }
+#     stratified_v[,folder:=v]
 #
-# poisson_nll <- function(y_true, y_pred, ...) {
+#     out <- rbind(out,stratified_v)
 #
-#   # K        <- backend()
 #
-#   # y_true   <- K$eval(y_true)
-#   # y_pred   <- K$eval(y_pred)
 #
-#   out <- -sum(y_true * log(y_pred[2] * y_pred[1]) - y_pred[2] * y_pred[1])
+#   }
 #
+#   setnames(out,id,"id")
+#   subset_cols<-c("id","folder")
+#   out<-out[,..subset_cols]
 #   return(out)
 #
+#
 # }
-
 
 create_response_variable_c_risks <- function(nodes, time_to_event, delta, event_type){
 
@@ -158,23 +102,24 @@ create_offset_variable <- function(nodes, delta, time_to_event){
   # }
 }
 
-create_offset_variable_interval_data <- function(nodes, start_time, end_time) {
-  nodes <- sort(unique(nodes))
-  nodes_in_range <- nodes[nodes >= start_time & nodes < end_time]
-
-  # Add boundaries if needed
-  if (!start_time %in% nodes_in_range) nodes_in_range <- c(start_time, nodes_in_range)
-  nodes_after <- nodes[nodes >= end_time]
-  first_after <- if (length(nodes_after) > 0) min(nodes_after) else end_time
-  tmp <- sort(unique(c(nodes_in_range, end_time, first_after)))
-
-  tmp[tmp > end_time] <- end_time
-  tmp <- unique(tmp)
-
-  tij <- diff(tmp)
-  grid_nodes <- tmp[-length(tmp)]
-  return(cbind(grid_nodes, tij))
-}
+#
+# create_offset_variable_interval_data <- function(nodes, start_time, end_time) {
+#   nodes <- sort(unique(nodes))
+#   nodes_in_range <- nodes[nodes >= start_time & nodes < end_time]
+#
+#   # Add boundaries if needed
+#   if (!start_time %in% nodes_in_range) nodes_in_range <- c(start_time, nodes_in_range)
+#   nodes_after <- nodes[nodes >= end_time]
+#   first_after <- if (length(nodes_after) > 0) min(nodes_after) else end_time
+#   tmp <- sort(unique(c(nodes_in_range, end_time, first_after)))
+#
+#   tmp[tmp > end_time] <- end_time
+#   tmp <- unique(tmp)
+#
+#   tij <- diff(tmp)
+#   grid_nodes <- tmp[-length(tmp)]
+#   return(cbind(grid_nodes, tij))
+# }
 
 # data_pre_processing <- function(data,
 #                                 id,
@@ -302,64 +247,64 @@ data_pre_processing <- function(data,
 }
 
 
-
-data_pre_processing_interval_data <- function(data, id, status, start_time, end_time, nodes = NULL) {
-  setDT(data)
-
-  n_crisks <- length(unique(data[[status]])) - 1
-  output_list <- list()
-
-  # Identify covariate columns dynamically
-  core_cols <- c(id, start_time, end_time, status)
-  covariate_names <- setdiff(names(data), core_cols)
-
-  for (i in 1:nrow(data)) {
-    row_i <- data[i]
-    id_val <- row_i[[id]]
-    st <- row_i[[start_time]]
-    et <- row_i[[end_time]]
-    delta <- row_i[[status]]
-
-    intervals <- create_offset_variable_interval_data(nodes, st, et)
-    grid_nodes_i <- intervals[, 1]
-    tij_i <- intervals[, 2]
-
-    for (k in 1:n_crisks) {
-      deltaij <- as.integer((delta == k) & (grid_nodes_i + tij_i >= et))
-
-      # Construct base interval data
-      temp_dt <- data.table(
-        id = id_val,
-        node = grid_nodes_i,
-        tij = tij_i,
-        deltaij = deltaij,
-        k = k
-      )
-
-      # Append covariates dynamically
-      for (covar in covariate_names) {
-        temp_dt[[covar]] <- row_i[[covar]]
-      }
-
-      output_list[[length(output_list) + 1]] <- temp_dt
-    }
-  }
-
-
-
-  dt_fit <- rbindlist(output_list)
-
-  # Encode node as N1, N2, ..., based on ordering
-  # unique_nodes <- sort(unique(dt_fit$node))
-  # node_labels <- paste0("N", seq_along(unique_nodes))
-  # node_map <- setNames(node_labels, unique_nodes)
-  # dt_fit[, node := factor(paste0("N", match(node, unique_nodes)))]
-  # dt_fit[, k := as.factor(k)]
-
-  dt_fit[, c("node", "k") := list(as.factor(node), as.factor(k))]
-
-  return(dt_fit)
-}
+#
+# data_pre_processing_interval_data <- function(data, id, status, start_time, end_time, nodes = NULL) {
+#   setDT(data)
+#
+#   n_crisks <- length(unique(data[[status]])) - 1
+#   output_list <- list()
+#
+#   # Identify covariate columns dynamically
+#   core_cols <- c(id, start_time, end_time, status)
+#   covariate_names <- setdiff(names(data), core_cols)
+#
+#   for (i in 1:nrow(data)) {
+#     row_i <- data[i]
+#     id_val <- row_i[[id]]
+#     st <- row_i[[start_time]]
+#     et <- row_i[[end_time]]
+#     delta <- row_i[[status]]
+#
+#     intervals <- create_offset_variable_interval_data(nodes, st, et)
+#     grid_nodes_i <- intervals[, 1]
+#     tij_i <- intervals[, 2]
+#
+#     for (k in 1:n_crisks) {
+#       deltaij <- as.integer((delta == k) & (grid_nodes_i + tij_i >= et))
+#
+#       # Construct base interval data
+#       temp_dt <- data.table(
+#         id = id_val,
+#         node = grid_nodes_i,
+#         tij = tij_i,
+#         deltaij = deltaij,
+#         k = k
+#       )
+#
+#       # Append covariates dynamically
+#       for (covar in covariate_names) {
+#         temp_dt[[covar]] <- row_i[[covar]]
+#       }
+#
+#       output_list[[length(output_list) + 1]] <- temp_dt
+#     }
+#   }
+#
+#
+#
+#   dt_fit <- rbindlist(output_list)
+#
+#   # Encode node as N1, N2, ..., based on ordering
+#   # unique_nodes <- sort(unique(dt_fit$node))
+#   # node_labels <- paste0("N", seq_along(unique_nodes))
+#   # node_map <- setNames(node_labels, unique_nodes)
+#   # dt_fit[, node := factor(paste0("N", match(node, unique_nodes)))]
+#   # dt_fit[, k := as.factor(k)]
+#
+#   dt_fit[, c("node", "k") := list(as.factor(node), as.factor(k))]
+#
+#   return(dt_fit)
+# }
 
 
 ## Matrix transformation ----
@@ -431,193 +376,193 @@ sl_cut <- function(x, breaks, include.lowest = TRUE, right = TRUE) {
 
 # Learners ----
 
-datapp_glmnet <- function(data, formula) {
-  train.mf  <- model.frame(as.formula(formula),
-                           data,
-                           drop.unused.levels = FALSE)
-
-  x  <- model.matrix(attr(train.mf, "terms"), data = data)
-  y  <- data[['deltaij']]
-  offset <- log(data[['tij']])
-
-  out <- list(x = x, y = y, offset = offset)
-
-  return(out)
-}
-
-
-
-create_dicretised_data <- function(data,
-                                   id,
-                                   start_time = NULL, #
-                                   end_time = NULL, #
-                                   status, #
-                                   event_time = NULL, #
-                                   number_of_nodes = NULL, #
-                                   nodes = NULL, #
-                                   variable_transformation){
-
-
-  check_1 <- is.null(start_time) & !is.null(end_time)
-  check_2 <- !is.null(start_time) & is.null(end_time)
-  check_3 <- (!is.null(start_time) ||
-                !is.null(end_time)) & !is.null(event_time)
-
-
-  if (check_3) {
-    stop("Either provide interval data or censored data")
-
-  }
-
-  if (!is.null(start_time) & !is.null(end_time)) {
-    interval_data_type = TRUE
-
-    maximum_followup = max(data[[end_time]])
-
-  } else{
-    interval_data_type = FALSE
-
-    maximum_followup = max(data[[event_time]])
-
-  }
-
-
-  # save some relevant values
-  n <- length(unique(data[[id]]))#nrow(data)
-  n_crisks <- length(unique(data[[status]])) - 1
-
-
-  # Pre-process the data
-
-  if (interval_data_type) {
-    # Compute here the nodes checking
-    if (!is.null(number_of_nodes)) {
-      observed_times <- c(data[[start_time]], data[[end_time]])
-      grid_nodes <- seq(min(observed_times),
-                        max(observed_times) + 1,
-                        length.out = as.integer(number_of_nodes))
-
-    } else{
-      if (is.null(nodes)) {
-        observed_times <- c(data[[start_time]], data[[end_time]])
-        grid_nodes <- sort(unique(observed_times))
-      } else {
-        grid_nodes <- sort(nodes)
-      }
-    }
-
-    if (!(0 %in% grid_nodes)) {
-      grid_nodes <- c(0, grid_nodes)
-    }
-
-    # Actual data pp
-    dt <- data_pre_processing_interval_data(
-      data = data,
-      id = id,
-      status = status,
-      start_time = start_time,
-      nodes = grid_nodes,
-      end_time = end_time
-    )
-
-
-
-
-  } else{
-    #  Handle nodes
-    ##Either the nodes are given or we take all of the realised times
-    if (!is.null(number_of_nodes)) {
-      grid_nodes <- seq(min(data[[event_time]]), max(data[[event_time]]) + 1, length.out = as.integer(number_of_nodes))
-
-    } else{
-      if (is.null(nodes)) {
-        grid_nodes <- sort(unique(data[[event_time]]))
-
-
-
-        grid_nodes <- grid_nodes[-((length(grid_nodes) - 2):length(grid_nodes))]
-
-      } else{
-        grid_nodes <- nodes
-
-      }
-    }
-
-    # Add zero if missing
-    if (!(0 %in% grid_nodes)) {
-      grid_nodes <- c(0, grid_nodes)
-
-    }
-
-
-
-    grid_nodes <- grid_nodes[grid_nodes <= max(data[[event_time]])]
-
-    # Actual data pp
-    dt <- data_pre_processing(
-      data = data,
-      id = id,
-      status = status,
-      nodes = grid_nodes,
-      event_time = event_time
-    )
-
-
-
-  }
-
-
-  if (matrix_transformation) {
-
-
-    columns_of_interest <- unlist(lapply(learners, function(x) {
-      return(unique(c(x$covariates, x$treatment)))
-    }))
-
-    columns_of_interest <- unique(columns_of_interest[(complete.cases(columns_of_interest))])
-
-    # Take the variable that we transform
-
-    lhs_vars <- trimws(unlist(strsplit(
-      strsplit(variable_transformation, "~")[[1]][1], "\\+"
-    )))
-    lhs_string <- paste(lhs_vars, collapse = ", ")
-
-    # Take the transformation
-    rhs_vars <- trimws(unlist(strsplit(
-      strsplit(variable_transformation, "~")[[1]][2], "\\+"
-    )))
-    rhs_string <- paste(rhs_vars, collapse = ", ")
-
-
-    eval(parse(
-      text = paste0("
-               dt[,c('", lhs_string
-
-                    , "'):=list(", rhs_string
-                    , ")]
-               ")
-    ))
-
-
-    dt <- dt[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(unique(c(columns_of_interest, lhs_string)), "node", "k")]
-
-
-    dt[, c("id") := 1:nrow(dt)]
-
-
-
-  }
-
-
-
-
-
-  return(dt)
-
-
-
-}
+# datapp_glmnet <- function(data, formula) {
+#   train.mf  <- model.frame(as.formula(formula),
+#                            data,
+#                            drop.unused.levels = FALSE)
+#
+#   x  <- model.matrix(attr(train.mf, "terms"), data = data)
+#   y  <- data[['deltaij']]
+#   offset <- log(data[['tij']])
+#
+#   out <- list(x = x, y = y, offset = offset)
+#
+#   return(out)
+# }
+#
+#
+#
+# create_dicretised_data <- function(data,
+#                                    id,
+#                                    start_time = NULL, #
+#                                    end_time = NULL, #
+#                                    status, #
+#                                    event_time = NULL, #
+#                                    number_of_nodes = NULL, #
+#                                    nodes = NULL, #
+#                                    variable_transformation){
+#
+#
+#   check_1 <- is.null(start_time) & !is.null(end_time)
+#   check_2 <- !is.null(start_time) & is.null(end_time)
+#   check_3 <- (!is.null(start_time) ||
+#                 !is.null(end_time)) & !is.null(event_time)
+#
+#
+#   if (check_3) {
+#     stop("Either provide interval data or censored data")
+#
+#   }
+#
+#   if (!is.null(start_time) & !is.null(end_time)) {
+#     interval_data_type = TRUE
+#
+#     maximum_followup = max(data[[end_time]])
+#
+#   } else{
+#     interval_data_type = FALSE
+#
+#     maximum_followup = max(data[[event_time]])
+#
+#   }
+#
+#
+#   # save some relevant values
+#   n <- length(unique(data[[id]]))#nrow(data)
+#   n_crisks <- length(unique(data[[status]])) - 1
+#
+#
+#   # Pre-process the data
+#
+#   if (interval_data_type) {
+#     # Compute here the nodes checking
+#     if (!is.null(number_of_nodes)) {
+#       observed_times <- c(data[[start_time]], data[[end_time]])
+#       grid_nodes <- seq(min(observed_times),
+#                         max(observed_times) + 1,
+#                         length.out = as.integer(number_of_nodes))
+#
+#     } else{
+#       if (is.null(nodes)) {
+#         observed_times <- c(data[[start_time]], data[[end_time]])
+#         grid_nodes <- sort(unique(observed_times))
+#       } else {
+#         grid_nodes <- sort(nodes)
+#       }
+#     }
+#
+#     if (!(0 %in% grid_nodes)) {
+#       grid_nodes <- c(0, grid_nodes)
+#     }
+#
+#     # Actual data pp
+#     dt <- data_pre_processing_interval_data(
+#       data = data,
+#       id = id,
+#       status = status,
+#       start_time = start_time,
+#       nodes = grid_nodes,
+#       end_time = end_time
+#     )
+#
+#
+#
+#
+#   } else{
+#     #  Handle nodes
+#     ##Either the nodes are given or we take all of the realised times
+#     if (!is.null(number_of_nodes)) {
+#       grid_nodes <- seq(min(data[[event_time]]), max(data[[event_time]]) + 1, length.out = as.integer(number_of_nodes))
+#
+#     } else{
+#       if (is.null(nodes)) {
+#         grid_nodes <- sort(unique(data[[event_time]]))
+#
+#
+#
+#         grid_nodes <- grid_nodes[-((length(grid_nodes) - 2):length(grid_nodes))]
+#
+#       } else{
+#         grid_nodes <- nodes
+#
+#       }
+#     }
+#
+#     # Add zero if missing
+#     if (!(0 %in% grid_nodes)) {
+#       grid_nodes <- c(0, grid_nodes)
+#
+#     }
+#
+#
+#
+#     grid_nodes <- grid_nodes[grid_nodes <= max(data[[event_time]])]
+#
+#     # Actual data pp
+#     dt <- data_pre_processing(
+#       data = data,
+#       id = id,
+#       status = status,
+#       nodes = grid_nodes,
+#       event_time = event_time
+#     )
+#
+#
+#
+#   }
+#
+#
+#   if (matrix_transformation) {
+#
+#
+#     columns_of_interest <- unlist(lapply(learners, function(x) {
+#       return(unique(c(x$covariates, x$treatment)))
+#     }))
+#
+#     columns_of_interest <- unique(columns_of_interest[(complete.cases(columns_of_interest))])
+#
+#     # Take the variable that we transform
+#
+#     lhs_vars <- trimws(unlist(strsplit(
+#       strsplit(variable_transformation, "~")[[1]][1], "\\+"
+#     )))
+#     lhs_string <- paste(lhs_vars, collapse = ", ")
+#
+#     # Take the transformation
+#     rhs_vars <- trimws(unlist(strsplit(
+#       strsplit(variable_transformation, "~")[[1]][2], "\\+"
+#     )))
+#     rhs_string <- paste(rhs_vars, collapse = ", ")
+#
+#
+#     eval(parse(
+#       text = paste0("
+#                dt[,c('", lhs_string
+#
+#                     , "'):=list(", rhs_string
+#                     , ")]
+#                ")
+#     ))
+#
+#
+#     dt <- dt[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(unique(c(columns_of_interest, lhs_string)), "node", "k")]
+#
+#
+#     dt[, c("id") := 1:nrow(dt)]
+#
+#
+#
+#   }
+#
+#
+#
+#
+#
+#   return(dt)
+#
+#
+#
+# }
 
 
 # Other utils ----
@@ -811,6 +756,8 @@ create_pseudo_observations <- function(training_data,
   dt_z[,competing_risk:= competing_risk]
 
   return(dt_z)
+
+
 
 }
 
@@ -1205,9 +1152,6 @@ meta_learner_cross_validation <- function(dt,
 
 }
 
-
-
-
 cv_subject_specific_hazard <- function(cause,
                                        object,
                                        newdata,
@@ -1484,51 +1428,6 @@ mk_main <- function(x, v, K) {
     stop(sprintf("Unsupported type for %s", v))
   }
 }
-
-# mk_main <- function(x, v, K) {
-#   if (is.numeric(x)) {
-#     out <- mk_main_numeric_cpp(x, as.integer(K))
-#     cps <- out$cutpoints
-#     idxs <- out$idxs
-#
-#     cps <- as.numeric(cps)
-#     if (!length(cps)) {
-#       return(list(idxs = list(), names = character(),
-#                   prim_meta = list(), var_meta = list(cutpoints = numeric())))
-#     }
-#
-#     nms <- sprintf("I(%s<=%.10g)", v, cps)
-#     prim_meta <- lapply(cps, function(cu) list(var = v, kind = "numeric", cutpoint = cu))
-#     list(
-#       idxs = idxs,
-#       names = nms,
-#       prim_meta = prim_meta,
-#       var_meta = list(cutpoints = cps)
-#     )
-#
-#   } else if (is.factor(x)) {
-#     lv <- levels(x)
-#     if (!length(lv)) {
-#       return(list(idxs = list(), names = character(),
-#                   prim_meta = list(), var_meta = list(levels = character())))
-#     }
-#
-#     out <- mk_main_factor_cpp(as.integer(x), length(lv))
-#     idxs <- out$idxs
-#
-#     nms <- sprintf("I(%s==%s)", v, make.names(lv, unique = TRUE))
-#     prim_meta <- lapply(lv, function(L) list(var = v, kind = "factor", level = L))
-#     list(
-#       idxs = idxs,
-#       names = nms,
-#       prim_meta = prim_meta,
-#       var_meta = list(levels = lv)
-#     )
-#
-#   } else {
-#     stop(sprintf("Unsupported type for %s", v))
-#   }
-# }
 
 ##
 add_cols <- function(state, idxs_list, nm_vec, col_meta_list) {
