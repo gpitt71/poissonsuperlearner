@@ -1,4 +1,52 @@
-#' \code{glmnet} learner class
+#' Reference class: penalized Poisson learner via `glmnet`
+#'
+#' `Learner_glmnet` is a Reference Class implementing the learner interface
+#' used by [Superlearner()] and [fit_learner()]. Any additional arguments
+#' supplied via `...` at initialization are forwarded to the underlying
+#' fitting backend (`glmnet::glmnet` or `glmnet::cv.glmnet`) through
+#' `fit_arguments`.
+#'
+#' @section Fields:
+#' \describe{
+#'   \item{`covariates` (`character`)}{Names of covariate columns used in the model.}
+#'   \item{`treatment` (`character`)}{Optional treatment/exposure variable name(s).}
+#'   \item{`cross_validation` (`logical`)}{If `TRUE`, choose `lambda` by `cv.glmnet`.}
+#'   \item{`recycle_information` (`logical`)}{Placeholder flag for workflow compatibility.}
+#'   \item{`intercept` (`logical`)}{Whether to include an intercept.}
+#'   \item{`formula` (`character`)}{Model formula string used for design matrix creation.}
+#'   \item{`learner` (`function`)}{Underlying fitting function (`glmnet` or `cv.glmnet`).}
+#'   \item{`add_nodes` (`logical`)}{If `TRUE`, include node effects.}
+#'   \item{`penalise_nodes` (`logical`)}{If `FALSE`, node terms are unpenalized.}
+#'   \item{`lambda_grid` (`numeric`)}{Optional user-supplied lambda grid.}
+#'   \item{`lambda` (`numeric`)}{Selected lambda value used in final fit.}
+#'   \item{`fit_arguments` (`list`)}{Extra arguments passed to the fitting backend.}
+#'   \item{`covariates_attributes_matrix` (`list`)}{Reserved metadata holder.}
+#'   \item{`model_fit` (`ANY`)}{Slot reserved for stored model objects.}
+#'   \item{`data_info` (`list`)}{Metadata holder used by wrapper objects.}
+#' }
+#'
+#' @section Methods:
+#' \describe{
+#'   \item{`initialize(...)`}{Creates and configures the learner object.
+#'   Input: user hyperparameters and optional backend arguments in `...`.
+#'   Output: configured `Learner_glmnet` reference object.}
+#'   \item{`private_fit(data, ...)`}{Internal method (not intended for end users).
+#'   Input: long-format `data.table`/`data.frame` with at least `deltaij`, `tij`,
+#'   `node`, `k`, and modeled covariates. Output: fitted `glmnet` model object
+#'   (class `glmnet`).}
+#'   \item{`private_predictor(model, newdata, ...)`}{Internal method (not intended
+#'   for end users). Input: fitted `glmnet`/`cv.glmnet` `model` and long-format
+#'   `newdata`. Output: `numeric` vector/matrix of hazard predictions on the
+#'   response scale.}
+#' }
+#'
+#' @references Simon N, Friedman J, Hastie T, Tibshirani R (2011).
+#' Regularization Paths for Cox's Proportional Hazards Model via Coordinate Descent.
+#' Journal of Statistical Software, 39(5), 1-13.
+#'
+#' @examples
+#' lrn <- Learner_glmnet(covariates = c("age", "sex"), add_nodes = TRUE)
+#' lrn$cross_validation
 #'
 #' @export Learner_glmnet
 #' @exportClass Learner_glmnet
@@ -260,7 +308,42 @@ Learner_glmnet <- setRefClass(
   )
 )
 
-#' \code{hal} learner class
+#' Reference class: HAL learner for piecewise Poisson hazards
+#'
+#' `Learner_hal` implements a Highly Adaptive Lasso learner using basis expansion
+#' and penalized Poisson regression in the long-format representation. Any
+#' additional arguments supplied via `...` are forwarded to the underlying
+#' glmnet-based fitting calls used by this learner.
+#'
+#' @section Fields:
+#' Main fields include `covariates` (`character`), `cross_validation` (`logical`),
+#' `formula` (`character`), `lambda` (`numeric`), `max_degree` (`numeric`),
+#' `num_knots` (`numeric`), `smoothness_orders` (`numeric`), and `fit_arguments` (`list`).
+#' These fields define basis construction, regularization and fitting behaviour.
+#'
+#' @section Methods:
+#' \describe{
+#'   \item{`initialize(...)`}{Creates and configures the learner object.
+#'   Input: HAL tuning parameters and optional backend arguments in `...`.
+#'   Output: configured `Learner_hal` reference object.}
+#'   \item{`private_fit(data, ...)`}{Internal method (not intended for end users).
+#'   Input: long-format `data.table`/`data.frame` with interval outcome and offset
+#'   columns (`deltaij`, `tij`, `node`, `k`) and covariates. Output: fitted
+#'   penalized model object used for prediction (typically `glmnet`).}
+#'   \item{`private_predictor(model, newdata, ...)`}{Internal method (not intended
+#'   for end users). Input: fitted `model` and compatible `newdata`.
+#'   Output: `numeric` vector/matrix of predicted piecewise hazards.}
+#' }
+#'
+#' @references
+#' Benkeser D, van der Laan M, et al. hal9001: The Scalable Highly Adaptive
+#' Lasso. R package.
+#' Friedman J, Hastie T, Tibshirani R. glmnet: Lasso and Elastic-Net Regularized
+#' Generalized Linear Models. R package.
+#'
+#' @examples
+#' lrn <- Learner_hal(covariates = c("age", "sex"), max_degree = 2)
+#' lrn$max_degree
 #'
 #' @export Learner_hal
 #' @exportClass Learner_hal
@@ -905,13 +988,44 @@ Learner_hal <- setRefClass(
 )
 
 
-#' \code{gam} learner class using mgcv bam
+#' Reference class: GAM learner via `mgcv::bam`
 #'
-#' @param covariates \code{character}
-#' @param treatment \code{character}
-#' @param cross_validation \code{logical}
+#' `Learner_gam` fits smooth additive Poisson hazard models and is intended for
+#' use within [Superlearner()] and [fit_learner()]. Any additional arguments
+#' supplied via `...` are forwarded to `mgcv::bam` through `fit_arguments`.
 #'
+#' @param covariates `character`. Covariate names used in smooth terms.
+#' @param treatment `character`. Optional treatment/exposure variable names.
+#' @param cross_validation `logical`. If `TRUE`, hyperparameter selection uses CV workflow.
 #'
+#' @section Fields:
+#' Includes `covariates` (`character`), `treatment` (`character`), `formula`
+#' (`character`), `learner` (`function`), `fit_arguments` (`list`), `model_fit` (`ANY`)
+#' and `data_info` (`list`).
+#'
+#' @section Methods:
+#' \describe{
+#'   \item{`initialize(...)`}{Creates and configures the learner object.
+#'   Input: smooth-model settings and optional `mgcv::bam` arguments in `...`.
+#'   Output: configured `Learner_gam` reference object.}
+#'   \item{`private_fit(data, ...)`}{Internal method (not intended for end users).
+#'   Input: long-format `data.table`/`data.frame` with required columns
+#'   (`deltaij`, `tij`, `node`, `k`) and covariates. Output: fitted GAM/BAM
+#'   model object (class `gam`).}
+#'   \item{`private_predictor(model, newdata, ...)`}{Internal method (not intended
+#'   for end users). Input: fitted `model` and compatible `newdata`.
+#'   Output: `numeric` vector of predicted piecewise hazards.}
+#' }
+#'
+#' @references
+#' Wood SN (2017). Generalized Additive Models: An Introduction with R,
+#' Second Edition. CRC Press.
+#' Wood SN, Goude Y, Shaw S (2015). Generalized additive models for large data
+#' sets. Journal of the Royal Statistical Society: Series C, 64(1), 139-155.
+#'
+#' @examples
+#' lrn <- Learner_gam(covariates = c("age", "value_LDL"))
+#' is.function(lrn$learner)
 #'
 #' @export Learner_gam
 #' @exportClass Learner_gam

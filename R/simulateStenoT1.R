@@ -14,20 +14,22 @@
 #----------------------------------------------------------------------
 ##
 ### Code:
-##' Simulate data that are alike those behind the Steno type-1 risk engine
+##' Simulate synthetic data inspired by the Steno Type-1 risk engine
 ##'
-##' The data are computer generated and do not belong to real people.
-##' @title Simulate time to CVD of hypothetical type-1 diabetes patients
-##' @param n Sample size
-##' @param beta_age_rate_cvd Log-hazard ratio for age on the rate of CVD
-##' @param beta_LDL_rate_cvd Log-hazard ratio for LDL on the rate of CVD
-##' @param beta_diabetes_duration_rate_cvd Log-hazard ratio for diabetes duration on the rate of CVD
-##' @param keep Optional vector of variables to keep in the data set
-##' @return data.table with baseline covariates and
-##' time to cvd (time,event) where event has values 0 for right censored
-##'         1 for cvd and 2 for death without cvd.
+##' Generates covariates and event times for CVD and censoring, with optional
+##' competing-risks setting, for examples, benchmarks and tests.
+##'
+##' @title Simulate time-to-event data for hypothetical type-1 diabetes patients
+##' @param n `numeric(1)`. Number of subjects to simulate.
+##' @param coefficient_age `numeric(1)`. Log-hazard coefficient for age in CVD model.
+##' @param coefficient_LDL `numeric(1)`. Log-hazard coefficient for LDL in CVD model.
+##' @param value_diabetis `numeric(1)`. Log-hazard coefficient for diabetes duration.
+##' @param keep `character` or `NULL`. Optional subset of columns to retain.
+##' @param scenario `character(1)`. One of `"alpha"` or `"beta"`.
+##' @param competing_risks `logical(1)`. If `TRUE` in `"alpha"`, generates two causes.
+##' @return `data.table` with baseline covariates, `time_cvd`, `status_cvd`, and `id`.
 ##' @examples
-##' simulateStenoT1(n=3)
+##' simulateStenoT1(n = 3)
 ##' @export
 ##' @author Thomas A. Gerds <tag@@biostat.ku.dk>
 simulateStenoT1 <- function(
