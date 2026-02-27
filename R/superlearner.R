@@ -55,6 +55,7 @@ Superlearner <- function(data,
     names(learners) <- paste0("learner_",1:length(learners))
   }
 
+  learners_labels = names(learners)
 
   # Data pre-processing ----
 
@@ -242,141 +243,20 @@ Superlearner <- function(data,
   }
 
 
-  # data_by_competing_risk <- split(dt, by = "k")
-  #
-  # # Compute oos deviance scores for the learners ----
-  # dt_learners <- rbindlist(
-  #   lapply(seq_along(dt_z), function(i) {
-  #     DT <- copy(dt_z[[i]])
-  #     # detect all Z* columns (flexible: Z1, Z_2, Zabc3, etc.)
-  #     zcols <- grep("^Z", names(DT), value = TRUE)
-  #     melt(
-  #       DT,
-  #       id.vars = c("id", "folder", "node"),
-  #       measure.vars = zcols,
-  #       variable.name = "learner",
-  #       value.name = "pwch"
-  #     )[, which := paste0("pwch_", i)]
-  #   }),
-  #   use.names = TRUE, fill = TRUE
-  # )
-  #
-  # # transform back to exponential
-  # dt_learners[,pwch:=exp(pwch)]
-  #
-  # dt_learners[, learner_idx := fifelse(
-  #   grepl("\\d+", learner),
-  #   as.integer(gsub("\\D+", "", learner)),
-  #   match(learner, unique(learner))  # stable ordering for non-numeric suffixes
-  # )]
-  # dt_learners[, learner := paste0("learner_", learner_idx)][, learner_idx := NULL]
-  #
-  # dt_learners <- dcast(
-  #   dt_learners,
-  #   id + folder + node + learner ~ which,
-  #   value.var = "pwch"
-  #   # , fun.aggregate = mean  # uncomment if duplicates exist within a cell
-  # )
-  #
-  # dt_learners[,node:=factor(node,levels = sort(as.numeric(levels(node))),ordered=TRUE)]
-  #
-  # setorder(dt_learners, id, node, learner)
-  # dt_learners <- dt_learners[complete.cases(dt_learners),]
-  #
-  # # Actual deviance computation
-  #
-  # pwch_cols <- paste0("pwch_",1:n_crisks)
-  #
-  # # save sum of pwch
-  #
-  # sum_of_hazards <- paste(pwch_cols, collapse = " + ")
-  #
-  # pwch_dot_string <- paste0("dt_learners[, pwch_dot :=",sum_of_hazards,"]")
-  #
-  # eval(parse(text = pwch_dot_string))
-  #
-  # dt_learners<- merge(dt_learners, dt[k==1,.(id,node,tij)], by = c("id", "node"))
-  #
-  # # compute cumulative hazard
-  #
-  # mapply(function(pwch, name) {
-  #   dt_learners[, (paste0("cumulative_hazard_", name)) := cumsum(get(pwch) * tij), by = .(id,learner)]
-  # }, pwch_cols, gsub("pwch_", "", pwch_cols))
-  #
-  #
-  # # compute survival function
-  #
-  # hazard_terms <- paste0("cumulative_hazard_", 1:n_crisks)
-  # sum_expr <- paste(hazard_terms, collapse = " + ")
-  # survival_function_string <- paste0("dt_learners[, survival_function := exp(-(", sum_expr, "))]")
-  #
-  # eval(parse(text = survival_function_string))
-  #
-  # mapply(function(pwch, name) {
-  #   dt_learners[, (paste0("hazard_times_time_", name)) := (get(pwch) * tij)]
-  # }, pwch_cols, gsub("pwch_", "", pwch_cols))
-  #
-  #
-  # # get the deltas
-  # delta_list =mapply(function(risk,data){data[k==risk,][,c("id","node",paste0("delta_",risk)):=list(id,node,deltaij)][,.SD,.SDcols=c("id","node",paste0("delta_",risk))]},as.list(1:n_crisks),MoreArgs=list(data=dt),SIMPLIFY = F)
-  #
-  # delta_list <- merge_deltas(delta_list)
-  #
-  # delta_list[,node:=factor(node,levels = sort(as.numeric(levels(node))),ordered=TRUE)]
-  #
-  # dt_learners<- merge(dt_learners,
-  #                     delta_list,
-  #                     by=c("id","node"),
-  #                     all.x = T)
-  #
-  #
-  # #first term
-  #
-  # mapply(function(name) {
-  #   dt_learners[,paste0("cr_contribution_",name):=get(paste0("delta_", name))*log(get(paste0("delta_", name))/get(paste0("hazard_times_time_", name)))]
-  #   dt_learners[,paste0("cr_contribution_",name):=fifelse(is.nan(get(paste0("cr_contribution_",name))),0,get(paste0("cr_contribution_",name)))]
-  #   dt_learners[,paste0("cr_contribution_",name):=get(paste0("cr_contribution_",name))-(get(paste0("delta_", name))-get(paste0("hazard_times_time_", name)))]
-  #
-  # }, as.list(1:n_crisks))
-  #
-  #
-  # # second term
-  #
-  # crc_terms <- paste0("cr_contribution_", 1:n_crisks)
-  # sum_expr <- paste(crc_terms, collapse = " + ")
-  # crc_string <- paste0("dt_learners[, cr_contribution_tot := ",sum_expr,"]")
-  #
-  # eval(parse(text = crc_string))
-  #
-  #
-  # dt_learners<-dt_learners[,.(deviance_i=sum(cr_contribution_tot)),by=.(id,learner)]
-  #
-  # dt_learners <- merge(dt_learners,dt_id,by="id")
-  #
-  # setkey(dt_learners,NULL)
-  #
-  # dt_learners<-dt_learners[, .(deviance_v = 2*sum(deviance_i, na.rm = TRUE)), by = .(learner,folder)]
-  #
-  # dt_learners<-dt_learners[,.(deviance=mean(deviance_v)),by =learner]
-  #
-  #
-  # z_covariates_list <- select_covariate_path(dt_learners, z_covariates, min_depth = min_depth)
-
-
   L <- length(z_covariates)
 
   dev_sum <- matrix(0.0, nrow = nfold, ncol = L)
 
   for (k in seq_len(n_crisks)) {
 
-    DTk <- dt_z[[k]]
-    loghaz_cols <- (DTk[, ..z_covariates])
+
+    loghaz_cols <- (dt_z[[k]][, ..z_covariates])
 
     dev_k <- poisson_deviance_by_folder_cols(
       log_hazard_cols = loghaz_cols,
-      tij    = as.numeric(DTk[["tij"]]),
-      delta  = as.integer(DTk[["deltaij"]]),
-      folder = as.integer(DTk[["folder"]]),
+      tij    = as.numeric(dt_z[[k]][["tij"]]),
+      delta  = as.integer(dt_z[[k]][["deltaij"]]),
+      folder = as.integer(dt_z[[k]][["folder"]]),
       nfold  = nfold
     )
     dev_sum <- dev_sum + dev_k
@@ -426,10 +306,9 @@ Superlearner <- function(data,
   )
 
 
-
-  setnames(dt_learners,"learner","model")
-
   dt_learners[,covariate:=NULL]
+
+  dt_learners[,learner:=learners_labels]
 
   out <- list(
     learners = learners,
@@ -444,6 +323,7 @@ Superlearner <- function(data,
       nfold = nfold,
       maximum_followup = maximum_followup,
       n_crisks=n_crisks,
+      learners_labels=learners_labels,
       variable_transformation = variable_transformation
     )
   )

@@ -766,58 +766,7 @@ Learner_hal <- setRefClass(
 
       .self$covariates_attributes_matrix <- x_pp[c("colnames", "meta")]
 
-      #
-      # if (.self$cross_validation) {
-      #
-      #   prefit_args <- .self$fit_arguments
-      #
-      #   if (!is.na(.self$maxit_prefit)) {
-      #     prefit_args[['maxit']] <- .self$maxit_prefit
-      #   }
-      #
-      #   suppressWarnings(cv_fit <- do.call(cv.glmnet, c(prefit_args,
-      #                                  list(y=as.numeric(data_copy[['deltaij']]),
-      #                                       offset=log(data_copy[['tij']]),
-      #                                       x=x_pp$X,
-      #                                       maxit=5000
-      #                                       ))))
-      #
-      #   lambda_grid_prefit <- cv_fit$lambda
-      #
-      #   if (!all(is.na(.self$lambda_grid))) {
-      #     lambda_grid_prefit <- c(.self$lambda_grid, lambda_grid_prefit)
-      #     lambda_grid_prefit <- lambda_grid_prefit[complete.cases(lambda_grid_prefit)]
-      #     lambda_grid_prefit <- sort(unique(lambda_grid_prefit), decreasing = TRUE)
-      #   }
-      #
-      #   preds <- predict(cv_fit$glmnet.fit,
-      #                    newx = x_pp$X,
-      #                    newoffset = log(data_copy[['tij']]),
-      #                    type = "response",
-      #                    s = lambda_grid_prefit)
-      #
-      #   if (is.null(dim(preds))) {
-      #     preds <- matrix(preds, ncol = 1L)
-      #   }
-      #
-      #   mu <- pmax(preds, 1e-12)
-      #   y_vec <- as.numeric(data_copy[['deltaij']])
-      #   nll <- -colSums(y_vec * log(mu) - mu)
-      #   # lambda_opt <- lambda_grid_prefit[which.min(nll)]
-      #
-      #   glmnet_args <- .self$fit_arguments
-      #   glmnet_args[['lambda']] <- lambda_opt
-      #   glmnet_args[['nfolds']] <- NULL
-      #
-      #   fit <- cv_fit
-      #   .self$lambda_opt <- lambda_grid_prefit[which.min(nll)]
-      #   fit <- do.call(glmnet, c(glmnet_args,
-      #                            list(y=as.numeric(data_copy[['deltaij']]),
-      #                                 offset=log(data_copy[['tij']]),
-      #                                 x=x_pp$X
-      #                            )))
-      # }
-      #
+
 
       if (.self$cross_validation) {
         ## 1) Prefit with cv.glmnet to obtain the lambda path + CV curve
@@ -826,15 +775,6 @@ Learner_hal <- setRefClass(
         if (!is.na(.self$maxit_prefit)) {
           prefit_args[["maxit"]] <- .self$maxit_prefit
         }
-
-        # suppressWarnings(cv_fit <- do.call(cv.glmnet, c(
-        #   prefit_args, list(
-        #     x      = x_pp$X,
-        #     y      = as.numeric(data_copy[["deltaij"]]),
-        #     offset = log(data_copy[["tij"]])
-        #   )
-        # )))
-
 
         cv_fit <- tryCatch(
           suppressWarnings(
