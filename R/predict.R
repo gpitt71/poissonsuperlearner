@@ -1,14 +1,27 @@
-#' Poisson Super-Learner Predictions
+#' Predict hazards, survival and absolute risk from a fitted ensemble
 #'
-#' This method computes the survival function and the absolute risk prediction of a \code{poisson_superlearner} object, based on a given data set, at given \code{times} for a given \code{cause}.
+#' Computes cause-specific piecewise hazards, survival function and absolute risk
+#' at user-supplied times for each row in `newdata`.
 #'
+#' @param object `poisson_superlearner`. Fitted object from [Superlearner()].
+#' @param newdata `data.frame`. New covariate data.
+#' @param times `numeric`. Prediction horizon(s).
+#' @param cause `numeric(1)`. Cause index for absolute-risk extraction.
+#' @param ... Additional arguments passed to lower-level predictors.
 #'
-#' @param object \code{poisson_superlearner} for absolute risk and survival function predictions.
-#' @param newdata \code{data.frame}, new data to predict the absolute risk and the survival function for.
-#' @param times \code{numeric}, time(s) at which to predict the absolute risk and survival function.
-#' @param cause \code{numeric}, competing risk to predict the absolute risk and the survival function for.
+#' @return A `data.table` with one row per (`id`, `time`) and columns including
+#'   `survival_function`, `absolute_risk`, and cause-specific hazards `pwch_*`.
 #'
-#' @return \code{data.table} containing for each row of \code{newdata} the \code{poisson_superlearner} predictions for the survival function and the absolute risk predictions for some \code{cause} at the given \code{times}.
+#' @examples
+#' d <- simulateStenoT1(120, competing_risks = TRUE)
+#' fit <- Superlearner(
+#'   data = d,
+#'   id = "id", status = "status_cvd", event_time = "time_cvd",
+#'   learners = list(Learner_glmnet$new(covariates = c("age", "value_LDL"))),
+#'   number_of_nodes = 8
+#' )
+#' p <- predict(fit, newdata = d[1:5], times = c(2, 5), cause = 1)
+#' head(p)
 #'
 #' @export
 predict.poisson_superlearner <- function(object,

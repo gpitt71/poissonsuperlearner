@@ -1,45 +1,28 @@
-#' Fit Learner to the data
+#' Fit a single base learner
 #'
-#' This class is used for fitting individual learners to the data.
+#' Pre-processes time-to-event data into long Poisson format and fits one
+#' initialized learner reference-class object.
 #'
-#' @param data \code{data.frame}, input data to be pre-processed.
-#' @param id \code{character}, identifier column.
-#' @param stratified_k_fold \code{logical}, if TRUE we stratify the V-folds in order to obtain the same number of competing events in each folder.
-#' @param start_time \code{character}, for left-truncated and right-censored data, the starting point of each observation.
-#' @param end_time \code{character}, for left-truncated and right-censored data, the end point of each observation.
-#' @param status \code{character}, status column.
-#' @param event_time \code{character}, time-to-event column in competing risks and survival applications.
-#' @param learners \code{list}, list of learners to include in the ensemble. If only one learner is provided, the learner is applied to the full data.
-#' @param min_depth \code{numeric}, minimum number of learners included in the ensemble.
-#' @param meta_learner_algorithms \code{character}, the ensemble is estimated using one of the given algorithms. If more than one algorithm is provided, the best performing algorithm is selected based on the Poisson Deviance. Currently, options are \code{"glm"} and \code{"glmnet"}.
-#' @param variable_transformation \code{list}, variable transformation(s) to apply to the data. Each element of the list is a character \code{"new_variable ~ some_function(variable_in_the_data)"}
-#' @param nfold \code{numeric}, number of V-folds to construct the ensemble.
-#' @param number_of_nodes \code{numeric}, number of time points sampled from the observed time to construct the nodes. Alternative to \code{nodes}, if both NULL we take all the observed time points as nodes.
-#' @param nodes \code{numeric}, time grid to construct the piece-wise constant model. Alternative to \code{number_of_nodes}, if both NULL we take all the observed time points as nodes.
+#' @param data `data.frame`. Input subject-level data.
+#' @param learner Reference-class learner object (e.g. from [Learner_glmnet()],
+#'   [Learner_hal()] or [Learner_gam()]).
+#' @param id `character(1)`. Identifier column name.
+#' @param stratified_k_fold `logical(1)`. Reserved argument for fold strategy.
+#' @param status `character(1)`. Event-status column name.
+#' @param event_time `character(1)`. Event/censoring time column name.
+#' @param number_of_nodes `numeric(1)` or `NULL`. Number of quantile-based nodes.
+#' @param nodes `numeric` or `NULL`. Explicit time-node grid.
+#' @param variable_transformation `list`/`character`/`formula` or `NULL`.
+#' @param ... Additional arguments currently ignored.
 #'
-#' @return A \code{poisson_superlearner} object contains the following output
-#' \itemize{
-#' \item{\code{learners}: \code{list} containing the learners.}
-#' \item{\code{metalearner}: \code{numeric} Training negative log likelihood.}
-#' \item{\code{superlearner}:  \code{numeric} Validation  negative log likelihood. Not available for COX.}
-#' \item{\code{meta_learner_cross_validation}:  \code{data.table} containing the average Poisson Deviance evaluated on the V-Folds for the learners and the meta-learner.}
-#' \item{\code{data_info}: \code{list} containing the following meta-data:}
-#'    \itemize{
-#'    \item{\code{id}: \code{character}, name of the covariate in the data that contains the id variable.}
-#'    \item{\code{status}: \code{character}, name of the covariate in the data that contains the status variable.}
-#'    \item{\code{event_time}: \code{character}, for competing risks or survival data it contains the name of the covariate containing the event time.}
-#'    \item{\code{start_time}: \code{character}, for interval data it contains the name of the covariate containing the starting time.}
-#'    \item{\code{end_time}: \code{character}, for interval data it contains the name of the covariate containing the ending time.}
-#'    \item{\code{nodes}: \code{numeric}, it contains the time nodes.}
-#'    \item{\code{nfold}: \code{integer} denoting the number of V-Folds.}
-#'    \item{\code{maximum_followup}: \code{numeric} denoting the maximum follow-up time observed.}
-#'    \item{\code{n_crisks}, \code{integer} denoting the number of competing risks.}
-#'    \item{\code{variable_transformation}: \code{list} or \code{array}, containing the data variable transformations implemented. }
-#'    \item{\code{interval_data_type}: \code{logical}, \code{TRUE} for interval data. }
-#'    }
-#' \item{\code{hazard_model}: \code{string} chosen hazard model (COX, NN or XGB)}
-#' \item{\code{IndividualDataPP}: starting \code{IndividualDataPP} object.}
-#' }
+#' @return Object of class `base_learner` with components `learner`,
+#'   `learner_fit`, and `data_info`.
+#'
+#' @examples
+#' d <- simulateStenoT1(150, competing_risks = TRUE)
+#' lrn <- Learner_glmnet$new(covariates = c("age", "value_LDL"))
+#' bl <- fit_learner(d, learner = lrn, id = "id", status = "status_cvd", event_time = "time_cvd")
+#'
 #' @export
 fit_learner <- function(data,
                     learner,

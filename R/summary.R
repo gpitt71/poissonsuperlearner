@@ -1,12 +1,10 @@
-#' Summary method for poisson_superlearner objects
+#' Summarize a fitted Poisson Super Learner object
 #'
-#' Prints:
-#'  (a) the meta-learner call (with Z* renamed using data_info$learners_label),
-#'  (b) the cross-validation deviance data.table,
-#'  (c) the meta-learner coefficients (with Z* renamed using data_info$learners_label).
-#'
-#' @param object A \code{poisson_superlearner} object.
+#' @param object `poisson_superlearner`.
 #' @param ... Unused.
+#'
+#' @return `data.table` with cross-validated Poisson deviance summaries for
+#' learners and meta-learner.
 #' @export
 summary.poisson_superlearner <- function(object, ...) {
 
@@ -136,6 +134,14 @@ summary.poisson_superlearner <- function(object, ...) {
 
 
 #' Summary method for base_learner objects
+#' Summarize a fitted base learner object
+#'
+#' @param object `base_learner`.
+#' @param cause `numeric(1)`. Cause index.
+#' @param ... Unused.
+#'
+#' @return A list containing model-specific summary information for the selected
+#' cause.
 #' @export
 summary.base_learner <- function(object, cause=1, ...) {
 

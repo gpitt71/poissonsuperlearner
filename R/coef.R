@@ -1,4 +1,10 @@
-#' Coef method for base_learner objects
+#' Extract coefficients from a `base_learner`
+#'
+#' @param object `base_learner` object.
+#' @param cause `numeric(1)` or `NULL`. If `NULL`, returns all causes.
+#' @param ... Passed to underlying `coef` methods.
+#'
+#' @return A coefficient object for one cause or a list across causes.
 #' @export
 coef.base_learner <- function(object, cause= NULL, ...) {
 
@@ -15,7 +21,13 @@ coef.base_learner <- function(object, cause= NULL, ...) {
   }
 }
 
-#' Coef method for poisson_superlearner objects
+#' Extract meta-learner coefficients from a fitted ensemble
+#'
+#' @param object `poisson_superlearner` object.
+#' @param cause `numeric(1)` or `NULL`. If `NULL`, returns all causes.
+#' @param ... Passed to underlying `coef` methods.
+#'
+#' @return A coefficient object for one cause or a list across causes.
 #' @export
 coef.poisson_superlearner <- function(object, cause=NULL,...) {
 

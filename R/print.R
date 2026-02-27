@@ -1,4 +1,9 @@
-#' Print method for base_learner
+#' Print method for `base_learner`
+#'
+#' @param x `base_learner` object.
+#' @param cause `numeric(1)`. Cause index.
+#' @param ... Unused.
+#' @return Invisibly returns `x`.
 #' @export
 print.base_learner <- function(x, cause=1, ...) {
 
@@ -15,7 +20,12 @@ print.base_learner <- function(x, cause=1, ...) {
 }
 
 
-#' Print method for poisson_superlearner objects
+#' Print method for `poisson_superlearner`
+#'
+#' @param object `poisson_superlearner` object.
+#' @param cause `numeric(1)`. Cause index.
+#' @param ... Unused.
+#' @return Invisibly returns `object`.
 #' @export
 print.poisson_superlearner <- function(object, cause=1, ...) {
 
