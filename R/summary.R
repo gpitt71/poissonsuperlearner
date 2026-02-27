@@ -145,12 +145,11 @@ summary.base_learner <- function(object, cause=1, ...) {
   }
 
   if (is.null(cause)) {
-    return(lapply(object$learner_fit, summary))
+    return(lapply(object$learner_fit, summary, ...))
   } else{
 
-    return(summary(object$learner_fit[[cause]]))
+    return(summary(object$learner_fit[[cause]], ...))
 
   }
 
 }
-

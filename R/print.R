@@ -7,8 +7,13 @@ print.base_learner <- function(x, cause=1, ...) {
     return(invisible(x))
   }
 
+  if (is.null(cause)) {
+    return(invisible(lapply(x$learner_fit, print, ...)))
+  }
+
   return(print(x$learner_fit[[cause]], ...))
 }
+
 
 #' Print method for poisson_superlearner objects
 #' @export
@@ -20,5 +25,10 @@ print.poisson_superlearner <- function(object, cause=1, ...) {
   }
 
 
+  if (is.null(cause)) {
+    return(invisible(lapply(object$superlearner, function(sl) print(sl$meta_learner_fit, ...))))
+  }
+
   return(print(object$superlearner[[cause]]$meta_learner_fit, ...))
 }
+
