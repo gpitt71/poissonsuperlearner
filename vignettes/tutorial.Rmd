@@ -1,0 +1,109 @@
+---
+title: "Tutorial"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Tutorial}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+knitr::opts_chunk$set(eval = FALSE, include = FALSE)
+library(poissonsuperlearner)
+library(survival)
+library(prodlim)
+library(riskRegression)
+```
+
+
+# Generate synthetic Steno data
+
+```{r}
+{
+  set.seed(42)
+  d <- simulateStenoT1(50,
+                       scenario="alpha")
+  
+  }
+```
+
+
+
+# Modelling
+
+```{r}
+
+lglmnet0 <- Learner_glmnet(covariates = c("sex","diabetes_duration"),
+                           cross_validation=FALSE,
+                           lambda=0,
+                           intercept=TRUE,
+                           penalise_nodes=FALSE)
+
+lglmnet1 <- Learner_glmnet(covariates = c("value_Smoking","value_LDL"),
+                           cross_validation=TRUE,
+                           alpha=1,
+                           intercept=TRUE,
+                           penalise_nodes=FALSE)
+
+learners_list = list("glm"=lglmnet0,
+                     "lasso"=lglmnet1)
+
+
+```
+
+```{r}
+sl_model <- Superlearner(d,
+                    id="id",
+                    status="event",
+                    event_time = "time",
+                    learners=learners_list,
+                    number_of_nodes = 5
+)
+
+
+l0_model = fit_learner(d,
+                id="id",
+                learner=lglmnet0,
+                status="event",
+                event_time = "time",
+                number_of_nodes = 5
+)
+
+l1_model = fit_learner(d,
+                id="id",
+                learner=lglmnet1,
+                status="event",
+                event_time = "time",
+                number_of_nodes = 5
+)
+
+
+
+```
+
+## Inspecting the fit
+
+```{r}
+summary(sl_model)
+```
+
+
+# Risk predictions
+
+
+```{r}
+cbind(predictRisk(sl_model,newdata=d[1,],times=5),
+predictRisk(l0_model,newdata=d[1,],times=5),
+predictRisk(l1_model,newdata=d[1,],times=5))
+```
+
+
+
+
