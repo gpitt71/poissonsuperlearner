@@ -2,10 +2,20 @@
 % Please edit documentation in R/coef.R
 \name{coef.base_learner}
 \alias{coef.base_learner}
-\title{Coef method for base_learner objects}
+\title{Extract coefficients from a \code{base_learner}}
 \usage{
 \method{coef}{base_learner}(object, cause = NULL, ...)
 }
+\arguments{
+\item{object}{\code{base_learner} object.}
+
+\item{cause}{\code{numeric(1)} or \code{NULL}. If \code{NULL}, returns all causes.}
+
+\item{...}{Passed to underlying \code{coef} methods.}
+}
+\value{
+A coefficient object for one cause or a list across causes.
+}
 \description{
-Coef method for base_learner objects
+Extract coefficients from a \code{base_learner}
 }

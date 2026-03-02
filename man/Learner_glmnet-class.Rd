@@ -4,8 +4,60 @@
 \name{Learner_glmnet-class}
 \alias{Learner_glmnet-class}
 \alias{Learner_glmnet}
-\title{\code{glmnet} learner class}
+\title{Penalized Poisson learner via \code{glmnet}}
 \description{
-\code{glmnet} learner class
+\code{Learner_glmnet} is a Reference Class implementing the learner interface
+used by \code{\link[=Superlearner]{Superlearner()}} and \code{\link[=fit_learner]{fit_learner()}}. Any additional arguments
+supplied via \code{...} at initialization are forwarded to the underlying
+fitting backend (\code{glmnet::glmnet} or \code{glmnet::cv.glmnet}) through
+\code{fit_arguments}.
 }
 
+\section{Fields}{
+
+\describe{
+\item{\code{covariates} (\code{character})}{Names of covariate columns used in the model.}
+\item{\code{treatment} (\code{character})}{Optional treatment/exposure variable name(s).}
+\item{\code{cross_validation} (\code{logical})}{If \code{TRUE}, choose \code{lambda} by \code{cv.glmnet}.}
+\item{\code{recycle_information} (\code{logical})}{Placeholder flag for workflow compatibility.}
+\item{\code{intercept} (\code{logical})}{Whether to include an intercept.}
+\item{\code{formula} (\code{character})}{Model formula string used for design matrix creation.}
+\item{\code{learner} (\code{function})}{Underlying fitting function (\code{glmnet} or \code{cv.glmnet}).}
+\item{\code{add_nodes} (\code{logical})}{If \code{TRUE}, include node effects.}
+\item{\code{penalise_nodes} (\code{logical})}{If \code{FALSE}, node terms are unpenalized.}
+\item{\code{lambda_grid} (\code{numeric})}{Optional user-supplied lambda grid.}
+\item{\code{lambda} (\code{numeric})}{Selected lambda value used in final fit.}
+\item{\code{fit_arguments} (\code{list})}{Extra arguments passed to the fitting backend.}
+\item{\code{covariates_attributes_matrix} (\code{list})}{Reserved metadata holder.}
+\item{\code{model_fit} (\code{ANY})}{Slot reserved for stored model objects.}
+\item{\code{data_info} (\code{list})}{Metadata holder used by wrapper objects.}
+}
+}
+
+\section{Methods}{
+
+\describe{
+\item{\code{initialize(...)}}{Creates and configures the learner object.
+Input: user hyperparameters and optional backend arguments in \code{...}.
+Output: configured \code{Learner_glmnet} reference object.}
+\item{\code{private_fit(data, ...)}}{Internal method (not intended for end users).
+Input: long-format \code{data.table}/\code{data.frame} with at least \code{deltaij}, \code{tij},
+\code{node}, \code{k}, and modeled covariates. Output: fitted \code{glmnet} model object
+(class \code{glmnet}).}
+\item{\code{private_predictor(model, newdata, ...)}}{Internal method (not intended
+for end users). Input: fitted \code{glmnet}/\code{cv.glmnet} \code{model} and long-format
+\code{newdata}. Output: \code{numeric} vector/matrix of hazard predictions on the
+response scale.}
+}
+}
+
+\examples{
+lrn <- Learner_glmnet(covariates = c("age", "sex"), alpha=1, cross_validation = TRUE)
+lrn$cross_validation
+
+}
+\references{
+Simon N, Friedman J, Hastie T, Tibshirani R (2011).
+Regularization Paths for Cox's Proportional Hazards Model via Coordinate Descent.
+Journal of Statistical Software, 39(5), 1-13.
+}

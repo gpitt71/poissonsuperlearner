@@ -1,4 +1,4 @@
-#' Reference class: penalized Poisson learner via `glmnet`
+#' Penalized Poisson learner via `glmnet`
 #'
 #' `Learner_glmnet` is a Reference Class implementing the learner interface
 #' used by [Superlearner()] and [fit_learner()]. Any additional arguments
@@ -45,7 +45,7 @@
 #' Journal of Statistical Software, 39(5), 1-13.
 #'
 #' @examples
-#' lrn <- Learner_glmnet(covariates = c("age", "sex"), add_nodes = TRUE)
+#' lrn <- Learner_glmnet(covariates = c("age", "sex"), alpha=1, cross_validation = TRUE)
 #' lrn$cross_validation
 #'
 #' @export Learner_glmnet
@@ -127,10 +127,10 @@ Learner_glmnet <- setRefClass(
       .self$fit_arguments[['intercept']] <- .self$intercept
 
       if (.self$cross_validation) {
-        .self$learner = cv.glmnet
+        .self$learner = glmnet::cv.glmnet
 
       } else{
-        .self$learner = glmnet
+        .self$learner = glmnet::glmnet
         .self$fit_arguments[['lambda']] <- tmp
       }
 
@@ -169,7 +169,7 @@ Learner_glmnet <- setRefClass(
 
       data <- data[complete.cases(data), ]
 
-      x = sparse.model.matrix(formula(.self$formula), data, contrasts.arg = NULL)[, -1]
+      x = Matrix::sparse.model.matrix(formula(.self$formula), data, contrasts.arg = NULL)[, -1]
 
 
 
@@ -193,7 +193,7 @@ Learner_glmnet <- setRefClass(
 
         cv_fit <- tryCatch(
           suppressWarnings(
-            do.call(cv.glmnet, c(
+            do.call(glmnet::cv.glmnet, c(
               list(
                 x = x,
                 y = as.vector(data[["deltaij"]]),
@@ -205,7 +205,7 @@ Learner_glmnet <- setRefClass(
           ),
           error = function(e) {
             suppressWarnings(
-              do.call(cv.glmnet, c(
+              do.call(glmnet::cv.glmnet, c(
                 list(
                   x = x,
                   y = as.vector(data[["deltaij"]]),
@@ -248,7 +248,7 @@ Learner_glmnet <- setRefClass(
         glmnet_args[['penalty.factor']] <- pf
 
 
-        suppressWarnings(out <- do.call(glmnet, c(glmnet_args, list(
+        suppressWarnings(out <- do.call(glmnet::glmnet, c(glmnet_args, list(
           x = x,
           y = as.numeric(data[["deltaij"]]),
           offset = log(data[["tij"]])
@@ -294,7 +294,7 @@ Learner_glmnet <- setRefClass(
 
       out <- predict(
         model,
-        newx = sparse.model.matrix(formula(.self$formula), newdata, contrasts.arg = NULL)[, -1],
+        newx = Matrix::sparse.model.matrix(formula(.self$formula), newdata, contrasts.arg = NULL)[, -1],
         newoffset = log(1),
         type = "response",
         ...
@@ -308,7 +308,7 @@ Learner_glmnet <- setRefClass(
   )
 )
 
-#' Reference class: HAL learner for piecewise Poisson hazards
+#' HAL learner for piecewise Poisson hazards
 #'
 #' `Learner_hal` implements a Highly Adaptive Lasso learner using basis expansion
 #' and penalized Poisson regression in the long-format representation. Any
@@ -342,7 +342,7 @@ Learner_glmnet <- setRefClass(
 #' Generalized Linear Models. R package.
 #'
 #' @examples
-#' lrn <- Learner_hal(covariates = c("age", "sex"), max_degree = 2)
+#' lrn <- Learner_hal(covariates = c("age", "sex"), max_degree=2L)
 #' lrn$max_degree
 #'
 #' @export Learner_hal
@@ -420,9 +420,9 @@ Learner_hal <- setRefClass(
       )
 
       if (.self$cross_validation) {
-        .self$learner <- cv.glmnet
+        .self$learner <- glmnet::cv.glmnet
       } else {
-        .self$learner <- glmnet
+        .self$learner <- glmnet::glmnet
       }
 
       .self$fit_arguments <- list(...)
@@ -861,7 +861,7 @@ Learner_hal <- setRefClass(
 
         cv_fit <- tryCatch(
           suppressWarnings(
-            do.call(cv.glmnet, c(
+            do.call(glmnet::cv.glmnet, c(
               list(
                 x      = x_pp$X,
                 y      = as.numeric(data_copy[["deltaij"]]),
@@ -873,7 +873,7 @@ Learner_hal <- setRefClass(
           ),
           error = function(e) {
             suppressWarnings(
-              do.call(cv.glmnet, c(
+              do.call(glmnet::cv.glmnet, c(
                 list(
                   x = x,
                   y = as.vector(data[["deltaij"]]),
@@ -901,7 +901,7 @@ Learner_hal <- setRefClass(
         glmnet_args[["penalty.factor"]] <- pf
 
 
-        suppressWarnings(fit <- do.call(glmnet, c(
+        suppressWarnings(fit <- do.call(glmnet::glmnet, c(
           glmnet_args, list(
             x      = x_pp$X,
             y      = as.numeric(data_copy[["deltaij"]]),
@@ -927,7 +927,7 @@ Learner_hal <- setRefClass(
           }
         }
 
-        suppressWarnings(fit <- do.call(glmnet, c(
+        suppressWarnings(fit <- do.call(glmnet::glmnet, c(
           glmnet_args, list(
             x      = x_pp$X,
             y      = as.numeric(data_copy[["deltaij"]]),
@@ -988,7 +988,7 @@ Learner_hal <- setRefClass(
 )
 
 
-#' Reference class: GAM learner via `mgcv::bam`
+#' GAM learner via `mgcv::bam`
 #'
 #' `Learner_gam` fits smooth additive Poisson hazard models and is intended for
 #' use within [Superlearner()] and [fit_learner()]. Any additional arguments
@@ -1024,8 +1024,8 @@ Learner_hal <- setRefClass(
 #' sets. Journal of the Royal Statistical Society: Series C, 64(1), 139-155.
 #'
 #' @examples
-#' lrn <- Learner_gam(covariates = c("age", "value_LDL"))
-#' is.function(lrn$learner)
+#' lrn <- Learner_gam(covariates = c("s(age)", "value_LDL"))
+#' lrn$covariates
 #'
 #' @export Learner_gam
 #' @exportClass Learner_gam

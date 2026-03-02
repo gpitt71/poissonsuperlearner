@@ -4,15 +4,51 @@
 \name{Learner_gam-class}
 \alias{Learner_gam-class}
 \alias{Learner_gam}
-\title{\code{gam} learner class using mgcv bam}
+\title{GAM learner via \code{mgcv::bam}}
 \arguments{
-\item{covariates}{\code{character}}
+\item{covariates}{\code{character}. Covariate names used in smooth terms.}
 
-\item{treatment}{\code{character}}
+\item{treatment}{\code{character}. Optional treatment/exposure variable names.}
 
-\item{cross_validation}{\code{logical}}
+\item{cross_validation}{\code{logical}. If \code{TRUE}, hyperparameter selection uses CV workflow.}
 }
 \description{
-\code{gam} learner class using mgcv bam
+\code{Learner_gam} fits smooth additive Poisson hazard models and is intended for
+use within \code{\link[=Superlearner]{Superlearner()}} and \code{\link[=fit_learner]{fit_learner()}}. Any additional arguments
+supplied via \code{...} are forwarded to \code{mgcv::bam} through \code{fit_arguments}.
 }
 
+\section{Fields}{
+
+Includes \code{covariates} (\code{character}), \code{treatment} (\code{character}), \code{formula}
+(\code{character}), \code{learner} (\code{function}), \code{fit_arguments} (\code{list}), \code{model_fit} (\code{ANY})
+and \code{data_info} (\code{list}).
+}
+
+\section{Methods}{
+
+\describe{
+\item{\code{initialize(...)}}{Creates and configures the learner object.
+Input: smooth-model settings and optional \code{mgcv::bam} arguments in \code{...}.
+Output: configured \code{Learner_gam} reference object.}
+\item{\code{private_fit(data, ...)}}{Internal method (not intended for end users).
+Input: long-format \code{data.table}/\code{data.frame} with required columns
+(\code{deltaij}, \code{tij}, \code{node}, \code{k}) and covariates. Output: fitted GAM/BAM
+model object (class \code{gam}).}
+\item{\code{private_predictor(model, newdata, ...)}}{Internal method (not intended
+for end users). Input: fitted \code{model} and compatible \code{newdata}.
+Output: \code{numeric} vector of predicted piecewise hazards.}
+}
+}
+
+\examples{
+lrn <- Learner_gam(covariates = c("s(age)", "value_LDL"))
+lrn$covariates
+
+}
+\references{
+Wood SN (2017). Generalized Additive Models: An Introduction with R,
+Second Edition. CRC Press.
+Wood SN, Goude Y, Shaw S (2015). Generalized additive models for large data
+sets. Journal of the Royal Statistical Society: Series C, 64(1), 139-155.
+}

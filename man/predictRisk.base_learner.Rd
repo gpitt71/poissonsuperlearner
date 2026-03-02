@@ -2,26 +2,24 @@
 % Please edit documentation in R/predictRisk.R
 \name{predictRisk.base_learner}
 \alias{predictRisk.base_learner}
-\title{Absolute Risk prediction (Learner)}
+\title{Absolute-risk matrix predictions for a fitted base learner}
 \usage{
 \method{predictRisk}{base_learner}(object, newdata, times, cause = 1, ...)
 }
 \arguments{
-\item{object}{\code{poisson_superlearner} for absolute risk predictions.}
+\item{object}{\code{base_learner}. Fitted object from \code{\link[=fit_learner]{fit_learner()}}.}
 
-\item{newdata}{\code{data.frame}, new data to predict the absolute risk for.}
+\item{newdata}{\code{data.frame}. New covariate data.}
 
-\item{times}{\code{numeric}, time(s) at which to predict the absolute risk.}
+\item{times}{\code{numeric}. Prediction times.}
 
-\item{cause}{\code{numeric}, competing risk to predict the absolute risk for.}
+\item{cause}{\code{numeric(1)}. Cause index.}
+
+\item{...}{Unused.}
 }
 \value{
-\code{matrix} with as many rows as the observations in \code{newdata} and as many columns as \code{times}.
+\code{numeric} matrix with \code{nrow(newdata)} rows and \code{length(times)} columns.
 }
 \description{
-This method computes the predicted absolute risk for some \code{cause}, at given \code{times} based on a \code{base_learner} object.
-}
-\references{
-Benichou, J., & Gail, M. H. (1990). Estimates of absolute cause-specific risk in cohort studies.
-Biometrics, 46(3), 813–826. https://doi.org/10.2307/2532151 (PMID: 2242416)
+Absolute-risk matrix predictions for a fitted base learner
 }

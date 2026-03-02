@@ -22,11 +22,3 @@ Numeric vector of survival probabilities at the end of each interval.
 Computes survival at the end of each interval for competing risks with
 piecewise constant hazards.
 }
-\examples{
-# Example: 2 subjects, 2 causes
-id <- c(1,1,2,2)
-dt <- c(1,2,1,2)
-haz <- matrix(c(0.1,0.05, 0.2,0.1), ncol = 2, byrow = TRUE)
-pch_survival(id, dt, haz)
-
-}

@@ -36,10 +36,3 @@ Computes the cumulative incidence function using the first-order Euler
 \deqn{F_j(t) ≈ \sum S(t_{k-1}) \lambda_{j,k} \Delta t_k}
 Grouped by \code{id}, this returns the cumulative incidence at the end of each interval.
 }
-\examples{
-cols <- grep("^pwch_[0-9]+$", names(dt_long), value = TRUE)
-haz  <- as.matrix(dt_long[, ..cols])
-# cause 1:
-cif1_euler <- pch_absolute_risk_euler(dt_long$id, dt_long$deltatime, haz, cause_idx = 1)
-
-}

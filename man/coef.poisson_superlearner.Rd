@@ -2,10 +2,20 @@
 % Please edit documentation in R/coef.R
 \name{coef.poisson_superlearner}
 \alias{coef.poisson_superlearner}
-\title{Coef method for poisson_superlearner objects}
+\title{Extract meta-learner coefficients from a fitted ensemble}
 \usage{
 \method{coef}{poisson_superlearner}(object, cause = NULL, ...)
 }
+\arguments{
+\item{object}{\code{poisson_superlearner} object.}
+
+\item{cause}{\code{numeric(1)} or \code{NULL}. If \code{NULL}, returns all causes.}
+
+\item{...}{Passed to underlying \code{coef} methods.}
+}
+\value{
+A coefficient object for one cause or a list across causes.
+}
 \description{
-Coef method for poisson_superlearner objects
+Extract meta-learner coefficients from a fitted ensemble
 }

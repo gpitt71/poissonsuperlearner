@@ -2,10 +2,23 @@
 % Please edit documentation in R/summary.R
 \name{summary.base_learner}
 \alias{summary.base_learner}
-\title{Summary method for base_learner objects}
+\title{Summary method for base_learner objects
+Summarize a fitted base learner object}
 \usage{
 \method{summary}{base_learner}(object, cause = 1, ...)
 }
+\arguments{
+\item{object}{\code{base_learner}.}
+
+\item{cause}{\code{numeric(1)}. Cause index.}
+
+\item{...}{Unused.}
+}
+\value{
+A list containing model-specific summary information for the selected
+cause.
+}
 \description{
 Summary method for base_learner objects
+Summarize a fitted base learner object
 }

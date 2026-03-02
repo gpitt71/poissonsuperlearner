@@ -2,7 +2,7 @@
 % Please edit documentation in R/simulateStenoT1.R
 \name{simulateStenoT1}
 \alias{simulateStenoT1}
-\title{Simulate time to CVD of hypothetical type-1 diabetes patients}
+\title{Simulate time-to-event data for hypothetical type-1 diabetes patients}
 \usage{
 simulateStenoT1(
   n,
@@ -15,29 +15,88 @@ simulateStenoT1(
 )
 }
 \arguments{
-\item{n}{Sample size}
+\item{n}{\code{numeric(1)}. Number of subjects to simulate.}
 
-\item{keep}{Optional vector of variables to keep in the data set}
+\item{coefficient_age}{\code{numeric(1)}. Log-hazard coefficient for age in the CVD
+model (\code{time.event.1}).}
 
-\item{beta_age_rate_cvd}{Log-hazard ratio for age on the rate of CVD}
+\item{coefficient_LDL}{\code{numeric(1)}. Log-hazard coefficient for LDL in the CVD
+model (\code{time.event.1}).}
 
-\item{beta_LDL_rate_cvd}{Log-hazard ratio for LDL on the rate of CVD}
+\item{value_diabetis}{\code{numeric(1)}. Log-hazard coefficient for diabetes duration
+in the CVD model (\code{time.event.1}).}
 
-\item{beta_diabetes_duration_rate_cvd}{Log-hazard ratio for diabetes duration on the rate of CVD}
+\item{keep}{\code{character} or \code{NULL}. Optional subset of columns to retain. If
+supplied, only those columns are returned.}
+
+\item{scenario}{\code{character(1)}. One of \code{"alpha"} or \code{"beta"}. Scenario \code{"beta"}
+modifies the CVD hazard by adding nonlinear hinge-squared terms in age and LDL.}
+
+\item{competing_risks}{\code{logical(1)}. If \code{TRUE} and \code{scenario = "alpha"}, simulates
+two event causes (CVD and death without CVD). Otherwise simulates CVD vs censoring.}
 }
 \value{
-data.table with baseline covariates and
-time to cvd (time,event) where event has values 0 for right censored
-1 for cvd and 2 for death without cvd.
+A \code{data.table} with at least the following columns:
+
+\describe{
+\item{id}{\code{integer}. Subject identifier (1, ..., \code{n}).}
+\item{time_cvd}{\code{numeric}. Observed follow-up time (minimum of event and censoring times;
+also includes competing risk time if \code{competing_risks = TRUE} in scenario \code{"alpha"}).}
+\item{status_cvd}{\code{integer}. Observed event status:
+\code{0} = censored, \code{1} = CVD, and if \code{competing_risks = TRUE} in scenario \code{"alpha"},
+\code{2} = death without prior CVD.}
+\item{time}{\code{numeric}. Alias of \code{time_cvd} (kept for convenience).}
+\item{event}{\code{integer}. Alias of \code{status_cvd} (kept for convenience).}
+\item{uncensored_time_cvd}{\code{numeric}. Event time ignoring censoring
+(minimum of event causes only).}
+\item{uncensored_status_cvd}{\code{integer}. Event cause ignoring censoring.
+In scenario \code{"alpha"} this is \code{1} (CVD) or \code{2} (death without CVD);
+in scenario \code{"beta"} this is always \code{1}.}
+\item{uncensored_time}{\code{numeric}. Alias of \code{uncensored_time_cvd}.}
+\item{uncensored_event}{\code{integer}. Alias of \code{uncensored_status_cvd}.}
+}
+
+In addition, the returned table contains all baseline covariates listed in
+\strong{Details}. Internal latent variables used only for simulation are removed
+before returning (e.g., log2 eGFR components and, in scenario \code{"beta"}, the
+hinge-squared features).
 }
 \description{
-Simulate data that are alike those behind the Steno type-1 risk engine
+Simulate synthetic data inspired by the Steno Type-1 risk engine
 }
 \details{
-The data are computer generated and do not belong to real people.
+Generates baseline covariates and event times for CVD and censoring, with an
+optional competing-risks setting, for examples, benchmarks and tests.
+
+The simulator uses a structural equation model (via \code{lava::lvm}) to generate
+realistic correlations between covariates. Event times are then generated from
+cause-specific Weibull proportional hazards models, where the linear predictor
+depends on the simulated covariates (and scenario).
+
+The following baseline covariates are generated (column name, type, interpretation):
+
+\describe{
+\item{sex}{\code{factor}. Binary sex indicator (generated Bernoulli, then stored as factor).}
+\item{age}{\code{numeric}. Age at baseline (years).}
+\item{diabetes_duration}{\code{numeric}. Duration of diabetes at baseline (years).}
+\item{value_SBP}{\code{numeric}. Systolic blood pressure (SBP).}
+\item{value_LDL}{\code{numeric}. LDL cholesterol.}
+\item{value_HBA1C}{\code{numeric}. HbA1c.}
+\item{value_Albuminuria}{\code{factor} with levels \code{Normal}, \code{Micro}, \code{Macro}. Albuminuria category.}
+\item{eGFR}{\code{numeric}. Estimated glomerular filtration rate, constructed from latent
+age-dependent log2 eGFR components (higher values indicate better kidney function).}
+\item{value_Smoking}{\code{factor}. Smoking indicator (generated from a logistic model, then stored as factor).}
+\item{value_Motion}{\code{factor}. Physical activity indicator (generated from a logistic model, then stored as factor).}
+}
+
+Event time variables are generated from latent Weibull PH models:
+\code{time.event.1} (CVD), \code{time.event.0} (censoring), and in scenario \code{"alpha"} also
+\code{time.event.2} (death without prior CVD). These latent variables are used to
+construct the observed outcome variables returned by the function (see below).
 }
 \examples{
-simulateStenoT1(n=3)
+simulateStenoT1(n = 3)
+simulateStenoT1(n = 200, scenario = "alpha", competing_risks = TRUE)
 }
 \author{
 Thomas A. Gerds \href{mailto:tag@biostat.ku.dk}{tag@biostat.ku.dk}

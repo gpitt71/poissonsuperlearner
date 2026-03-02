@@ -22,23 +22,23 @@ print.base_learner <- function(x, cause=1, ...) {
 
 #' Print method for `poisson_superlearner`
 #'
-#' @param object `poisson_superlearner` object.
+#' @param x `poisson_superlearner` object.
 #' @param cause `numeric(1)`. Cause index.
 #' @param ... Unused.
 #' @return Invisibly returns `object`.
 #' @export
-print.poisson_superlearner <- function(object, cause=1, ...) {
+print.poisson_superlearner <- function(x, cause=1, ...) {
 
-  if (is.null(object$superlearner)) {
+  if (is.null(x$superlearner)) {
     cat("No fitted model available (learner_fit is NULL).\n")
-    return(invisible(object))
+    return(invisible(x))
   }
 
 
   if (is.null(cause)) {
-    return(invisible(lapply(object$superlearner, function(sl) print(sl$meta_learner_fit, ...))))
+    return(invisible(lapply(x$superlearner, function(sl) print(sl$meta_learner_fit, ...))))
   }
 
-  return(print(object$superlearner[[cause]]$meta_learner_fit, ...))
+  return(print(x$superlearner[[cause]]$meta_learner_fit, ...))
 }
 

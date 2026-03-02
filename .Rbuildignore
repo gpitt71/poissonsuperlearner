@@ -1,2 +1,5 @@
 ^poissonsuperlearner\.Rproj$
 ^\.Rproj\.user$
+^src/.*\.(o|so|dll|a)$
+^libs$
+^libs/.*$

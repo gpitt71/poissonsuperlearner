@@ -2,22 +2,47 @@
 % Please edit documentation in R/predict.R
 \name{predict.poisson_superlearner}
 \alias{predict.poisson_superlearner}
-\title{Poisson Super-Learner Predictions}
+\title{Predict hazards, survival and absolute risk from a fitted ensemble}
 \usage{
 \method{predict}{poisson_superlearner}(object, newdata, times, cause = 1, ...)
 }
 \arguments{
-\item{object}{\code{poisson_superlearner} for absolute risk and survival function predictions.}
+\item{object}{\code{poisson_superlearner}. Fitted object from \code{\link[=Superlearner]{Superlearner()}}.}
 
-\item{newdata}{\code{data.frame}, new data to predict the absolute risk and the survival function for.}
+\item{newdata}{\code{data.frame}. New covariate data.}
 
-\item{times}{\code{numeric}, time(s) at which to predict the absolute risk and survival function.}
+\item{times}{\code{numeric}. Prediction horizon(s).}
 
-\item{cause}{\code{numeric}, competing risk to predict the absolute risk and the survival function for.}
+\item{cause}{\code{numeric(1)}. Cause index for absolute-risk extraction.}
+
+\item{...}{Additional arguments passed to lower-level predictors.}
 }
 \value{
-\code{data.table} containing for each row of \code{newdata} the \code{poisson_superlearner} predictions for the survival function and the absolute risk predictions for some \code{cause} at the given \code{times}.
+A \code{data.table} with one row per (\code{id}, \code{time}) and columns including
+\code{survival_function}, \code{absolute_risk}, and cause-specific hazards \verb{pwch_*}.
 }
 \description{
-This method computes the survival function and the absolute risk prediction of a \code{poisson_superlearner} object, based on a given data set, at given \code{times} for a given \code{cause}.
+Computes cause-specific piecewise hazards, survival function and absolute risk
+at user-supplied times for each row in \code{newdata}.
+}
+\examples{
+d <- simulateStenoT1(120, competing_risks = TRUE)
+lglmnet1 <- Learner_glmnet(covariates = c("age", "value_LDL"),
+                           lambda=0,
+                           cross_validation=FALSE)
+lglmnet2 <- Learner_glmnet(covariates = c("age", "value_LDL"),
+                          lambda=0.5,
+                          cross_validation=FALSE)
+fit <- Superlearner(
+  data = d,
+  id = "id",
+  status = "status_cvd",
+  event_time = "time_cvd",
+  learners = list(l1=lglmnet1,
+  l2=lglmnet2),
+  number_of_nodes = 8
+)
+p <- predict(fit, newdata = d[1:5], times = c(2, 5), cause = 1)
+head(p)
+
 }

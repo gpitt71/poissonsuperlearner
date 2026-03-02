@@ -6,8 +6,7 @@ Authors@R:
     person(given="Helene", family="Rytgaard", email ="hely@sund.ku.dk", role = c("aut")),
     person(given="Thomas", family="Gerds", email = "tag@biostat.ku.dk", role = c("aut")))
 Description: Provides an implementation of piece-wise constant hazard models for time-to-event analysis of survival and competing risks data. The package includes an ensemble approach, the Poisson Superlearner, for flexible hazard estimation. It enables estimation of survival functions and risk predictions.
-License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
-    license
+License: GPL (>=2)
 LinkingTo: 
     Rcpp
 Encoding: UTF-8
@@ -16,16 +15,19 @@ RoxygenNote: 7.3.3
 Depends:
     data.table,
     sampling,
-    riskRegression,
+    riskRegression
+Imports: 
+    Rcpp,
+    methods,
+    lava,
     Matrix,
     glmnet,
-    mgcv,
-    xgboost
-Imports: 
-    Rcpp
+    mgcv
 Suggests: 
     knitr,
     rmarkdown,
+    survival,
+    prodlim,
     testthat (>= 3.0.0)
 VignetteBuilder: knitr
 LazyData: true

@@ -2,7 +2,7 @@
 % Please edit documentation in R/fit_learner.R
 \name{fit_learner}
 \alias{fit_learner}
-\title{Fit Learner to the data}
+\title{Fit a single base learner}
 \usage{
 fit_learner(
   data,
@@ -18,59 +18,95 @@ fit_learner(
 )
 }
 \arguments{
-\item{data}{\code{data.frame}, input data to be pre-processed.}
+\item{data}{\code{data.frame}. Subject-level input data (one row per subject).}
 
-\item{id}{\code{character}, identifier column.}
+\item{learner}{Reference-class learner object (e.g. from \code{\link[=Learner_glmnet]{Learner_glmnet()}},
+\code{\link[=Learner_hal]{Learner_hal()}} or \code{\link[=Learner_gam]{Learner_gam()}}). Must implement a \verb{$private_fit(dt_long)}
+method that fits the learner on long Poisson data for one cause.}
 
-\item{stratified_k_fold}{\code{logical}, if TRUE we stratify the V-folds in order to obtain the same number of competing events in each folder.}
+\item{id}{\code{character(1)}. Name of the subject identifier column. If not found
+in \code{data}, an \code{id} column is created automatically.}
 
-\item{status}{\code{character}, status column.}
+\item{stratified_k_fold}{\code{logical(1)}. Reserved argument for future fold strategy.
+Currently ignored.}
 
-\item{event_time}{\code{character}, time-to-event column in competing risks and survival applications.}
+\item{status}{\code{character(1)}. Name of the event-status column.
+Must be coded with \code{0} = censoring and \verb{1,2,...,K} for event types (causes).
+If there is no \code{0} in \code{status}, the data are treated as uncensored.}
 
-\item{number_of_nodes}{\code{numeric}, number of time points sampled from the observed time to construct the nodes. Alternative to \code{nodes}, if both NULL we take all the observed time points as nodes.}
+\item{event_time}{\code{character(1)}. Name of the event/censoring time column.
+Must be present in \code{data}.}
 
-\item{nodes}{\code{numeric}, time grid to construct the piece-wise constant model. Alternative to \code{number_of_nodes}, if both NULL we take all the observed time points as nodes.}
+\item{number_of_nodes}{\code{numeric(1)} or \code{NULL}. If not \code{NULL}, constructs a
+quantile-based node grid with \code{number_of_nodes + 1} cut points (including
+endpoints), then adds \code{0} if missing.}
 
-\item{variable_transformation}{\code{list}, variable transformation(s) to apply to the data. Each element of the list is a character \code{"new_variable ~ some_function(variable_in_the_data)"}}
+\item{nodes}{\code{numeric} or \code{NULL}. Explicit time-node grid (cut points). If
+supplied, \code{number_of_nodes} is ignored. \code{0} is added if missing. Nodes
+beyond \code{max(event_time)} are dropped.}
 
-\item{start_time}{\code{character}, for left-truncated and right-censored data, the starting point of each observation.}
+\item{variable_transformation}{\code{list}/\code{character}/\code{formula} or \code{NULL}.
+Optional transformations applied to the internally created long Poisson data
+before fitting (via \code{apply_transformations()}).}
 
-\item{end_time}{\code{character}, for left-truncated and right-censored data, the end point of each observation.}
-
-\item{learners}{\code{list}, list of learners to include in the ensemble. If only one learner is provided, the learner is applied to the full data.}
-
-\item{min_depth}{\code{numeric}, minimum number of learners included in the ensemble.}
-
-\item{meta_learner_algorithms}{\code{character}, the ensemble is estimated using one of the given algorithms. If more than one algorithm is provided, the best performing algorithm is selected based on the Poisson Deviance. Currently, options are \code{"glm"} and \code{"glmnet"}.}
-
-\item{nfold}{\code{numeric}, number of V-folds to construct the ensemble.}
+\item{...}{Additional arguments currently ignored.}
 }
 \value{
-A \code{poisson_superlearner} object contains the following output
+An object of class \code{base_learner}, i.e. a named \code{list} with:
+
+\describe{
+\item{model}{The \strong{learner object} that was fit (the input \code{learner}), stored
+for later prediction. This contains the learner specification (e.g.,
+covariates, tuning parameters).}
+
+\item{learner_fit}{A \code{list} of fitted model objects, \strong{one per cause}.
+Its length equals \code{data_info$n_crisks}. The list is created by splitting the
+internally pre-processed long data by cause indicator \code{k} and calling
+\code{model$private_fit()} on each split.
+
 \itemize{
-\item{\code{learners}: \code{list} containing the learners.}
-\item{\code{metalearner}: \code{numeric} Training negative log likelihood.}
-\item{\code{superlearner}:  \code{numeric} Validation  negative log likelihood. Not available for COX.}
-\item{\code{meta_learner_cross_validation}:  \code{data.table} containing the average Poisson Deviance evaluated on the V-Folds for the learners and the meta-learner.}
-\item{\code{data_info}: \code{list} containing the following meta-data:}
-\itemize{
-\item{\code{id}: \code{character}, name of the covariate in the data that contains the id variable.}
-\item{\code{status}: \code{character}, name of the covariate in the data that contains the status variable.}
-\item{\code{event_time}: \code{character}, for competing risks or survival data it contains the name of the covariate containing the event time.}
-\item{\code{start_time}: \code{character}, for interval data it contains the name of the covariate containing the starting time.}
-\item{\code{end_time}: \code{character}, for interval data it contains the name of the covariate containing the ending time.}
-\item{\code{nodes}: \code{numeric}, it contains the time nodes.}
-\item{\code{nfold}: \code{integer} denoting the number of V-Folds.}
-\item{\code{maximum_followup}: \code{numeric} denoting the maximum follow-up time observed.}
-\item{\code{n_crisks}, \code{integer} denoting the number of competing risks.}
-\item{\code{variable_transformation}: \code{list} or \code{array}, containing the data variable transformations implemented. }
-\item{\code{interval_data_type}: \code{logical}, \code{TRUE} for interval data. }
-}
-\item{\code{hazard_model}: \code{string} chosen hazard model (COX, NN or XGB)}
-\item{\code{IndividualDataPP}: starting \code{IndividualDataPP} object.}
+\item Names typically correspond to the cause labels \code{"1"}, \code{"2"}, ..., \code{"K"}.
+\item Each element is \strong{learner-dependent}: e.g. for \code{Learner_glmnet} it
+may be a \code{"glmnet"} (often wrapped, e.g. \code{"fishnet"}) fit; for other
+learners it will be whatever \verb{$private_fit()} returns.
+\item Each fitted object is trained on long Poisson data representing the
+piecewise-constant hazard for that cause across the node intervals.
+}}
+
+\item{data_info}{A \code{list} of bookkeeping information needed for prediction and
+interpretation:
+\describe{
+\item{id}{Identifier column name used.}
+\item{status}{Status column name used.}
+\item{event_time}{Event/censoring time column name used.}
+\item{nodes}{Numeric vector of node cut points used for the piecewise grid
+(includes \code{0} and is sorted). These are the interval boundaries used in
+the long Poisson representation.}
+\item{maximum_followup}{\code{max(data[[event_time]])}.}
+\item{n_crisks}{Number of event types (causes) detected.
+If censoring is present (\code{0} in \code{status}), then \verb{n_crisks = #unique(status) - 1};
+otherwise \verb{n_crisks = #unique(status)}.}
+\item{variable_transformation}{The transformation specification passed in
+\code{variable_transformation} (or \code{NULL}).}
+}}
 }
 }
 \description{
-This class is used for fitting individual learners to the data.
+Pre-processes subject-level time-to-event data into a long Poisson format on a
+piecewise-constant time grid, then fits \strong{one} initialized learner object.
+For competing risks, a separate model is fit for each event type (cause)
+using the standard cause-specific Poisson likelihood on the long data.
+}
+\examples{
+d <- simulateStenoT1(150, competing_risks = TRUE)
+lrn <- Learner_glmnet(covariates = c("age", "value_LDL"),
+                      lambda = 0,
+                      cross_validation = FALSE)
+bl <- fit_learner(d,
+                  learner = lrn,
+                  id = "id",
+                  status = "status_cvd",
+                  event_time = "time_cvd",
+                  number_of_nodes = 4)
+
 }

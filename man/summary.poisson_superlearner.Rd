@@ -2,18 +2,19 @@
 % Please edit documentation in R/summary.R
 \name{summary.poisson_superlearner}
 \alias{summary.poisson_superlearner}
-\title{Summary method for poisson_superlearner objects}
+\title{Summarize a fitted Poisson Super Learner object}
 \usage{
 \method{summary}{poisson_superlearner}(object, ...)
 }
 \arguments{
-\item{object}{A \code{poisson_superlearner} object.}
+\item{object}{\code{poisson_superlearner}.}
 
 \item{...}{Unused.}
 }
+\value{
+\code{data.table} with cross-validated Poisson deviance summaries for
+learners and meta-learner.
+}
 \description{
-Prints:
-(a) the meta-learner call (with Z* renamed using data_info$learners_label),
-(b) the cross-validation deviance data.table,
-(c) the meta-learner coefficients (with Z* renamed using data_info$learners_label).
+Summarize a fitted Poisson Super Learner object
 }

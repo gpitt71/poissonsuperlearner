@@ -14,6 +14,8 @@
 \item{times}{\code{numeric}, time(s) at which to predict the absolute risk and survival function.}
 
 \item{cause}{\code{numeric}, competing risk to predict the absolute risk and the survival function for.}
+
+\item{...}{other parameters to be passed to predict.}
 }
 \value{
 \code{data.table} containing for each row of \code{newdata} the \code{poisson_superlearner} predictions for the survival function and the absolute risk predictions for some \code{cause} at the given \code{times}.

@@ -2,10 +2,20 @@
 % Please edit documentation in R/print.R
 \name{print.poisson_superlearner}
 \alias{print.poisson_superlearner}
-\title{Print method for poisson_superlearner objects}
+\title{Print method for \code{poisson_superlearner}}
 \usage{
-\method{print}{poisson_superlearner}(object, cause = 1, ...)
+\method{print}{poisson_superlearner}(x, cause = 1, ...)
+}
+\arguments{
+\item{x}{\code{poisson_superlearner} object.}
+
+\item{cause}{\code{numeric(1)}. Cause index.}
+
+\item{...}{Unused.}
+}
+\value{
+Invisibly returns \code{object}.
 }
 \description{
-Print method for poisson_superlearner objects
+Print method for \code{poisson_superlearner}
 }

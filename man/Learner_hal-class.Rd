@@ -4,8 +4,46 @@
 \name{Learner_hal-class}
 \alias{Learner_hal-class}
 \alias{Learner_hal}
-\title{\code{hal} learner class}
+\title{HAL learner for piecewise Poisson hazards}
 \description{
-\code{hal} learner class
+\code{Learner_hal} implements a Highly Adaptive Lasso learner using basis expansion
+and penalized Poisson regression in the long-format representation. Any
+additional arguments supplied via \code{...} are forwarded to the underlying
+glmnet-based fitting calls used by this learner.
 }
 
+\section{Fields}{
+
+Main fields include \code{covariates} (\code{character}), \code{cross_validation} (\code{logical}),
+\code{formula} (\code{character}), \code{lambda} (\code{numeric}), \code{max_degree} (\code{numeric}),
+\code{num_knots} (\code{numeric}), \code{smoothness_orders} (\code{numeric}), and \code{fit_arguments} (\code{list}).
+These fields define basis construction, regularization and fitting behaviour.
+}
+
+\section{Methods}{
+
+\describe{
+\item{\code{initialize(...)}}{Creates and configures the learner object.
+Input: HAL tuning parameters and optional backend arguments in \code{...}.
+Output: configured \code{Learner_hal} reference object.}
+\item{\code{private_fit(data, ...)}}{Internal method (not intended for end users).
+Input: long-format \code{data.table}/\code{data.frame} with interval outcome and offset
+columns (\code{deltaij}, \code{tij}, \code{node}, \code{k}) and covariates. Output: fitted
+penalized model object used for prediction (typically \code{glmnet}).}
+\item{\code{private_predictor(model, newdata, ...)}}{Internal method (not intended
+for end users). Input: fitted \code{model} and compatible \code{newdata}.
+Output: \code{numeric} vector/matrix of predicted piecewise hazards.}
+}
+}
+
+\examples{
+lrn <- Learner_hal(covariates = c("age", "sex"), max_degree=2L)
+lrn$max_degree
+
+}
+\references{
+Benkeser D, van der Laan M, et al. hal9001: The Scalable Highly Adaptive
+Lasso. R package.
+Friedman J, Hastie T, Tibshirani R. glmnet: Lasso and Elastic-Net Regularized
+Generalized Linear Models. R package.
+}

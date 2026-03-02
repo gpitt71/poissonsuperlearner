@@ -14,10 +14,19 @@
 #'
 #' @examples
 #' d <- simulateStenoT1(120, competing_risks = TRUE)
+#' lglmnet1 <- Learner_glmnet(covariates = c("age", "value_LDL"),
+#'                            lambda=0,
+#'                            cross_validation=FALSE)
+#' lglmnet2 <- Learner_glmnet(covariates = c("age", "value_LDL"),
+#'                           lambda=0.5,
+#'                           cross_validation=FALSE)
 #' fit <- Superlearner(
 #'   data = d,
-#'   id = "id", status = "status_cvd", event_time = "time_cvd",
-#'   learners = list(Learner_glmnet$new(covariates = c("age", "value_LDL"))),
+#'   id = "id",
+#'   status = "status_cvd",
+#'   event_time = "time_cvd",
+#'   learners = list(l1=lglmnet1,
+#'   l2=lglmnet2),
 #'   number_of_nodes = 8
 #' )
 #' p <- predict(fit, newdata = d[1:5], times = c(2, 5), cause = 1)
@@ -297,6 +306,7 @@ predict.poisson_superlearner <- function(object,
 #' @param newdata \code{data.frame}, new data to predict the absolute risk and the survival function for.
 #' @param times \code{numeric}, time(s) at which to predict the absolute risk and survival function.
 #' @param cause \code{numeric}, competing risk to predict the absolute risk and the survival function for.
+#' @param ... other parameters to be passed to predict.
 #'
 #' @return \code{data.table} containing for each row of \code{newdata} the \code{poisson_superlearner} predictions for the survival function and the absolute risk predictions for some \code{cause} at the given \code{times}.
 #'

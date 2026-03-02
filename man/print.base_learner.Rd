@@ -2,10 +2,20 @@
 % Please edit documentation in R/print.R
 \name{print.base_learner}
 \alias{print.base_learner}
-\title{Print method for base_learner}
+\title{Print method for \code{base_learner}}
 \usage{
 \method{print}{base_learner}(x, cause = 1, ...)
 }
+\arguments{
+\item{x}{\code{base_learner} object.}
+
+\item{cause}{\code{numeric(1)}. Cause index.}
+
+\item{...}{Unused.}
+}
+\value{
+Invisibly returns \code{x}.
+}
 \description{
-Print method for base_learner
+Print method for \code{base_learner}
 }

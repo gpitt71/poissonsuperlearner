@@ -27,11 +27,3 @@ Numeric vector of cumulative incidence values at the end of each interval.
 Computes, per row, the cumulative incidence function at the end of each interval,
 grouped by \code{id}. The number of causes is inferred from the number of columns in \code{haz}.
 }
-\examples{
-# Hazard columns pwch_1, pwch_2, ...
-cols <- grep("^pwch_[0-9]+$", names(dt_long), value = TRUE)
-haz  <- as.matrix(dt_long[, ..cols])
-# cause 2:
-cif2 <- pch_absolute_risk(dt_long$id, dt_long$deltatime, haz, cause_idx = 2)
-
-}

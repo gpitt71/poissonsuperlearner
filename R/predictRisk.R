@@ -1,4 +1,4 @@
-#' Absolute-risk matrix for a fitted Poisson Super Learner
+#' Absolute-risk matrix predictions for a fitted Poisson Super Learner
 #'
 #' S3 method compatible with `riskRegression::predictRisk` returning one column
 #' per requested time.
@@ -35,7 +35,7 @@ predictRisk.poisson_superlearner <- function(object,newdata,times,cause=1, ...){
 
 }
 
-#' Absolute-risk matrix for a fitted base learner
+#' Absolute-risk matrix predictions for a fitted base learner
 #'
 #' @param object `base_learner`. Fitted object from [fit_learner()].
 #' @param newdata `data.frame`. New covariate data.

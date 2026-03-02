@@ -1,12 +1,3 @@
-#' Helper functions
-#'
-#' This script contains the utils functions that are used in the package.
-#'
-#' @import data.table
-#'
-#'
-
-
 # Data preprocessing ----
 
 create_response_variable_c_risks <- function(nodes, time_to_event, delta, event_type){
