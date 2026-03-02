@@ -7,15 +7,20 @@
 \method{print}{poisson_superlearner}(x, cause = 1, ...)
 }
 \arguments{
-\item{x}{\code{poisson_superlearner} object.}
+\item{x}{\code{poisson_superlearner} object returned by \code{\link[=Superlearner]{Superlearner()}}.}
 
-\item{cause}{\code{numeric(1)}. Cause index.}
+\item{cause}{\code{numeric(1)} or \code{NULL}. Which cause’s meta-learner fit to print.
+If \code{NULL}, prints one line per cause (classes only) instead of printing the full
+fitted objects.}
 
-\item{...}{Unused.}
+\item{...}{Passed to the underlying fitted meta-learner \code{print()} method when
+\code{cause} is a single integer.}
 }
 \value{
-Invisibly returns \code{object}.
+Invisibly returns \code{x}.
 }
 \description{
-Print method for \code{poisson_superlearner}
+Prints a compact description of the fitted Poisson Super Learner, including the
+number of base learners, the meta-learner, the time-grid used, and competing-risk
+structure. Optionally prints the fitted meta-learner for a given cause.
 }
