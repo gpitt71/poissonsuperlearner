@@ -2,24 +2,66 @@
 % Please edit documentation in R/predict.R
 \name{predict.base_learner}
 \alias{predict.base_learner}
-\title{Learner Predictions}
+\title{Predict hazards, survival and absolute risk from a fitted base learner}
 \usage{
 \method{predict}{base_learner}(object, newdata, times, cause = 1, ...)
 }
 \arguments{
-\item{object}{\code{poisson_superlearner} for absolute risk and survival function predictions.}
+\item{object}{\code{base_learner}. A fitted object returned by \code{\link[=fit_learner]{fit_learner()}}.
+It contains the learner specification in \code{object$model} and cause-specific fitted
+models in \code{object$learner_fit}.}
 
-\item{newdata}{\code{data.frame}, new data to predict the absolute risk and the survival function for.}
+\item{newdata}{\code{data.frame}/\code{data.table}. New covariate data (one row per subject).
+If \code{newdata} contains the original \code{event_time}, \code{status}, or \code{id} columns used
+for fitting, they are ignored for prediction.}
 
-\item{times}{\code{numeric}, time(s) at which to predict the absolute risk and survival function.}
+\item{times}{\code{numeric}. Prediction horizon(s). May include \code{0}.
+Times larger than \code{object$data_info$maximum_followup} are not supported:
+if \strong{all} requested times exceed the maximum follow-up, a warning is issued and
+\code{NULL} is returned; if only \strong{some} exceed, output rows for those times are
+returned with \code{NA} predictions.}
 
-\item{cause}{\code{numeric}, competing risk to predict the absolute risk and the survival function for.}
+\item{cause}{\code{numeric(1)}. Cause index (1, 2, ...) used for the \code{absolute_risk}
+calculation.}
 
-\item{...}{other parameters to be passed to predict.}
+\item{...}{Additional arguments (currently ignored).}
 }
 \value{
-\code{data.table} containing for each row of \code{newdata} the \code{poisson_superlearner} predictions for the survival function and the absolute risk predictions for some \code{cause} at the given \code{times}.
+A \code{data.table} with one row per \verb{(row in newdata, time in times)} and columns:
+\describe{
+\item{(original columns)}{All columns from \code{newdata} (excluding ignored event columns).}
+\item{time column}{A column with name \code{object$data_info$event_time} holding the requested horizon.}
+\item{pwch_1, pwch_2, ...}{Predicted cause-specific piecewise hazards at the horizon.}
+\item{survival_function}{Predicted survival probability at the horizon.}
+\item{absolute_risk}{Predicted cumulative incidence (absolute risk) for \code{cause} at the horizon.}
+}
 }
 \description{
-This method computes the survival function and the absolute risk prediction of a \code{base_learner} object, based on a given data set, at given \code{times} for a given \code{cause}.
+Computes \strong{cause-specific piecewise-constant hazards} (\code{pwch_k}), the corresponding
+\strong{survival function}, and \strong{absolute risk} for a given cause, at user-supplied
+prediction horizons \code{times}, using a fitted \code{base_learner} object (single learner;
+no stacking).
+}
+\details{
+Internally, \code{newdata} is expanded to a Cartesian product with \code{times}, converted to
+long Poisson format on \code{object$data_info$nodes}, and the fitted learner for each
+cause in \code{object$learner_fit} is used to predict the cause-specific hazards.
+Survival and absolute risk are then computed from the predicted hazards.
+
+\strong{Special case \code{times = 0}:} when \code{0} is included in \code{times}, the returned rows
+have \code{survival_function = 1}, \code{absolute_risk = 0}, and all \code{pwch_k = 0} at time 0.
+
+\strong{Identifiers in the output:} if \code{newdata} contains the \code{id} column, it is carried
+into the output. If \code{newdata} does not contain an id column, an internal id is
+created for computation, but it is not guaranteed to appear in the returned table
+unless it was present in \code{newdata}.
+}
+\examples{
+d <- simulateStenoT1(120, competing_risks = TRUE)
+lrn <- Learner_glmnet(covariates = c("age", "value_LDL"), lambda = 0, cross_validation = FALSE)
+bl <- fit_learner(d, learner = lrn, id="id", status="status_cvd", event_time="time_cvd",
+                  number_of_nodes=8)
+p <- predict(bl, newdata = d[1:5], times = c(0, 2, 5), cause = 1)
+head(p)
+
 }

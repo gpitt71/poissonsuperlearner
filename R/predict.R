@@ -1,35 +1,53 @@
-#' Predict hazards, survival and absolute risk from a fitted ensemble
+#' Predict hazards, survival and absolute risk from a fitted Poisson Super Learner
 #'
-#' Computes cause-specific piecewise hazards, survival function and absolute risk
-#' at user-supplied times for each row in `newdata`.
+#' Computes **cause-specific piecewise-constant hazards** (`pwch_k`), the corresponding
+#' **survival function**, and **absolute risk** for a given cause, at user-supplied
+#' prediction horizons `times`, for each row in `newdata`.
 #'
-#' @param object `poisson_superlearner`. Fitted object from [Superlearner()].
-#' @param newdata `data.frame`. New covariate data.
-#' @param times `numeric`. Prediction horizon(s).
-#' @param cause `numeric(1)`. Cause index for absolute-risk extraction.
-#' @param ... Additional arguments passed to lower-level predictors.
+#' Internally, `newdata` is expanded to a Cartesian product with the requested
+#' `times`, converted to long Poisson format on `object$data_info$nodes`, base-learner
+#' hazards are predicted for each cause, and (if applicable) combined via the
+#' cause-specific meta-learner. Survival and absolute risk are then computed from
+#' the predicted hazards.
 #'
-#' @return A `data.table` with one row per (`id`, `time`) and columns including
-#'   `survival_function`, `absolute_risk`, and cause-specific hazards `pwch_*`.
+#' @param object `poisson_superlearner`. A fitted ensemble from [Superlearner()].
+#' @param newdata `data.frame`/`data.table`. New covariate data (one row per subject).
+#'   If `newdata` contains the original `event_time`, `status`, or `id` columns used
+#'   for fitting, they are ignored for prediction.
+#' @param times `numeric`. Prediction horizon(s). May include `0`.
+#'   Times larger than `object$data_info$maximum_followup` are not supported:
+#'   if **all** requested times exceed the maximum follow-up, a warning is issued and
+#'   `NULL` is returned; if only **some** exceed, output rows for those times are
+#'   returned with `NA` predictions.
+#' @param cause `numeric(1)`. Cause index (1, 2, ...) used for the `absolute_risk`
+#'   calculation.
+#' @param ... Additional arguments (currently ignored).
+#'
+#' @details
+#' **Special case `times = 0`:** when `0` is included in `times`, the returned rows
+#' have `survival_function = 1`, `absolute_risk = 0`, and all `pwch_k = 0` at time 0.
+#'
+#' **Identifiers in the output:** if `newdata` contains the `id` column, it is carried
+#' into the output. If `newdata` does not contain an id column, an internal id is
+#' created for computation, but it is not guaranteed to appear in the returned table
+#' unless it was present in `newdata`.
+#'
+#' @return A `data.table` with one row per `(row in newdata, time in times)` and columns:
+#' \describe{
+#'   \item{(original columns)}{All columns from `newdata` (excluding ignored event columns).}
+#'   \item{time column}{A column with name `object$data_info$event_time` holding the requested horizon.}
+#'   \item{pwch_1, pwch_2, ...}{Predicted cause-specific piecewise hazards at the horizon.}
+#'   \item{survival_function}{Predicted survival probability at the horizon.}
+#'   \item{absolute_risk}{Predicted cumulative incidence (absolute risk) for `cause` at the horizon.}
+#' }
 #'
 #' @examples
 #' d <- simulateStenoT1(120, competing_risks = TRUE)
-#' lglmnet1 <- Learner_glmnet(covariates = c("age", "value_LDL"),
-#'                            lambda=0,
-#'                            cross_validation=FALSE)
-#' lglmnet2 <- Learner_glmnet(covariates = c("age", "value_LDL"),
-#'                           lambda=0.5,
-#'                           cross_validation=FALSE)
-#' fit <- Superlearner(
-#'   data = d,
-#'   id = "id",
-#'   status = "status_cvd",
-#'   event_time = "time_cvd",
-#'   learners = list(l1=lglmnet1,
-#'   l2=lglmnet2),
-#'   number_of_nodes = 8
-#' )
-#' p <- predict(fit, newdata = d[1:5], times = c(2, 5), cause = 1)
+#' l1 <- Learner_glmnet(covariates = c("age", "value_LDL"), lambda = 0, cross_validation = FALSE)
+#' l2 <- Learner_gam(covariates = c("age", "value_LDL"))
+#' fit <- Superlearner(d, id="id", status="status_cvd", event_time="time_cvd",
+#'                     learners=list(glm=l1, gam=l2), number_of_nodes=8, nfold=3)
+#' p <- predict(fit, newdata = d[1:5,], times = c(2,5,10), cause = 1)
 #' head(p)
 #'
 #' @export
@@ -42,6 +60,7 @@ predict.poisson_superlearner <- function(object,
   setDT(newdata)
 
   tmp <- copy(newdata)
+  tmp[,internal_psl_ix:=1:.N]
   # here we disregard the event_time column if present in the newdata
   tmp <- tmp[, setdiff(names(tmp), c(object$data_info$event_time,
                                      object$data_info$status,
@@ -93,17 +112,8 @@ predict.poisson_superlearner <- function(object,
 
 
 
-  if(cond_zero){
 
-    zero_time <- data_pp[time==0,]
-    zero_time[, c(pwch_cols, 'survival_function', 'absolute_risk') := list(rep(0, length(pwch_cols)), 1,0)]
-    data_pp<-data_pp[time!=0,]
-  }
 
-  if(all_zero){
-
-    return(zero_time)
-  }
 
   # no problem writing over id
   if (is.null(data_pp[[object$data_info$id]])) {
@@ -112,6 +122,24 @@ predict.poisson_superlearner <- function(object,
 
   if (is.null(data_pp[[object$data_info$status]])) {
     data_pp[[object$data_info$status]] <- 0
+  }
+
+
+  if(cond_zero){
+
+
+    tmptcol <- object$data_info$event_time  # character vector
+    zero_time <- data_pp[get(tmptcol) == 0]
+    for (cl in pwch_cols) set(zero_time, j = cl, value = 0)
+    set(zero_time, j = "survival_function", value = 1)
+    set(zero_time, j = "absolute_risk", value = 0)
+    data_pp<-data_pp[get(tmptcol) != 0]
+  }
+
+
+  if(all_zero){
+
+    return(zero_time)
   }
 
   data_pp <- data_pre_processing(
@@ -238,7 +266,8 @@ predict.poisson_superlearner <- function(object,
       object$data_info$event_time,
       pwch_cols,
       "survival_function",
-      "absolute_risk"
+      "absolute_risk",
+      "internal_psl_ix"
     )
   )
 
@@ -287,6 +316,9 @@ predict.poisson_superlearner <- function(object,
   }
 
 
+  d[, (object$data_info$id) := NULL]
+  setnames(d, new = object$data_info$id, old = "internal_psl_ix")
+  d<-d[order(id),]
   return(d)
 
 
@@ -297,18 +329,58 @@ predict.poisson_superlearner <- function(object,
 
 
 
-#' Learner Predictions
+#' Predict hazards, survival and absolute risk from a fitted base learner
 #'
-#' This method computes the survival function and the absolute risk prediction of a \code{base_learner} object, based on a given data set, at given \code{times} for a given \code{cause}.
+#' Computes **cause-specific piecewise-constant hazards** (`pwch_k`), the corresponding
+#' **survival function**, and **absolute risk** for a given cause, at user-supplied
+#' prediction horizons `times`, using a fitted `base_learner` object (single learner;
+#' no stacking).
 #'
+#' Internally, `newdata` is expanded to a Cartesian product with `times`, converted to
+#' long Poisson format on `object$data_info$nodes`, and the fitted learner for each
+#' cause in `object$learner_fit` is used to predict the cause-specific hazards.
+#' Survival and absolute risk are then computed from the predicted hazards.
 #'
-#' @param object \code{poisson_superlearner} for absolute risk and survival function predictions.
-#' @param newdata \code{data.frame}, new data to predict the absolute risk and the survival function for.
-#' @param times \code{numeric}, time(s) at which to predict the absolute risk and survival function.
-#' @param cause \code{numeric}, competing risk to predict the absolute risk and the survival function for.
-#' @param ... other parameters to be passed to predict.
+#' @param object `base_learner`. A fitted object returned by [fit_learner()].
+#'   It contains the learner specification in `object$model` and cause-specific fitted
+#'   models in `object$learner_fit`.
+#' @param newdata `data.frame`/`data.table`. New covariate data (one row per subject).
+#'   If `newdata` contains the original `event_time`, `status`, or `id` columns used
+#'   for fitting, they are ignored for prediction.
+#' @param times `numeric`. Prediction horizon(s). May include `0`.
+#'   Times larger than `object$data_info$maximum_followup` are not supported:
+#'   if **all** requested times exceed the maximum follow-up, a warning is issued and
+#'   `NULL` is returned; if only **some** exceed, output rows for those times are
+#'   returned with `NA` predictions.
+#' @param cause `numeric(1)`. Cause index (1, 2, ...) used for the `absolute_risk`
+#'   calculation.
+#' @param ... Additional arguments (currently ignored).
 #'
-#' @return \code{data.table} containing for each row of \code{newdata} the \code{poisson_superlearner} predictions for the survival function and the absolute risk predictions for some \code{cause} at the given \code{times}.
+#' @details
+#' **Special case `times = 0`:** when `0` is included in `times`, the returned rows
+#' have `survival_function = 1`, `absolute_risk = 0`, and all `pwch_k = 0` at time 0.
+#'
+#' **Identifiers in the output:** if `newdata` contains the `id` column, it is carried
+#' into the output. If `newdata` does not contain an id column, an internal id is
+#' created for computation, but it is not guaranteed to appear in the returned table
+#' unless it was present in `newdata`.
+#'
+#' @return A `data.table` with one row per `(row in newdata, time in times)` and columns:
+#' \describe{
+#'   \item{(original columns)}{All columns from `newdata` (excluding ignored event columns).}
+#'   \item{time column}{A column with name `object$data_info$event_time` holding the requested horizon.}
+#'   \item{pwch_1, pwch_2, ...}{Predicted cause-specific piecewise hazards at the horizon.}
+#'   \item{survival_function}{Predicted survival probability at the horizon.}
+#'   \item{absolute_risk}{Predicted cumulative incidence (absolute risk) for `cause` at the horizon.}
+#' }
+#'
+#' @examples
+#' d <- simulateStenoT1(120, competing_risks = TRUE)
+#' lrn <- Learner_glmnet(covariates = c("age", "value_LDL"), lambda = 0, cross_validation = FALSE)
+#' bl <- fit_learner(d, learner = lrn, id="id", status="status_cvd", event_time="time_cvd",
+#'                   number_of_nodes=8)
+#' p <- predict(bl, newdata = d[1:5], times = c(0, 2, 5), cause = 1)
+#' head(p)
 #'
 #' @export
 predict.base_learner <- function(object,

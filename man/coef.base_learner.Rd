@@ -2,20 +2,56 @@
 % Please edit documentation in R/coef.R
 \name{coef.base_learner}
 \alias{coef.base_learner}
-\title{Extract coefficients from a \code{base_learner}}
+\title{Extract coefficients from a fitted base learner}
 \usage{
 \method{coef}{base_learner}(object, cause = NULL, ...)
 }
 \arguments{
-\item{object}{\code{base_learner} object.}
+\item{object}{\code{base_learner}. A fitted object returned by \code{\link[=fit_learner]{fit_learner()}}.}
 
-\item{cause}{\code{numeric(1)} or \code{NULL}. If \code{NULL}, returns all causes.}
+\item{cause}{\code{numeric(1)} or \code{NULL}. Which cause to extract coefficients for.
+If \code{NULL}, coefficients are returned for all causes.
+Causes are indexed \verb{1, 2, ..., object$data_info$n_crisks} (with \code{0} reserved for censoring).}
 
-\item{...}{Passed to underlying \code{coef} methods.}
+\item{...}{Passed to the underlying \code{coef()} method of the fitted learner object
+(learner-dependent; e.g., \code{s} for \code{glmnet}).}
 }
 \value{
-A coefficient object for one cause or a list across causes.
+If \code{cause} is a single integer, returns the coefficient object produced by
+\code{coef()} for that cause-specific fitted model.
+
+If \code{cause = NULL}, returns a \code{list} of length \code{object$data_info$n_crisks},
+where element \verb{[[k]]} contains coefficients for cause \code{k}.
+
+If no fitted model is present (\code{object$learner_fit} is \code{NULL}), prints a message
+and returns \code{invisible(object)}.
 }
 \description{
-Extract coefficients from a \code{base_learner}
+Convenience method to extract (cause-specific) model coefficients from a fitted
+\code{base_learner} returned by \code{\link[=fit_learner]{fit_learner()}}.
+}
+\details{
+For competing risks, \code{fit_learner()} fits one model per cause, stored in
+\code{object$learner_fit[[k]]} for \verb{k = 1, 2, ..., K}. This method simply dispatches
+to the underlying model’s \code{coef()} method for each fitted object.
+
+\strong{Learner-dependent output.} The returned coefficient object depends on the
+base learner used (e.g. a numeric vector, a sparse matrix, a list, etc.).
+This method does not post-process or rename coefficients; it returns the output
+of \code{coef(object$learner_fit[[k]], ...)} unchanged.
+}
+\examples{
+d <- simulateStenoT1(200, competing_risks = TRUE)
+lrn <- Learner_glmnet(covariates = c("age", "value_LDL"),
+                      lambda = 0, cross_validation = FALSE)
+bl <- fit_learner(d, learner = lrn, id = "id",
+                  status = "status_cvd", event_time = "time_cvd",
+                  number_of_nodes = 8)
+
+# coefficients for cause 1
+coef(bl, cause = 1)
+
+# coefficients for all causes (list)
+coef(bl)
+
 }

@@ -7,14 +7,23 @@
 \method{summary}{poisson_superlearner}(object, ...)
 }
 \arguments{
-\item{object}{\code{poisson_superlearner}.}
+\item{object}{\code{poisson_superlearner} returned by \code{\link[=Superlearner]{Superlearner()}}.}
 
-\item{...}{Unused.}
+\item{...}{Passed to the underlying \code{coef()} method for the fitted meta-learner
+(learner-dependent; e.g. \code{s} for \code{glmnet}).}
 }
 \value{
-\code{data.table} with cross-validated Poisson deviance summaries for
-learners and meta-learner.
+Invisibly returns a \code{list} with elements:
+\describe{
+\item{cross_validation_deviance}{\code{data.table} (or \code{NULL}).}
+\item{meta_coefficients}{List of length \code{n_crisks} with cause-specific coefficient objects (or \code{NULL}).}
+}
 }
 \description{
-Summarize a fitted Poisson Super Learner object
+Prints:
+\enumerate{
+\item a compact description of the fitted ensemble,
+\item cross-validated deviances for base learners (when available),
+\item cause-specific meta-learner coefficients (stacking weights).
+}
 }

@@ -1,10 +1,19 @@
 #' Summarize a fitted Poisson Super Learner object
 #'
-#' @param object `poisson_superlearner`.
-#' @param ... Unused.
+#' Prints:
+#' 1) a compact description of the fitted ensemble,
+#' 2) cross-validated deviances for base learners (when available),
+#' 3) cause-specific meta-learner coefficients (stacking weights).
 #'
-#' @return `data.table` with cross-validated Poisson deviance summaries for
-#' learners and meta-learner.
+#' @param object `poisson_superlearner` returned by [Superlearner()].
+#' @param ... Passed to the underlying `coef()` method for the fitted meta-learner
+#'   (learner-dependent; e.g. `s` for `glmnet`).
+#'
+#' @return Invisibly returns a `list` with elements:
+#' \describe{
+#'   \item{cross_validation_deviance}{`data.table` (or `NULL`).}
+#'   \item{meta_coefficients}{List of length `n_crisks` with cause-specific coefficient objects (or `NULL`).}
+#' }
 #' @export
 summary.poisson_superlearner <- function(object, ...) {
 
@@ -133,15 +142,18 @@ summary.poisson_superlearner <- function(object, ...) {
 
 
 
-#' Summary method for base_learner objects
 #' Summarize a fitted base learner object
 #'
-#' @param object `base_learner`.
-#' @param cause `numeric(1)`. Cause index.
-#' @param ... Unused.
+#' Dispatches to the underlying fitted model’s `summary()` method for the selected
+#' cause, or returns a list of summaries for all causes.
 #'
-#' @return A list containing model-specific summary information for the selected
-#' cause.
+#' @param object `base_learner` returned by [fit_learner()].
+#' @param cause `numeric(1)` or `NULL`. Which cause to summarize. If `NULL`,
+#'   returns one summary per cause.
+#' @param ... Passed to the underlying `summary()` method (learner-dependent).
+#'
+#' @return If `cause` is a single integer, returns the underlying model summary for
+#' that cause. If `cause = NULL`, returns a list of summaries (one per cause).
 #' @export
 summary.base_learner <- function(object, cause=1, ...) {
 

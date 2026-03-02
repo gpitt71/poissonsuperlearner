@@ -2,47 +2,65 @@
 % Please edit documentation in R/predict.R
 \name{predict.poisson_superlearner}
 \alias{predict.poisson_superlearner}
-\title{Predict hazards, survival and absolute risk from a fitted ensemble}
+\title{Predict hazards, survival and absolute risk from a fitted Poisson Super Learner}
 \usage{
 \method{predict}{poisson_superlearner}(object, newdata, times, cause = 1, ...)
 }
 \arguments{
-\item{object}{\code{poisson_superlearner}. Fitted object from \code{\link[=Superlearner]{Superlearner()}}.}
+\item{object}{\code{poisson_superlearner}. A fitted ensemble from \code{\link[=Superlearner]{Superlearner()}}.}
 
-\item{newdata}{\code{data.frame}. New covariate data.}
+\item{newdata}{\code{data.frame}/\code{data.table}. New covariate data (one row per subject).
+If \code{newdata} contains the original \code{event_time}, \code{status}, or \code{id} columns used
+for fitting, they are ignored for prediction.}
 
-\item{times}{\code{numeric}. Prediction horizon(s).}
+\item{times}{\code{numeric}. Prediction horizon(s). May include \code{0}.
+Times larger than \code{object$data_info$maximum_followup} are not supported:
+if \strong{all} requested times exceed the maximum follow-up, a warning is issued and
+\code{NULL} is returned; if only \strong{some} exceed, output rows for those times are
+returned with \code{NA} predictions.}
 
-\item{cause}{\code{numeric(1)}. Cause index for absolute-risk extraction.}
+\item{cause}{\code{numeric(1)}. Cause index (1, 2, ...) used for the \code{absolute_risk}
+calculation.}
 
-\item{...}{Additional arguments passed to lower-level predictors.}
+\item{...}{Additional arguments (currently ignored).}
 }
 \value{
-A \code{data.table} with one row per (\code{id}, \code{time}) and columns including
-\code{survival_function}, \code{absolute_risk}, and cause-specific hazards \verb{pwch_*}.
+A \code{data.table} with one row per \verb{(row in newdata, time in times)} and columns:
+\describe{
+\item{(original columns)}{All columns from \code{newdata} (excluding ignored event columns).}
+\item{time column}{A column with name \code{object$data_info$event_time} holding the requested horizon.}
+\item{pwch_1, pwch_2, ...}{Predicted cause-specific piecewise hazards at the horizon.}
+\item{survival_function}{Predicted survival probability at the horizon.}
+\item{absolute_risk}{Predicted cumulative incidence (absolute risk) for \code{cause} at the horizon.}
+}
 }
 \description{
-Computes cause-specific piecewise hazards, survival function and absolute risk
-at user-supplied times for each row in \code{newdata}.
+Computes \strong{cause-specific piecewise-constant hazards} (\code{pwch_k}), the corresponding
+\strong{survival function}, and \strong{absolute risk} for a given cause, at user-supplied
+prediction horizons \code{times}, for each row in \code{newdata}.
+}
+\details{
+Internally, \code{newdata} is expanded to a Cartesian product with the requested
+\code{times}, converted to long Poisson format on \code{object$data_info$nodes}, base-learner
+hazards are predicted for each cause, and (if applicable) combined via the
+cause-specific meta-learner. Survival and absolute risk are then computed from
+the predicted hazards.
+
+\strong{Special case \code{times = 0}:} when \code{0} is included in \code{times}, the returned rows
+have \code{survival_function = 1}, \code{absolute_risk = 0}, and all \code{pwch_k = 0} at time 0.
+
+\strong{Identifiers in the output:} if \code{newdata} contains the \code{id} column, it is carried
+into the output. If \code{newdata} does not contain an id column, an internal id is
+created for computation, but it is not guaranteed to appear in the returned table
+unless it was present in \code{newdata}.
 }
 \examples{
 d <- simulateStenoT1(120, competing_risks = TRUE)
-lglmnet1 <- Learner_glmnet(covariates = c("age", "value_LDL"),
-                           lambda=0,
-                           cross_validation=FALSE)
-lglmnet2 <- Learner_glmnet(covariates = c("age", "value_LDL"),
-                          lambda=0.5,
-                          cross_validation=FALSE)
-fit <- Superlearner(
-  data = d,
-  id = "id",
-  status = "status_cvd",
-  event_time = "time_cvd",
-  learners = list(l1=lglmnet1,
-  l2=lglmnet2),
-  number_of_nodes = 8
-)
-p <- predict(fit, newdata = d[1:5], times = c(2, 5), cause = 1)
+l1 <- Learner_glmnet(covariates = c("age", "value_LDL"), lambda = 0, cross_validation = FALSE)
+l2 <- Learner_gam(covariates = c("age", "value_LDL"))
+fit <- Superlearner(d, id="id", status="status_cvd", event_time="time_cvd",
+                    learners=list(glm=l1, gam=l2), number_of_nodes=8, nfold=3)
+p <- predict(fit, newdata = d[1:5,], times = c(2,5,10), cause = 1)
 head(p)
 
 }

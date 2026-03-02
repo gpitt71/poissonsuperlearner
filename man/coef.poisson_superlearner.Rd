@@ -2,20 +2,67 @@
 % Please edit documentation in R/coef.R
 \name{coef.poisson_superlearner}
 \alias{coef.poisson_superlearner}
-\title{Extract meta-learner coefficients from a fitted ensemble}
+\title{Extract stacking (meta-learner) coefficients from a fitted Poisson Super Learner}
 \usage{
 \method{coef}{poisson_superlearner}(object, cause = NULL, ...)
 }
 \arguments{
-\item{object}{\code{poisson_superlearner} object.}
+\item{object}{\code{poisson_superlearner}. A fitted ensemble returned by \code{\link[=Superlearner]{Superlearner()}}.}
 
-\item{cause}{\code{numeric(1)} or \code{NULL}. If \code{NULL}, returns all causes.}
+\item{cause}{\code{numeric(1)} or \code{NULL}. Which cause to extract meta-learner
+coefficients for. If \code{NULL}, coefficients are returned for all causes.
+Causes are indexed \verb{1, 2, ..., object$data_info$n_crisks}.}
 
-\item{...}{Passed to underlying \code{coef} methods.}
+\item{...}{Passed to the underlying \code{coef()} method of the fitted meta-learner
+(learner-dependent; e.g., \code{s} for \code{glmnet}).}
 }
 \value{
-A coefficient object for one cause or a list across causes.
+If \code{cause} is a single integer, returns the coefficient object produced by
+\code{coef()} for the cause-specific fitted meta-learner.
+
+If \code{cause = NULL}, returns a \code{list} of length \code{object$data_info$n_crisks},
+where element \verb{[[k]]} contains meta-learner coefficients for cause \code{k}.
+
+If no fitted ensemble is present (\code{object$superlearner} is \code{NULL}), prints a message
+and returns \code{invisible(object)}.
 }
 \description{
-Extract meta-learner coefficients from a fitted ensemble
+Extracts the \strong{meta-learner coefficients} (stacking weights) from a fitted
+\code{poisson_superlearner} object returned by \code{\link[=Superlearner]{Superlearner()}}.
+}
+\details{
+For each cause \code{k}, the ensemble stores a fitted meta-learner in
+\code{object$superlearner[[k]]$meta_learner_fit}. This method dispatches to the
+underlying \code{coef()} method for that fitted meta-learner.
+
+\strong{What coefficients represent.} These coefficients correspond to the meta-learner
+regression of the outcome on the cross-validated base-learner predictions
+(\code{Z1}, \code{Z2}, ...). Under the default meta-learner, they are the stacking
+weights (on the scale defined by the meta-learner).
+
+\strong{Learner-dependent output.} The returned coefficient object depends on the
+meta-learner implementation (by default a \code{glmnet} fit, often returning a sparse
+matrix). This method does not rename \verb{Z*} terms or post-process coefficients; it
+returns the output of \code{coef(object$superlearner[[k]]$meta_learner_fit, ...)}
+unchanged.
+
+\strong{Single-learner special case.} If the ensemble was fit with only one base learner,
+no meta-learner is fit and \code{meta_learner_fit} is \code{NULL}. In that case, \code{coef()}
+for the \code{poisson_superlearner} does not have meta-learner coefficients to return.
+}
+\examples{
+d <- simulateStenoT1(200, competing_risks = TRUE)
+learners <- list(
+  glm = Learner_glmnet(covariates = c("age", "value_LDL"), lambda = 0, cross_validation = FALSE),
+  gam = Learner_gam(covariates = c("age", "value_LDL"))
+)
+fit <- Superlearner(d, id="id", status="status_cvd", event_time="time_cvd",
+                    learners=learners, number_of_nodes=8, nfold=3)
+
+# meta-learner coefficients (cause 1)
+coef(fit, cause = 1)
+
+# meta-learner coefficients for all causes (list)
+coef(fit)
+
 }

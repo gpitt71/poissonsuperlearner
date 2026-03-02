@@ -2,23 +2,23 @@
 % Please edit documentation in R/summary.R
 \name{summary.base_learner}
 \alias{summary.base_learner}
-\title{Summary method for base_learner objects
-Summarize a fitted base learner object}
+\title{Summarize a fitted base learner object}
 \usage{
 \method{summary}{base_learner}(object, cause = 1, ...)
 }
 \arguments{
-\item{object}{\code{base_learner}.}
+\item{object}{\code{base_learner} returned by \code{\link[=fit_learner]{fit_learner()}}.}
 
-\item{cause}{\code{numeric(1)}. Cause index.}
+\item{cause}{\code{numeric(1)} or \code{NULL}. Which cause to summarize. If \code{NULL},
+returns one summary per cause.}
 
-\item{...}{Unused.}
+\item{...}{Passed to the underlying \code{summary()} method (learner-dependent).}
 }
 \value{
-A list containing model-specific summary information for the selected
-cause.
+If \code{cause} is a single integer, returns the underlying model summary for
+that cause. If \code{cause = NULL}, returns a list of summaries (one per cause).
 }
 \description{
-Summary method for base_learner objects
-Summarize a fitted base learner object
+Dispatches to the underlying fitted model’s \code{summary()} method for the selected
+cause, or returns a list of summaries for all causes.
 }

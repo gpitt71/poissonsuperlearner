@@ -7,15 +7,20 @@
 \method{print}{base_learner}(x, cause = 1, ...)
 }
 \arguments{
-\item{x}{\code{base_learner} object.}
+\item{x}{\code{base_learner} object returned by \code{\link[=fit_learner]{fit_learner()}}.}
 
-\item{cause}{\code{numeric(1)}. Cause index.}
+\item{cause}{\code{numeric(1)} or \code{NULL}. Which cause to print the fitted model for.
+If \code{NULL}, prints one line per cause (classes only) instead of printing the full
+fitted objects.}
 
-\item{...}{Unused.}
+\item{...}{Passed to the underlying fitted object \code{print()} method when \code{cause}
+is a single integer.}
 }
 \value{
 Invisibly returns \code{x}.
 }
 \description{
-Print method for \code{base_learner}
+Prints a compact description of the fitted base learner, including the learner
+type, the time-grid used, and (optionally) the fitted model object for a given
+cause.
 }
