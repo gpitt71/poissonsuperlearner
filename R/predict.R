@@ -392,6 +392,7 @@ predict.base_learner <- function(object,
   setDT(newdata)
 
   tmp <- copy(newdata)
+  tmp[,internal_psl_ix:=1:.N]
   # here we disregard the event_time column if present in the newdata
   tmp <- tmp[, setdiff(names(tmp), c(object$data_info$event_time,
                                      object$data_info$status,
@@ -452,11 +453,26 @@ predict.base_learner <- function(object,
 
 
 
+
+# no problem writing over id
+if (is.null(data_pp[[object$data_info$id]])) {
+  data_pp[[object$data_info$id]] <- 1:nrow(data_pp)
+}
+
+if (is.null(data_pp[[object$data_info$status]])) {
+  data_pp[[object$data_info$status]] <- 0
+}
+
+
   if(cond_zero){
 
-    zero_time <- data_pp[time==0,]
-    zero_time[, c(pwch_cols, 'survival_function', 'absolute_risk') := list(rep(0, length(pwch_cols)), 1,0)]
-    data_pp<-data_pp[time!=0,]
+
+    tmptcol <- object$data_info$event_time  # character vector
+    zero_time <- data_pp[get(tmptcol) == 0]
+    for (cl in pwch_cols) set(zero_time, j = cl, value = 0)
+    set(zero_time, j = "survival_function", value = 1)
+    set(zero_time, j = "absolute_risk", value = 0)
+    data_pp<-data_pp[get(tmptcol) != 0]
   }
 
   if(all_zero){
@@ -464,14 +480,7 @@ predict.base_learner <- function(object,
     return(zero_time)
   }
 
-  # no problem writing over id
-  if (is.null(data_pp[[object$data_info$id]])) {
-    data_pp[[object$data_info$id]] <- 1:nrow(data_pp)
-  }
 
-  if (is.null(data_pp[[object$data_info$status]])) {
-    data_pp[[object$data_info$status]] <- 0
-  }
 
   data_pp <- data_pre_processing(
     data_pp,
@@ -578,7 +587,8 @@ predict.base_learner <- function(object,
       object$data_info$event_time,
       pwch_cols,
       "survival_function",
-      "absolute_risk"
+      "absolute_risk",
+      "internal_psl_ix"
     )
   )
 
@@ -627,6 +637,9 @@ predict.base_learner <- function(object,
   }
 
 
+  d[, (object$data_info$id) := NULL]
+  setnames(d, new = object$data_info$id, old = "internal_psl_ix")
+  d<-d[order(id),]
   return(d)
 
 

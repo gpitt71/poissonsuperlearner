@@ -6,44 +6,108 @@
 \alias{Learner_hal}
 \title{HAL learner for piecewise Poisson hazards}
 \description{
-\code{Learner_hal} implements a Highly Adaptive Lasso learner using basis expansion
-and penalized Poisson regression in the long-format representation. Any
-additional arguments supplied via \code{...} are forwarded to the underlying
-glmnet-based fitting calls used by this learner.
+\code{Learner_hal} is a Reference Class implementing the learner interface
+used by \code{\link[=Superlearner]{Superlearner()}} and \code{\link[=fit_learner]{fit_learner()}}.
+}
+\details{
+\strong{User-facing API:} users should \strong{only initialize} the learner and pass it
+to \code{\link[=Superlearner]{Superlearner()}} / \code{\link[=fit_learner]{fit_learner()}}. The methods \code{private_fit()} and
+\code{private_predictor()} (and any basis-construction helpers) are part of the
+internal learner interface and are \strong{not meant to be called directly by users}.
+
+\strong{Wrapper role:} this class provides a piecewise-constant hazard wrapper around
+a HAL-style indicator-basis construction, estimated by L1-penalized Poisson
+regression using a \code{glmnet} backend. The package-specific contribution is to
+(i) construct the long-format Poisson representation with offsets for time at
+risk, (ii) generate indicator bases compatible with piecewise hazards, and
+(iii) forward backend fitting arguments supplied via \code{...}.
+}
+
+\section{Model}{
+
+Let \eqn{0=t_0 < t_1 < \cdots < t_m}{0=t0 < t1 < ... < tm} denote time knots and
+define interval indicators \eqn{I_k(t)=1\{t\in(t_k,t_{k+1}]\}}{Ik(t)=I(t in (tk, t{k+1}])}.
+The HAL piecewise-constant hazard model is
+\deqn{
+  \lambda(t \mid x) = \sum_{k=0}^{m} I_k(t)\,\exp\{f(t,x)\},
+}{
+  lambda(t|x) = sum_{k=0}^m Ik(t) * exp(f(t,x)).
+}
+where \eqn{f(t,x)}{f(t,x)} is approximated by a finite linear combination of
+indicator basis functions.
+}
+
+\section{Two-covariate illustration}{
+
+Let \eqn{x=(x_1,x_2)}{x=(x1,x2)} be two covariates and let
+\eqn{t_0 < t_1 < \cdots < t_R}{t0 < t1 < ... < tR} be time grid points used to
+create step functions in time. Choose covariate cutpoints
+\eqn{c_{1,1},\ldots,c_{1,K_1}}{c1_1,...,c1_K1} for \eqn{x_1}{x1} and
+\eqn{c_{2,1},\ldots,c_{2,K_2}}{c2_1,...,c2_K2} for \eqn{x_2}{x2}.
+
+Define indicator bases:
+\deqn{B_r(t) = 1\{t_r \le t\}}{Br(t) = I(tr <= t),}
+\deqn{B_{1,p}(x) = 1\{c_{1,p} \le x_1\}}{B1p(x) = I(c1p <= x1),}
+\deqn{B_{2,q}(x) = 1\{c_{2,q} \le x_2\}}{B2q(x) = I(c2q <= x2).}
+
+A main-effects HAL approximation on the log-hazard scale can be written as:
+\deqn{
+  f_\beta(t,x) = \beta_0
+  + \sum_{r=1}^R \beta_r B_r(t)
+  + \sum_{r=1}^R\sum_{p=1}^{K_1} \beta_{r,1,p} B_r(t) B_{1,p}(x)
+  + \sum_{r=1}^R\sum_{q=1}^{K_2} \beta_{r,2,q} B_r(t) B_{2,q}(x).
+}{
+  f_beta(t,x) = beta0
+  + sum_{r=1}^R beta_r Br(t)
+  + sum_{r=1}^R sum_{p=1}^K1 beta_{r,1,p} Br(t) B1p(x)
+  + sum_{r=1}^R sum_{q=1}^K2 beta_{r,2,q} Br(t) B2q(x).
+}
+If \code{max_degree >= 2}, the learner additionally includes interaction bases such as
+\deqn{
+  \sum_{r=1}^R\sum_{p=1}^{K_1}\sum_{q=1}^{K_2}
+  \beta_{r,12,pq} B_r(t) B_{1,p}(x) B_{2,q}(x).
+}{
+  sum_{r=1}^R sum_{p=1}^K1 sum_{q=1}^K2 beta_{r,12,pq} Br(t) B1p(x) B2q(x).
+}
+}
+
+\section{How reference class parameters map to the model}{
+
+\describe{
+\item{\code{covariates}}{Covariate columns used to build covariate indicator bases.}
+\item{\code{num_knots}}{Controls the number of cutpoints per covariate used for indicator bases.}
+\item{\code{max_degree}}{Maximum interaction order included in the basis expansion.}
+\item{\code{add_nodes}}{If \code{TRUE}, includes interval ("node") structure for the baseline hazard.}
+\item{\code{intercept}}{Whether the backend penalized regression includes an intercept term.}
+\item{\code{cross_validation}}{If \code{TRUE}, selects the penalty level using \code{glmnet::cv.glmnet}.}
+\item{\code{fit_arguments}}{Additional arguments forwarded to the \code{glmnet} backend (e.g. \code{nfolds}).}
+}
 }
 
 \section{Fields}{
 
-Main fields include \code{covariates} (\code{character}), \code{cross_validation} (\code{logical}),
-\code{formula} (\code{character}), \code{lambda} (\code{numeric}), \code{max_degree} (\code{numeric}),
-\code{num_knots} (\code{numeric}), \code{smoothness_orders} (\code{numeric}), and \code{fit_arguments} (\code{list}).
-These fields define basis construction, regularization and fitting behaviour.
+\describe{
+\item{\code{covariates} (\code{character})}{Names of covariate columns used in the basis.}
+\item{\code{cross_validation} (\code{logical})}{Whether to use \code{cv.glmnet} to select the penalty.}
+\item{\code{intercept} (\code{logical})}{Backend intercept flag.}
+\item{\code{add_nodes} (\code{logical})}{Whether node (time-interval) effects are included.}
+\item{\code{max_degree} (\code{integer})}{Maximum interaction order.}
+\item{\code{num_knots} (\code{numeric})}{Knots used for basis construction.}
+\item{\code{lambda_opt} (\code{numeric})}{Selected penalty level when using cross-validation.}
+\item{\code{fit_arguments} (\code{list})}{Extra backend arguments forwarded to \code{glmnet}.}
+}
 }
 
-\section{Methods}{
+\section{Methods (internal learner interface)}{
 
 \describe{
-\item{\code{initialize(...)}}{Creates and configures the learner object.
-Input: HAL tuning parameters and optional backend arguments in \code{...}.
-Output: configured \code{Learner_hal} reference object.}
-\item{\code{private_fit(data, ...)}}{Internal method (not intended for end users).
-Input: long-format \code{data.table}/\code{data.frame} with interval outcome and offset
-columns (\code{deltaij}, \code{tij}, \code{node}, \code{k}) and covariates. Output: fitted
-penalized model object used for prediction (typically \code{glmnet}).}
-\item{\code{private_predictor(model, newdata, ...)}}{Internal method (not intended
-for end users). Input: fitted \code{model} and compatible \code{newdata}.
-Output: \code{numeric} vector/matrix of predicted piecewise hazards.}
+\item{\code{initialize(...)}}{Construct and configure the learner. This is the only method users should call.}
+\item{\code{private_fit(data, ...)}}{Internal. Builds bases and fits the penalized Poisson model with offset \code{log(tij)}.}
+\item{\code{private_predictor(model, newdata, ...)}}{Internal. Evaluates the fitted approximation and returns hazards on the response scale.}
 }
 }
 
 \examples{
-lrn <- Learner_hal(covariates = c("age", "sex"), max_degree=2L)
-lrn$max_degree
+lrn <- Learner_hal(covariates = c("age", "sex"), max_degree = 2L, num_knots = c(10L, 5L))
 
-}
-\references{
-Benkeser D, van der Laan M, et al. hal9001: The Scalable Highly Adaptive
-Lasso. R package.
-Friedman J, Hastie T, Tibshirani R. glmnet: Lasso and Elastic-Net Regularized
-Generalized Linear Models. R package.
 }

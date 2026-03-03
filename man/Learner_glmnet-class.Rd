@@ -7,50 +7,65 @@
 \title{Penalized Poisson learner via \code{glmnet}}
 \description{
 \code{Learner_glmnet} is a Reference Class implementing the learner interface
-used by \code{\link[=Superlearner]{Superlearner()}} and \code{\link[=fit_learner]{fit_learner()}}. Any additional arguments
-supplied via \code{...} at initialization are forwarded to the underlying
-fitting backend (\code{glmnet::glmnet} or \code{glmnet::cv.glmnet}) through
-\code{fit_arguments}.
+used by \code{\link[=Superlearner]{Superlearner()}} and \code{\link[=fit_learner]{fit_learner()}}.
+}
+\details{
+\strong{User-facing API:} users are expected to \strong{initialize} the learner (i.e.,
+call \code{Learner_glmnet(...)}) and pass the resulting object to
+\code{\link[=Superlearner]{Superlearner()}} or \code{\link[=fit_learner]{fit_learner()}}. The remaining methods documented below
+(e.g., \code{private_fit()}, \code{private_predictor()}) are part of the internal learner
+interface and are \strong{not meant to be called directly by users}.
+
+\strong{Wrapper role:} this class is a user-friendly wrapper around the existing
+\code{glmnet} implementation. The package-specific contribution is to provide a
+piecewise-constant hazard workflow: create the long-format Poisson data with
+offsets for time at risk, add the interval ("node") structure for the baseline
+hazard when requested, and forward standard \code{glmnet} arguments supplied at
+initialization to the backend fitter.
+}
+
+\section{Model}{
+
+Let \eqn{0=t_0 < t_1 < \cdots < t_m}{0=t0 < t1 < ... < tm} denote time knots and
+define interval indicators \eqn{I_k(t)=1\{t\in(t_k,t_{k+1}]\}}{Ik(t)=I(t in (tk, t{k+1}])}.
+The piecewise-constant hazard model is
+\deqn{
+  \lambda(t \mid x) = \sum_{k=0}^{m} I_k(t)\,\lambda_k(x),
+  \qquad \lambda_k(x) = \exp(\beta^\top x + \gamma_k).
+}{
+  lambda(t|x) = sum_{k=0}^m Ik(t) * lambda_k(x),
+  lambda_k(x) = exp(beta^T x + gamma_k).
+}
+Penalization is applied to the regression coefficients through the \code{glmnet}
+elastic-net penalty. If you want node (baseline) terms to be unpenalized, use
+\code{penalty.factor} via \code{...} (and set it consistently with how your design matrix
+encodes nodes).
 }
 
 \section{Fields}{
 
 \describe{
 \item{\code{covariates} (\code{character})}{Names of covariate columns used in the model.}
-\item{\code{cross_validation} (\code{logical})}{If \code{TRUE}, choose \code{lambda} by \code{cv.glmnet}.}
-\item{\code{intercept} (\code{logical})}{Whether to include an intercept.}
-\item{\code{formula} (\code{character})}{Model formula string used for design matrix creation.}
-\item{\code{learner} (\code{function})}{Underlying fitting function (\code{glmnet} or \code{cv.glmnet}).}
-\item{\code{add_nodes} (\code{logical})}{If \code{TRUE}, include node effects.}
-\item{\code{lambda} (\code{numeric})}{Selected lambda value used in final fit.}
-\item{\code{fit_arguments} (\code{list})}{Extra arguments passed to the fitting backend.}
+\item{\code{cross_validation} (\code{logical})}{If \code{TRUE}, chooses \code{lambda} by \code{glmnet::cv.glmnet}.}
+\item{\code{intercept} (\code{logical})}{Whether to include an intercept in the backend fit.}
+\item{\code{add_nodes} (\code{logical})}{If \code{TRUE}, include interval ("node") effects encoding the baseline hazard.}
+\item{\code{lambda} (\code{numeric})}{If \code{cross_validation=FALSE}, the \code{lambda} used in the final fit.}
+\item{\code{formula} (\code{character})}{Formula string used to create the design matrix in long format.}
+\item{\code{learner} (\code{function})}{Backend fitter (\code{glmnet::glmnet} or \code{glmnet::cv.glmnet}).}
+\item{\code{fit_arguments} (\code{list})}{Additional arguments forwarded to the backend fitter.}
 }
 }
 
-\section{Methods}{
+\section{Methods (internal learner interface)}{
 
 \describe{
-\item{\code{initialize(...)}}{Creates and configures the learner object.
-Input: user hyperparameters and optional backend arguments in \code{...}.
-Output: configured \code{Learner_glmnet} reference object.}
-\item{\code{private_fit(data, ...)}}{Internal method (not intended for end users).
-Input: long-format \code{data.table}/\code{data.frame} with at least \code{deltaij}, \code{tij},
-\code{node}, \code{k}, and modeled covariates. Output: fitted \code{glmnet} model object
-(class \code{glmnet}).}
-\item{\code{private_predictor(model, newdata, ...)}}{Internal method (not intended
-for end users). Input: fitted \code{glmnet}/\code{cv.glmnet} \code{model} and long-format
-\code{newdata}. Output: \code{numeric} vector/matrix of hazard predictions on the
-response scale.}
+\item{\code{initialize(...)}}{Construct and configure the learner. This is the only method users should call.}
+\item{\code{private_fit(data, ...)}}{Internal. Fits a Poisson model with offset \code{log(tij)} on long-format data.}
+\item{\code{private_predictor(model, newdata, ...)}}{Internal. Predicts hazards on the response scale for long-format \code{newdata}.}
 }
 }
 
 \examples{
-lrn <- Learner_glmnet(covariates = c("age", "sex"), alpha=1, cross_validation = TRUE)
-lrn$cross_validation
+lrn <- Learner_glmnet(covariates = c("age", "sex"), alpha = 1, cross_validation = TRUE)
 
-}
-\references{
-Simon N, Friedman J, Hastie T, Tibshirani R (2011).
-Regularization Paths for Cox's Proportional Hazards Model via Coordinate Descent.
-Journal of Statistical Software, 39(5), 1-13.
 }

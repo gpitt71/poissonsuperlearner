@@ -1,45 +1,58 @@
 #' Penalized Poisson learner via `glmnet`
 #'
 #' `Learner_glmnet` is a Reference Class implementing the learner interface
-#' used by [Superlearner()] and [fit_learner()]. Any additional arguments
-#' supplied via `...` at initialization are forwarded to the underlying
-#' fitting backend (`glmnet::glmnet` or `glmnet::cv.glmnet`) through
-#' `fit_arguments`.
+#' used by [Superlearner()] and [fit_learner()].
+#'
+#' **User-facing API:** users are expected to **initialize** the learner (i.e.,
+#' call `Learner_glmnet(...)`) and pass the resulting object to
+#' [Superlearner()] or [fit_learner()]. The remaining methods documented below
+#' (e.g., `private_fit()`, `private_predictor()`) are part of the internal learner
+#' interface and are **not meant to be called directly by users**.
+#'
+#' **Wrapper role:** this class is a user-friendly wrapper around the existing
+#' `glmnet` implementation. The package-specific contribution is to provide a
+#' piecewise-constant hazard workflow: create the long-format Poisson data with
+#' offsets for time at risk, add the interval ("node") structure for the baseline
+#' hazard when requested, and forward standard `glmnet` arguments supplied at
+#' initialization to the backend fitter.
+#'
+#' @section Model:
+#' Let \eqn{0=t_0 < t_1 < \cdots < t_m}{0=t0 < t1 < ... < tm} denote time knots and
+#' define interval indicators \eqn{I_k(t)=1\{t\in(t_k,t_{k+1}]\}}{Ik(t)=I(t in (tk, t{k+1}])}.
+#' The piecewise-constant hazard model is
+#' \deqn{
+#'   \lambda(t \mid x) = \sum_{k=0}^{m} I_k(t)\,\lambda_k(x),
+#'   \qquad \lambda_k(x) = \exp(\beta^\top x + \gamma_k).
+#' }{
+#'   lambda(t|x) = sum_{k=0}^m Ik(t) * lambda_k(x),
+#'   lambda_k(x) = exp(beta^T x + gamma_k).
+#' }
+#' Penalization is applied to the regression coefficients through the `glmnet`
+#' elastic-net penalty. If you want node (baseline) terms to be unpenalized, use
+#' `penalty.factor` via `...` (and set it consistently with how your design matrix
+#' encodes nodes).
 #'
 #' @section Fields:
 #' \describe{
 #'   \item{`covariates` (`character`)}{Names of covariate columns used in the model.}
-#'   \item{`cross_validation` (`logical`)}{If `TRUE`, choose `lambda` by `cv.glmnet`.}
-#'   \item{`intercept` (`logical`)}{Whether to include an intercept.}
-#'   \item{`formula` (`character`)}{Model formula string used for design matrix creation.}
-#'   \item{`learner` (`function`)}{Underlying fitting function (`glmnet` or `cv.glmnet`).}
-#'   \item{`add_nodes` (`logical`)}{If `TRUE`, include node effects.}
-#'   \item{`lambda` (`numeric`)}{Selected lambda value used in final fit.}
-#'   \item{`fit_arguments` (`list`)}{Extra arguments passed to the fitting backend.}
+#'   \item{`cross_validation` (`logical`)}{If `TRUE`, chooses `lambda` by `glmnet::cv.glmnet`.}
+#'   \item{`intercept` (`logical`)}{Whether to include an intercept in the backend fit.}
+#'   \item{`add_nodes` (`logical`)}{If `TRUE`, include interval ("node") effects encoding the baseline hazard.}
+#'   \item{`lambda` (`numeric`)}{If `cross_validation=FALSE`, the `lambda` used in the final fit.}
+#'   \item{`formula` (`character`)}{Formula string used to create the design matrix in long format.}
+#'   \item{`learner` (`function`)}{Backend fitter (`glmnet::glmnet` or `glmnet::cv.glmnet`).}
+#'   \item{`fit_arguments` (`list`)}{Additional arguments forwarded to the backend fitter.}
 #' }
 #'
-#' @section Methods:
+#' @section Methods (internal learner interface):
 #' \describe{
-#'   \item{`initialize(...)`}{Creates and configures the learner object.
-#'   Input: user hyperparameters and optional backend arguments in `...`.
-#'   Output: configured `Learner_glmnet` reference object.}
-#'   \item{`private_fit(data, ...)`}{Internal method (not intended for end users).
-#'   Input: long-format `data.table`/`data.frame` with at least `deltaij`, `tij`,
-#'   `node`, `k`, and modeled covariates. Output: fitted `glmnet` model object
-#'   (class `glmnet`).}
-#'   \item{`private_predictor(model, newdata, ...)`}{Internal method (not intended
-#'   for end users). Input: fitted `glmnet`/`cv.glmnet` `model` and long-format
-#'   `newdata`. Output: `numeric` vector/matrix of hazard predictions on the
-#'   response scale.}
+#'   \item{`initialize(...)`}{Construct and configure the learner. This is the only method users should call.}
+#'   \item{`private_fit(data, ...)`}{Internal. Fits a Poisson model with offset `log(tij)` on long-format data.}
+#'   \item{`private_predictor(model, newdata, ...)`}{Internal. Predicts hazards on the response scale for long-format `newdata`.}
 #' }
-#'
-#' @references Simon N, Friedman J, Hastie T, Tibshirani R (2011).
-#' Regularization Paths for Cox's Proportional Hazards Model via Coordinate Descent.
-#' Journal of Statistical Software, 39(5), 1-13.
 #'
 #' @examples
-#' lrn <- Learner_glmnet(covariates = c("age", "sex"), alpha=1, cross_validation = TRUE)
-#' lrn$cross_validation
+#' lrn <- Learner_glmnet(covariates = c("age", "sex"), alpha = 1, cross_validation = TRUE)
 #'
 #' @export Learner_glmnet
 #' @exportClass Learner_glmnet
@@ -274,40 +287,97 @@ Learner_glmnet <- setRefClass(
 
 #' HAL learner for piecewise Poisson hazards
 #'
-#' `Learner_hal` implements a Highly Adaptive Lasso learner using basis expansion
-#' and penalized Poisson regression in the long-format representation. Any
-#' additional arguments supplied via `...` are forwarded to the underlying
-#' glmnet-based fitting calls used by this learner.
+#' `Learner_hal` is a Reference Class implementing the learner interface
+#' used by [Superlearner()] and [fit_learner()].
 #'
-#' @section Fields:
-#' Main fields include `covariates` (`character`), `cross_validation` (`logical`),
-#' `formula` (`character`), `lambda` (`numeric`), `max_degree` (`numeric`),
-#' `num_knots` (`numeric`), `smoothness_orders` (`numeric`), and `fit_arguments` (`list`).
-#' These fields define basis construction, regularization and fitting behaviour.
+#' **User-facing API:** users should **only initialize** the learner and pass it
+#' to [Superlearner()] / [fit_learner()]. The methods `private_fit()` and
+#' `private_predictor()` (and any basis-construction helpers) are part of the
+#' internal learner interface and are **not meant to be called directly by users**.
 #'
-#' @section Methods:
-#' \describe{
-#'   \item{`initialize(...)`}{Creates and configures the learner object.
-#'   Input: HAL tuning parameters and optional backend arguments in `...`.
-#'   Output: configured `Learner_hal` reference object.}
-#'   \item{`private_fit(data, ...)`}{Internal method (not intended for end users).
-#'   Input: long-format `data.table`/`data.frame` with interval outcome and offset
-#'   columns (`deltaij`, `tij`, `node`, `k`) and covariates. Output: fitted
-#'   penalized model object used for prediction (typically `glmnet`).}
-#'   \item{`private_predictor(model, newdata, ...)`}{Internal method (not intended
-#'   for end users). Input: fitted `model` and compatible `newdata`.
-#'   Output: `numeric` vector/matrix of predicted piecewise hazards.}
+#' **Wrapper role:** this class provides a piecewise-constant hazard wrapper around
+#' a HAL-style indicator-basis construction, estimated by L1-penalized Poisson
+#' regression using a `glmnet` backend. The package-specific contribution is to
+#' (i) construct the long-format Poisson representation with offsets for time at
+#' risk, (ii) generate indicator bases compatible with piecewise hazards, and
+#' (iii) forward backend fitting arguments supplied via `...`.
+#'
+#' @section Model:
+#' Let \eqn{0=t_0 < t_1 < \cdots < t_m}{0=t0 < t1 < ... < tm} denote time knots and
+#' define interval indicators \eqn{I_k(t)=1\{t\in(t_k,t_{k+1}]\}}{Ik(t)=I(t in (tk, t{k+1}])}.
+#' The HAL piecewise-constant hazard model is
+#' \deqn{
+#'   \lambda(t \mid x) = \sum_{k=0}^{m} I_k(t)\,\exp\{f(t,x)\},
+#' }{
+#'   lambda(t|x) = sum_{k=0}^m Ik(t) * exp(f(t,x)).
+#' }
+#' where \eqn{f(t,x)}{f(t,x)} is approximated by a finite linear combination of
+#' indicator basis functions.
+#'
+#' @section Two-covariate illustration:
+#' Let \eqn{x=(x_1,x_2)}{x=(x1,x2)} be two covariates and let
+#' \eqn{t_0 < t_1 < \cdots < t_R}{t0 < t1 < ... < tR} be time grid points used to
+#' create step functions in time. Choose covariate cutpoints
+#' \eqn{c_{1,1},\ldots,c_{1,K_1}}{c1_1,...,c1_K1} for \eqn{x_1}{x1} and
+#' \eqn{c_{2,1},\ldots,c_{2,K_2}}{c2_1,...,c2_K2} for \eqn{x_2}{x2}.
+#'
+#' Define indicator bases:
+#' \deqn{B_r(t) = 1\{t_r \le t\}}{Br(t) = I(tr <= t),}
+#' \deqn{B_{1,p}(x) = 1\{c_{1,p} \le x_1\}}{B1p(x) = I(c1p <= x1),}
+#' \deqn{B_{2,q}(x) = 1\{c_{2,q} \le x_2\}}{B2q(x) = I(c2q <= x2).}
+#'
+#' A main-effects HAL approximation on the log-hazard scale can be written as:
+#' \deqn{
+#'   f_\beta(t,x) = \beta_0
+#'   + \sum_{r=1}^R \beta_r B_r(t)
+#'   + \sum_{r=1}^R\sum_{p=1}^{K_1} \beta_{r,1,p} B_r(t) B_{1,p}(x)
+#'   + \sum_{r=1}^R\sum_{q=1}^{K_2} \beta_{r,2,q} B_r(t) B_{2,q}(x).
+#' }{
+#'   f_beta(t,x) = beta0
+#'   + sum_{r=1}^R beta_r Br(t)
+#'   + sum_{r=1}^R sum_{p=1}^K1 beta_{r,1,p} Br(t) B1p(x)
+#'   + sum_{r=1}^R sum_{q=1}^K2 beta_{r,2,q} Br(t) B2q(x).
+#' }
+#' If `max_degree >= 2`, the learner additionally includes interaction bases such as
+#' \deqn{
+#'   \sum_{r=1}^R\sum_{p=1}^{K_1}\sum_{q=1}^{K_2}
+#'   \beta_{r,12,pq} B_r(t) B_{1,p}(x) B_{2,q}(x).
+#' }{
+#'   sum_{r=1}^R sum_{p=1}^K1 sum_{q=1}^K2 beta_{r,12,pq} Br(t) B1p(x) B2q(x).
 #' }
 #'
-#' @references
-#' Benkeser D, van der Laan M, et al. hal9001: The Scalable Highly Adaptive
-#' Lasso. R package.
-#' Friedman J, Hastie T, Tibshirani R. glmnet: Lasso and Elastic-Net Regularized
-#' Generalized Linear Models. R package.
+#' @section How reference class parameters map to the model:
+#' \describe{
+#'   \item{`covariates`}{Covariate columns used to build covariate indicator bases.}
+#'   \item{`num_knots`}{Controls the number of cutpoints per covariate used for indicator bases.}
+#'   \item{`max_degree`}{Maximum interaction order included in the basis expansion.}
+#'   \item{`add_nodes`}{If `TRUE`, includes interval ("node") structure for the baseline hazard.}
+#'   \item{`intercept`}{Whether the backend penalized regression includes an intercept term.}
+#'   \item{`cross_validation`}{If `TRUE`, selects the penalty level using `glmnet::cv.glmnet`.}
+#'   \item{`fit_arguments`}{Additional arguments forwarded to the `glmnet` backend (e.g. `nfolds`).}
+#' }
+#'
+#' @section Fields:
+#' \describe{
+#'   \item{`covariates` (`character`)}{Names of covariate columns used in the basis.}
+#'   \item{`cross_validation` (`logical`)}{Whether to use `cv.glmnet` to select the penalty.}
+#'   \item{`intercept` (`logical`)}{Backend intercept flag.}
+#'   \item{`add_nodes` (`logical`)}{Whether node (time-interval) effects are included.}
+#'   \item{`max_degree` (`integer`)}{Maximum interaction order.}
+#'   \item{`num_knots` (`numeric`)}{Knots used for basis construction.}
+#'   \item{`lambda_opt` (`numeric`)}{Selected penalty level when using cross-validation.}
+#'   \item{`fit_arguments` (`list`)}{Extra backend arguments forwarded to `glmnet`.}
+#' }
+#'
+#' @section Methods (internal learner interface):
+#' \describe{
+#'   \item{`initialize(...)`}{Construct and configure the learner. This is the only method users should call.}
+#'   \item{`private_fit(data, ...)`}{Internal. Builds bases and fits the penalized Poisson model with offset `log(tij)`.}
+#'   \item{`private_predictor(model, newdata, ...)`}{Internal. Evaluates the fitted approximation and returns hazards on the response scale.}
+#' }
 #'
 #' @examples
-#' lrn <- Learner_hal(covariates = c("age", "sex"), max_degree=2L)
-#' lrn$max_degree
+#' lrn <- Learner_hal(covariates = c("age", "sex"), max_degree = 2L, num_knots = c(10L, 5L))
 #'
 #' @export Learner_hal
 #' @exportClass Learner_hal
@@ -936,143 +1006,57 @@ Learner_hal <- setRefClass(
 
 #' GAM learner via `mgcv::bam`
 #'
-#' `Learner_gam` is a Reference Class implementing the learner interface used by
-#' [Superlearner()] and [fit_learner()]. It fits **smooth additive Poisson models**
-#' on the internally created long-format Poisson data to estimate
-#' **piecewise-constant cause-specific hazards**.
+#' `Learner_gam` is a Reference Class implementing the learner interface
+#' used by [Superlearner()] and [fit_learner()].
 #'
-#' At initialization, `Learner_gam` stores additional fitting options in `fit_arguments`.
-#' During fitting, [mgcv::bam()] is called via `do.call()` with:
-#' \itemize{
-#'   \item `data` = the long-format data (after internal aggregation),
-#'   \item `offset` = `log(tij)` (Poisson exposure),
-#'   \item `family` = `poisson()` (set by default, can be overridden via `...`).
+#' **User-facing API:** users should **only initialize** the learner and pass it
+#' to [Superlearner()] / [fit_learner()]. The methods `private_fit()` and
+#' `private_predictor()` are part of the internal learner interface and are
+#' **not meant to be called directly by users**.
+#'
+#' **Wrapper role:** this class wraps `mgcv::bam` in a piecewise-constant hazard
+#' workflow. The package-specific contribution is to provide a convenient
+#' interface for the long-format Poisson likelihood with offsets for time at risk,
+#' and optional node terms encoding the baseline hazard, while forwarding standard
+#' `mgcv::bam` arguments supplied via `...`.
+#'
+#' @section Model:
+#' Let \eqn{0=t_0 < t_1 < \cdots < t_m}{0=t0 < t1 < ... < tm} denote time knots and
+#' define interval indicators \eqn{I_k(t)=1\{t\in(t_k,t_{k+1}]\}}{Ik(t)=I(t in (tk, t{k+1}])}.
+#' The piecewise-constant hazard model with an additive predictor is
+#' \deqn{
+#'   \lambda(t \mid x) = \sum_{k=0}^{m} I_k(t)\,\exp\{\eta(x) + \gamma_k\}.
+#' }{
+#'   lambda(t|x) = sum_{k=0}^m Ik(t) * exp(eta(x) + gamma_k).
 #' }
+#' The additive predictor \eqn{\eta(x)}{eta(x)} is constructed from `covariates`
+#' (smooth terms such as `s(age)` and/or linear terms) and estimated by `mgcv`.
 #'
-#' @param covariates `character`. Model terms used on the right-hand side of the GAM.
-#'   This is intentionally flexible and may contain plain variable names
-#'   (e.g. `"age"`) and/or `mgcv` smooth terms as strings (e.g. `"s(age, k=10)"`,
-#'   `"te(age, value_LDL)"`). The terms are pasted together with `+`.
-#'
-#'   Internally, the learner parses these terms to identify the underlying variable
-#'   names that must be present in the long data. For example, `"s(age)"` requires
-#'   the column `age`.
-#'
-#' @param cross_validation `logical`. Reserved for future hyperparameter selection.
-#'   Currently stored in the object but not used by `private_fit()`.
-#'
-#' @param intercept `logical`. Model intercept.
-#'
-#' @param add_nodes `logical`. If `TRUE` (default), adds `+ node` to the formula so
-#'   the piecewise baseline hazard is represented by a factor for the time interval.
-#'   If `FALSE`, the formula will not include `node` (advanced use only).
-#'
-#' @param ... Additional arguments saved in `fit_arguments` and later forwarded to
-#'   [mgcv::bam()]. Typical examples include `method`, `discrete`, `nthreads`, `select`,
-#'   `gamma`, etc. You may also supply `family`, but by default the learner sets
-#'   `family = poisson()`.
+#' @param covariates `character`. Right-hand-side terms, including `mgcv` smooths
+#'   (e.g. `"s(age)"`) and/or linear terms (e.g. `"value_LDL"`).
+#' @param cross_validation `logical`. Included for compatibility with the learner
+#'   interface; smoothing selection is controlled by `mgcv` and arguments in `...`.
 #'
 #' @section Fields:
 #' \describe{
-#'   \item{covariates}{`character`. The RHS terms used to build the GAM formula
-#'     (may include smooth terms as strings).}
-#'   \item{cross_validation}{`logical`. Reserved; currently unused in fitting.}
-#'   \item{intercept}{`logical`. Stored;}
-#'   \item{add_nodes}{`logical`. Whether `node` is added to the formula.}
-#'   \item{formula}{`character`. The model formula string typically `"deltaij ~ <terms> + node"`.}
-#'   \item{learner}{`function`. The fitting backend; set to [mgcv::bam()].}
-#'   \item{fit_arguments}{`list`. Additional arguments captured from `...` at
-#'     initialization and later passed to [mgcv::bam()] in `private_fit()`. The
-#'     default includes `family = poisson()`.}
+#'   \item{`covariates` (`character`)}{Terms used to build the additive predictor (may include `s()` terms).}
+#'   \item{`cross_validation` (`logical`)}{Workflow flag; see Details.}
+#'   \item{`intercept` (`logical`)}{Whether to include an intercept.}
+#'   \item{`add_nodes` (`logical`)}{If `TRUE`, include interval ("node") effects encoding the baseline hazard.}
+#'   \item{`formula` (`character`)}{Formula string passed to `mgcv::bam`.}
+#'   \item{`learner` (`function`)}{Backend fitter (`mgcv::bam`).}
+#'   \item{`fit_arguments` (`list`)}{Additional arguments forwarded to `mgcv::bam`.}
 #' }
 #'
-#' @section Methods:
+#' @section Methods (internal learner interface):
 #' \describe{
-#'   \item{`initialize(covariates = NULL, cross_validation = FALSE, intercept = TRUE, add_nodes = TRUE, ...)`}{
-#'     Creates and configures a `Learner_gam` object.
-#'
-#'     \strong{Inputs:}
-#'     \itemize{
-#'       \item `covariates`: character vector of GAM terms (including possible `mgcv` smooth terms).
-#'       \item `...`: stored as `fit_arguments` and forwarded to [mgcv::bam()] at fit time.
-#'     }
-#'
-#'     \strong{Side effects / stored configuration:}
-#'     \itemize{
-#'       \item sets `learner = mgcv::bam`,
-#'       \item sets `fit_arguments[['family']] = poisson()` (unless you overwrite it via `...`).
-#'     }
-#'
-#'     \strong{Output:} a configured `Learner_gam` reference object.
-#'   }
-#'
-#'   \item{`private_fit(data, ...)`}{
-#'     Internal method used by [fit_learner()] / [Superlearner()].
-#'
-#'     \strong{Input `data`:} long-format `data.table`/`data.frame` for a single cause
-#'     (typically after splitting by `k`) containing at least:
-#'     \itemize{
-#'       \item `deltaij`: Poisson outcome (event count in interval; usually 0/1),
-#'       \item `tij`: time-at-risk / exposure in the interval,
-#'       \item `node`: factor identifying the time interval (piecewise-constant grid),
-#'       \item `k`: cause indicator (kept for grouping; may be constant within call),
-#'       \item all variables referenced by `covariates` terms (e.g. `age`, `value_LDL`, ...).
-#'     }
-#'
-#'     \strong{Internal preprocessing:}
-#'     \itemize{
-#'       \item extracts the underlying variable names appearing in `covariates`,
-#'       \item aggregates the long data by `c(<extracted variables>, "node", "k")`,
-#'         computing `tij = sum(tij)` and `deltaij = sum(deltaij)`,
-#'       \item drops incomplete cases after aggregation.
-#'     }
-#'
-#'     \strong{Model fit:}
-#'     calls `mgcv::bam(formula = as.formula(self$formula),
-#'                      data = <aggregated>, offset = log(tij), ...)`
-#'     using the stored `fit_arguments`.
-#'
-#'     \strong{Output:} the fitted `mgcv` model object returned by [mgcv::bam()]
-#'     (class typically includes `"gam"`; exact class attributes are `mgcv`-dependent).
-#'   }
-#'
-#'   \item{`private_predictor(model, newdata, ...)`}{
-#'     Internal prediction method used by the package prediction pipeline.
-#'
-#'     \strong{Inputs:}
-#'     \itemize{
-#'       \item `model`: a fitted object returned by `private_fit()` (a `bam`/`gam` fit),
-#'       \item `newdata`: long-format data with the same required covariate columns and a
-#'         `node` factor. Prediction is performed for rows whose `node` level is present
-#'         in `model$xlevels$node`.
-#'     }
-#'
-#'     \strong{Computation:}
-#'     uses `predict(model, type = "response", offset = log(1), newdata = <subset>, ...)`.
-#'     The `offset = log(1)` implies predicted means correspond to hazards (not multiplied
-#'     by exposure) on the long-format scale expected by downstream code.
-#'
-#'     \strong{Output:} a `numeric` vector of predicted values aligned with `newdata`:
-#'     \itemize{
-#'       \item if all `node` levels in `newdata` are present in the fitted model, returns the
-#'         prediction vector directly,
-#'       \item otherwise, returns a vector with predictions for supported `node` levels and
-#'         `NA` for unsupported levels (preserving the original row order of `newdata`).
-#'     }
-#'   }
+#'   \item{`initialize(...)`}{Construct and configure the learner. This is the only method users should call.}
+#'   \item{`private_fit(data, ...)`}{Internal. Fits a Poisson GAM with offset `log(tij)` on long-format data.}
+#'   \item{`private_predictor(model, newdata, ...)`}{Internal. Predicts hazards on the response scale.}
 #' }
-#'
-#' @references
-#' Wood SN (2017). Generalized Additive Models: An Introduction with R,
-#' Second Edition. CRC Press.
-#' Wood SN, Goude Y, Shaw S (2015). Generalized additive models for large data
-#' sets. Journal of the Royal Statistical Society: Series C, 64(1), 139-155.
 #'
 #' @examples
-#' # smooth term specified as a string
-#' lrn <- Learner_gam(covariates = c("s(age, k = 10)", "s(value_LDL, k = 10)"),
-#'                    method = "fREML")
-#' lrn$formula
+#' lrn <- Learner_gam(covariates = c("s(age)", "value_LDL"))
 #'
 #' @export Learner_gam
 #' @exportClass Learner_gam

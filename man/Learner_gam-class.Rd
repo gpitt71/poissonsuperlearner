@@ -6,155 +6,66 @@
 \alias{Learner_gam}
 \title{GAM learner via \code{mgcv::bam}}
 \arguments{
-\item{covariates}{\code{character}. Model terms used on the right-hand side of the GAM.
-This is intentionally flexible and may contain plain variable names
-(e.g. \code{"age"}) and/or \code{mgcv} smooth terms as strings (e.g. \code{"s(age, k=10)"},
-\code{"te(age, value_LDL)"}). The terms are pasted together with \code{+}.
+\item{covariates}{\code{character}. Right-hand-side terms, including \code{mgcv} smooths
+(e.g. \code{"s(age)"}) and/or linear terms (e.g. \code{"value_LDL"}).}
 
-Internally, the learner parses these terms to identify the underlying variable
-names that must be present in the long data. For example, \code{"s(age)"} requires
-the column \code{age}.}
-
-\item{cross_validation}{\code{logical}. Reserved for future hyperparameter selection.
-Currently stored in the object but not used by \code{private_fit()}.}
-
-\item{intercept}{\code{logical}. Model intercept.}
-
-\item{add_nodes}{\code{logical}. If \code{TRUE} (default), adds \code{+ node} to the formula so
-the piecewise baseline hazard is represented by a factor for the time interval.
-If \code{FALSE}, the formula will not include \code{node} (advanced use only).}
-
-\item{...}{Additional arguments saved in \code{fit_arguments} and later forwarded to
-\code{\link[mgcv:bam]{mgcv::bam()}}. Typical examples include \code{method}, \code{discrete}, \code{nthreads}, \code{select},
-\code{gamma}, etc. You may also supply \code{family}, but by default the learner sets
-\code{family = poisson()}.}
+\item{cross_validation}{\code{logical}. Included for compatibility with the learner
+interface; smoothing selection is controlled by \code{mgcv} and arguments in \code{...}.}
 }
 \description{
-\code{Learner_gam} is a Reference Class implementing the learner interface used by
-\code{\link[=Superlearner]{Superlearner()}} and \code{\link[=fit_learner]{fit_learner()}}. It fits \strong{smooth additive Poisson models}
-on the internally created long-format Poisson data to estimate
-\strong{piecewise-constant cause-specific hazards}.
+\code{Learner_gam} is a Reference Class implementing the learner interface
+used by \code{\link[=Superlearner]{Superlearner()}} and \code{\link[=fit_learner]{fit_learner()}}.
 }
 \details{
-At initialization, \code{Learner_gam} stores additional fitting options in \code{fit_arguments}.
-During fitting, \code{\link[mgcv:bam]{mgcv::bam()}} is called via \code{do.call()} with:
-\itemize{
-\item \code{data} = the long-format data (after internal aggregation),
-\item \code{offset} = \code{log(tij)} (Poisson exposure),
-\item \code{family} = \code{poisson()} (set by default, can be overridden via \code{...}).
+\strong{User-facing API:} users should \strong{only initialize} the learner and pass it
+to \code{\link[=Superlearner]{Superlearner()}} / \code{\link[=fit_learner]{fit_learner()}}. The methods \code{private_fit()} and
+\code{private_predictor()} are part of the internal learner interface and are
+\strong{not meant to be called directly by users}.
+
+\strong{Wrapper role:} this class wraps \code{mgcv::bam} in a piecewise-constant hazard
+workflow. The package-specific contribution is to provide a convenient
+interface for the long-format Poisson likelihood with offsets for time at risk,
+and optional node terms encoding the baseline hazard, while forwarding standard
+\code{mgcv::bam} arguments supplied via \code{...}.
 }
+
+\section{Model}{
+
+Let \eqn{0=t_0 < t_1 < \cdots < t_m}{0=t0 < t1 < ... < tm} denote time knots and
+define interval indicators \eqn{I_k(t)=1\{t\in(t_k,t_{k+1}]\}}{Ik(t)=I(t in (tk, t{k+1}])}.
+The piecewise-constant hazard model with an additive predictor is
+\deqn{
+  \lambda(t \mid x) = \sum_{k=0}^{m} I_k(t)\,\exp\{\eta(x) + \gamma_k\}.
+}{
+  lambda(t|x) = sum_{k=0}^m Ik(t) * exp(eta(x) + gamma_k).
+}
+The additive predictor \eqn{\eta(x)}{eta(x)} is constructed from \code{covariates}
+(smooth terms such as \code{s(age)} and/or linear terms) and estimated by \code{mgcv}.
 }
 
 \section{Fields}{
 
 \describe{
-\item{covariates}{\code{character}. The RHS terms used to build the GAM formula
-(may include smooth terms as strings).}
-\item{cross_validation}{\code{logical}. Reserved; currently unused in fitting.}
-\item{intercept}{\code{logical}. Stored;}
-\item{add_nodes}{\code{logical}. Whether \code{node} is added to the formula.}
-\item{formula}{\code{character}. The model formula string typically \code{"deltaij ~ <terms> + node"}.}
-\item{learner}{\code{function}. The fitting backend; set to \code{\link[mgcv:bam]{mgcv::bam()}}.}
-\item{fit_arguments}{\code{list}. Additional arguments captured from \code{...} at
-initialization and later passed to \code{\link[mgcv:bam]{mgcv::bam()}} in \code{private_fit()}. The
-default includes \code{family = poisson()}.}
+\item{\code{covariates} (\code{character})}{Terms used to build the additive predictor (may include \code{s()} terms).}
+\item{\code{cross_validation} (\code{logical})}{Workflow flag; see Details.}
+\item{\code{intercept} (\code{logical})}{Whether to include an intercept.}
+\item{\code{add_nodes} (\code{logical})}{If \code{TRUE}, include interval ("node") effects encoding the baseline hazard.}
+\item{\code{formula} (\code{character})}{Formula string passed to \code{mgcv::bam}.}
+\item{\code{learner} (\code{function})}{Backend fitter (\code{mgcv::bam}).}
+\item{\code{fit_arguments} (\code{list})}{Additional arguments forwarded to \code{mgcv::bam}.}
 }
 }
 
-\section{Methods}{
+\section{Methods (internal learner interface)}{
 
 \describe{
-\item{\code{initialize(covariates = NULL, cross_validation = FALSE, intercept = TRUE, add_nodes = TRUE, ...)}}{
-Creates and configures a \code{Learner_gam} object.
-
-\if{html}{\out{<div class="sourceCode">}}\preformatted{\\strong\{Inputs:\}
-\\itemize\{
-  \\item `covariates`: character vector of GAM terms (including possible `mgcv` smooth terms).
-  \\item `...`: stored as `fit_arguments` and forwarded to [mgcv::bam()] at fit time.
-\}
-
-\\strong\{Side effects / stored configuration:\}
-\\itemize\{
-  \\item sets `learner = mgcv::bam`,
-  \\item sets `fit_arguments[['family']] = poisson()` (unless you overwrite it via `...`).
-\}
-
-\\strong\{Output:\} a configured `Learner_gam` reference object.
-}\if{html}{\out{</div>}}
-
-}
-
-\item{\code{private_fit(data, ...)}}{
-Internal method used by \code{\link[=fit_learner]{fit_learner()}} / \code{\link[=Superlearner]{Superlearner()}}.
-
-\if{html}{\out{<div class="sourceCode">}}\preformatted{\\strong\{Input `data`:\} long-format `data.table`/`data.frame` for a single cause
-(typically after splitting by `k`) containing at least:
-\\itemize\{
-  \\item `deltaij`: Poisson outcome (event count in interval; usually 0/1),
-  \\item `tij`: time-at-risk / exposure in the interval,
-  \\item `node`: factor identifying the time interval (piecewise-constant grid),
-  \\item `k`: cause indicator (kept for grouping; may be constant within call),
-  \\item all variables referenced by `covariates` terms (e.g. `age`, `value_LDL`, ...).
-\}
-
-\\strong\{Internal preprocessing:\}
-\\itemize\{
-  \\item extracts the underlying variable names appearing in `covariates`,
-  \\item aggregates the long data by `c(<extracted variables>, "node", "k")`,
-    computing `tij = sum(tij)` and `deltaij = sum(deltaij)`,
-  \\item drops incomplete cases after aggregation.
-\}
-
-\\strong\{Model fit:\}
-calls `mgcv::bam(formula = as.formula(self$formula),
-                 data = <aggregated>, offset = log(tij), ...)`
-using the stored `fit_arguments`.
-
-\\strong\{Output:\} the fitted `mgcv` model object returned by [mgcv::bam()]
-(class typically includes `"gam"`; exact class attributes are `mgcv`-dependent).
-}\if{html}{\out{</div>}}
-
-}
-
-\item{\code{private_predictor(model, newdata, ...)}}{
-Internal prediction method used by the package prediction pipeline.
-
-\if{html}{\out{<div class="sourceCode">}}\preformatted{\\strong\{Inputs:\}
-\\itemize\{
-  \\item `model`: a fitted object returned by `private_fit()` (a `bam`/`gam` fit),
-  \\item `newdata`: long-format data with the same required covariate columns and a
-    `node` factor. Prediction is performed for rows whose `node` level is present
-    in `model$xlevels$node`.
-\}
-
-\\strong\{Computation:\}
-uses `predict(model, type = "response", offset = log(1), newdata = <subset>, ...)`.
-The `offset = log(1)` implies predicted means correspond to hazards (not multiplied
-by exposure) on the long-format scale expected by downstream code.
-
-\\strong\{Output:\} a `numeric` vector of predicted values aligned with `newdata`:
-\\itemize\{
-  \\item if all `node` levels in `newdata` are present in the fitted model, returns the
-    prediction vector directly,
-  \\item otherwise, returns a vector with predictions for supported `node` levels and
-    `NA` for unsupported levels (preserving the original row order of `newdata`).
-\}
-}\if{html}{\out{</div>}}
-
-}
+\item{\code{initialize(...)}}{Construct and configure the learner. This is the only method users should call.}
+\item{\code{private_fit(data, ...)}}{Internal. Fits a Poisson GAM with offset \code{log(tij)} on long-format data.}
+\item{\code{private_predictor(model, newdata, ...)}}{Internal. Predicts hazards on the response scale.}
 }
 }
 
 \examples{
-# smooth term specified as a string
-lrn <- Learner_gam(covariates = c("s(age, k = 10)", "s(value_LDL, k = 10)"),
-                   method = "fREML")
-lrn$formula
+lrn <- Learner_gam(covariates = c("s(age)", "value_LDL"))
 
-}
-\references{
-Wood SN (2017). Generalized Additive Models: An Introduction with R,
-Second Edition. CRC Press.
-Wood SN, Goude Y, Shaw S (2015). Generalized additive models for large data
-sets. Journal of the Royal Statistical Society: Series C, 64(1), 139-155.
 }
