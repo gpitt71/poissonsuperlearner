@@ -177,7 +177,6 @@ sl_cut <- function(x, breaks, include.lowest = TRUE, right = TRUE) {
 
 # Other utils ----
 create_formula <- function(covariates=NA_character_,
-                           treatment=NA_character_,
                            competing_risks=FALSE,
                            intercept=FALSE,
                            add_nodes=TRUE){
@@ -189,9 +188,9 @@ create_formula <- function(covariates=NA_character_,
   xs <- paste(covariates, collapse = "+")
   }
 
-  if (!is.na( treatment)) {
-    xs <- paste(xs, "+", treatment)
-  }
+  # if (!is.na( treatment)) {
+  #   xs <- paste(xs, "+", treatment)
+  # }
 
   # if (competing_risks) {
   #   xs <- paste(xs, "+ k")
@@ -217,7 +216,6 @@ create_formula <- function(covariates=NA_character_,
 
 
 create_formula_glmnet <- function(covariates=NA_character_,
-                           treatment=NA_character_,
                            add_nodes=TRUE){
 
 
@@ -227,9 +225,9 @@ create_formula_glmnet <- function(covariates=NA_character_,
     xs <- paste(covariates, collapse = "+")
   }
 
-  if (!is.na( treatment)) {
-    xs <- paste(xs, "+", treatment)
-  }
+  # if (!is.na( treatment)) {
+  #   xs <- paste(xs, "+", treatment)
+  # }
 
   if (add_nodes) {
     xs <- paste(xs, "+ node")
@@ -246,7 +244,6 @@ create_formula_glmnet <- function(covariates=NA_character_,
 }
 
 create_formula_gam <- function(covariates=NA_character_,
-                           treatment=NA_character_,
                            competing_risks=FALSE,
                            intercept=FALSE,
                            add_nodes=TRUE){
@@ -257,9 +254,9 @@ create_formula_gam <- function(covariates=NA_character_,
     xs <- paste(covariates, collapse = "+")
   }
 
-  if (!is.na( treatment)) {
-    xs <- paste(xs, "+", treatment)
-  }
+  # if (!is.na( treatment)) {
+  #   xs <- paste(xs, "+", treatment)
+  # }
 
   # if (competing_risks) {
   #   xs <- paste(xs, "+ k")
@@ -284,7 +281,6 @@ create_formula_gam <- function(covariates=NA_character_,
 }
 
 create_formula_hal <- function(covariates=NA_character_,
-                           treatment=NA_character_,
                            competing_risks=FALSE,
                            intercept=FALSE,
                            add_nodes=TRUE){
@@ -295,9 +291,9 @@ create_formula_hal <- function(covariates=NA_character_,
     xs <- paste(covariates, collapse = "*")
   }
 
-  if (!is.na( treatment)) {
-    xs <- paste(xs, "*", treatment)
-  }
+  # if (!is.na( treatment)) {
+  #   xs <- paste(xs, "*", treatment)
+  # }
 
   # if (competing_risks) {
   #   xs <- paste(xs, "+ k")

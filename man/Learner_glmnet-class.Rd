@@ -17,20 +17,13 @@ fitting backend (\code{glmnet::glmnet} or \code{glmnet::cv.glmnet}) through
 
 \describe{
 \item{\code{covariates} (\code{character})}{Names of covariate columns used in the model.}
-\item{\code{treatment} (\code{character})}{Optional treatment/exposure variable name(s).}
 \item{\code{cross_validation} (\code{logical})}{If \code{TRUE}, choose \code{lambda} by \code{cv.glmnet}.}
-\item{\code{recycle_information} (\code{logical})}{Placeholder flag for workflow compatibility.}
 \item{\code{intercept} (\code{logical})}{Whether to include an intercept.}
 \item{\code{formula} (\code{character})}{Model formula string used for design matrix creation.}
 \item{\code{learner} (\code{function})}{Underlying fitting function (\code{glmnet} or \code{cv.glmnet}).}
 \item{\code{add_nodes} (\code{logical})}{If \code{TRUE}, include node effects.}
-\item{\code{penalise_nodes} (\code{logical})}{If \code{FALSE}, node terms are unpenalized.}
-\item{\code{lambda_grid} (\code{numeric})}{Optional user-supplied lambda grid.}
 \item{\code{lambda} (\code{numeric})}{Selected lambda value used in final fit.}
 \item{\code{fit_arguments} (\code{list})}{Extra arguments passed to the fitting backend.}
-\item{\code{covariates_attributes_matrix} (\code{list})}{Reserved metadata holder.}
-\item{\code{model_fit} (\code{ANY})}{Slot reserved for stored model objects.}
-\item{\code{data_info} (\code{list})}{Metadata holder used by wrapper objects.}
 }
 }
 

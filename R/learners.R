@@ -9,20 +9,13 @@
 #' @section Fields:
 #' \describe{
 #'   \item{`covariates` (`character`)}{Names of covariate columns used in the model.}
-#'   \item{`treatment` (`character`)}{Optional treatment/exposure variable name(s).}
 #'   \item{`cross_validation` (`logical`)}{If `TRUE`, choose `lambda` by `cv.glmnet`.}
-#'   \item{`recycle_information` (`logical`)}{Placeholder flag for workflow compatibility.}
 #'   \item{`intercept` (`logical`)}{Whether to include an intercept.}
 #'   \item{`formula` (`character`)}{Model formula string used for design matrix creation.}
 #'   \item{`learner` (`function`)}{Underlying fitting function (`glmnet` or `cv.glmnet`).}
 #'   \item{`add_nodes` (`logical`)}{If `TRUE`, include node effects.}
-#'   \item{`penalise_nodes` (`logical`)}{If `FALSE`, node terms are unpenalized.}
-#'   \item{`lambda_grid` (`numeric`)}{Optional user-supplied lambda grid.}
 #'   \item{`lambda` (`numeric`)}{Selected lambda value used in final fit.}
 #'   \item{`fit_arguments` (`list`)}{Extra arguments passed to the fitting backend.}
-#'   \item{`covariates_attributes_matrix` (`list`)}{Reserved metadata holder.}
-#'   \item{`model_fit` (`ANY`)}{Slot reserved for stored model objects.}
-#'   \item{`data_info` (`list`)}{Metadata holder used by wrapper objects.}
 #' }
 #'
 #' @section Methods:
@@ -54,51 +47,28 @@ Learner_glmnet <- setRefClass(
   "Learner_glmnet",
   fields = list(
     covariates = "character",
-    treatment = "character",
     cross_validation = "logical",
-    recycle_information = "logical",
     intercept = "logical",
     formula = "character",
     learner = "function",
     add_nodes = "logical",
-    penalise_nodes = "logical",
-    lambda_grid = "numeric",
     lambda = "numeric",
-    fit_arguments = "list",
-    covariates_attributes_matrix = "list",
-    model_fit = "ANY",
-    data_info = "list"
+    fit_arguments = "list"
   ),
   methods = list(
     initialize = function(covariates = NA_character_,
-                          treatment = NA_character_,
                           cross_validation = FALSE,
                           intercept = TRUE,
                           add_nodes = TRUE,
-                          penalise_nodes = FALSE,
-                          recycle_information = FALSE,
-                          lambda_grid = NA_real_,
                           lambda = NA_real_,
                           ...) {
       .self$covariates <- covariates
-
-      .self$treatment <- treatment
 
       .self$cross_validation <- cross_validation
 
       .self$intercept <- intercept
 
       .self$add_nodes <- add_nodes
-
-      .self$penalise_nodes <- penalise_nodes
-
-      tmp <- lambda_grid
-      # normalize user input
-      if (is.null(lambda_grid))
-        tmp <- NA_real_
-      if (length(lambda_grid) == 0L)
-        tmp <- NA_real_
-      .self$lambda_grid <- as.numeric(tmp)  # will keep NA as NA
 
       tmp <- lambda
       if (is.null(lambda))
@@ -107,20 +77,15 @@ Learner_glmnet <- setRefClass(
         tmp <- NA_real_
       tmp <- as.numeric(tmp)
 
-      .self$recycle_information <- recycle_information
-
       # create formula for competing risks. It is correct in the fit method if survival.
       .self$formula <- create_formula_glmnet(
         covariates = .self$covariates,
-        treatment = .self$treatment,
         add_nodes = .self$add_nodes
       )
 
 
 
       .self$fit_arguments <- list(...)
-
-      .self$covariates_attributes_matrix <- list(...)
 
       .self$fit_arguments[['family']] <- "poisson"
 
@@ -156,7 +121,7 @@ Learner_glmnet <- setRefClass(
       }
 
 
-      group_cols <- c(.self$covariates, .self$treatment)[complete.cases(c(.self$covariates, .self$treatment))]
+      group_cols <- .self$covariates[complete.cases(.self$covariates)]
 
 
       group_cols <- group_cols[is.character(group_cols) &
@@ -173,10 +138,9 @@ Learner_glmnet <- setRefClass(
 
 
 
-      if (!.self$penalise_nodes) {
-        pf <- 1 - (grepl("node", colnames(x)))
 
-      }
+      pf <- 1 - (grepl("node", colnames(x)))
+
 
       if (.self$cross_validation) {
         # Cross-validation is done using cv.glmnet's internally generated
@@ -351,39 +315,28 @@ Learner_hal <- setRefClass(
   "Learner_hal",
   fields = list(
     covariates = "character",
-    treatment = "character",
     cross_validation = "logical",
-    recycle_information = "logical",
     intercept = "logical",
     formula = "character",
     learner = "function",
     add_nodes = "logical",
     max_degree = "integer",
-    lambda_grid = "numeric",
     lambda_opt = "numeric",
-    penalise_nodes = "logical",
     maxit_prefit = "numeric",
     fit_arguments = "list",
     covariates_attributes_matrix = "list",
-    num_knots = "numeric",
-    model_fit = "ANY"
+    num_knots = "numeric"
   ),
   methods = list(
     initialize = function(covariates = NA_character_,
-                          treatment = NA_character_,
                           intercept = FALSE,
                           cross_validation = TRUE,
                           add_nodes = TRUE,
-                          penalise_nodes = FALSE,
-                          recycle_information = FALSE,
                           max_degree = 2,
                           maxit_prefit = NA_real_,
                           num_knots = c(10L, 5L),
-                          lambda_grid = NA_real_,
                           ...) {
       .self$covariates <- covariates
-
-      .self$treatment <- treatment
 
       .self$cross_validation <- cross_validation
 
@@ -396,24 +349,19 @@ Learner_hal <- setRefClass(
       .self$num_knots <- num_knots
 
       # normalize user input
-      tmp <- lambda_grid
-      if (is.null(lambda_grid))
-        tmp <- NA_real_
-      if (length(lambda_grid) == 0L)
-        tmp <- NA_real_
-
-      .self$lambda_grid <- tmp
-
-      .self$penalise_nodes <- penalise_nodes
-
-      .self$recycle_information <- recycle_information
+      # tmp <- lambda_grid
+      # if (is.null(lambda_grid))
+      #   tmp <- NA_real_
+      # if (length(lambda_grid) == 0L)
+      #   tmp <- NA_real_
+      #
+      # .self$lambda_grid <- tmp
 
       .self$maxit_prefit <- maxit_prefit
 
       # create formula for competing risks. It is correct in the fit method if survival.
       .self$formula <- create_formula_hal(
         covariates = .self$covariates,
-        treatment = .self$treatment,
         intercept = FALSE,
         #in the glmnet case, intercept is handled separately.
         add_nodes = .self$add_nodes
@@ -829,7 +777,7 @@ Learner_hal <- setRefClass(
     private_fit = function(data, ...) {
       data_copy = data.table::copy(data)
 
-      group_cols <- c(.self$covariates, .self$treatment)[complete.cases(c(.self$covariates, .self$treatment))]
+      group_cols <- .self$covariates[complete.cases(.self$covariates)]
 
       data_copy <- data_copy[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(group_cols, "node", "k")]
 
@@ -842,10 +790,8 @@ Learner_hal <- setRefClass(
         knots_per_order = .self$num_knots
       )
 
-      if (!.self$penalise_nodes) {
-        pf <- 1 - grepl('^I\\(\\s*node\\s*==[^)]*\\)$', x_pp$colnames)
+      pf <- 1 - grepl('^I\\(\\s*node\\s*==[^)]*\\)$', x_pp$colnames)
 
-      }
 
       .self$covariates_attributes_matrix <- x_pp[c("colnames", "meta")]
 
@@ -913,19 +859,19 @@ Learner_hal <- setRefClass(
         glmnet_args <- .self$fit_arguments
 
         # If user supplied lambda_grid (single lambda or vector), use it directly
-        if (!all(is.na(.self$lambda_grid))) {
-          lambda_user <- as.numeric(.self$lambda_grid)
-          lambda_user <- lambda_user[complete.cases(lambda_user)]
-
-          if (length(lambda_user) > 0L) {
-            glmnet_args[["lambda"]] <- lambda_user
-
-            # store lambda_opt only if a single lambda was provided
-            if (length(lambda_user) == 1L) {
-              .self$lambda_opt <- lambda_user
-            }
-          }
-        }
+        # if (!all(is.na(.self$lambda_grid))) {
+        #   lambda_user <- as.numeric(.self$lambda_grid)
+        #   lambda_user <- lambda_user[complete.cases(lambda_user)]
+        #
+        #   if (length(lambda_user) > 0L) {
+        #     glmnet_args[["lambda"]] <- lambda_user
+        #
+        #     # store lambda_opt only if a single lambda was provided
+        #     if (length(lambda_user) == 1L) {
+        #       .self$lambda_opt <- lambda_user
+        #     }
+        #   }
+        # }
 
         suppressWarnings(fit <- do.call(glmnet::glmnet, c(
           glmnet_args, list(
@@ -990,31 +936,130 @@ Learner_hal <- setRefClass(
 
 #' GAM learner via `mgcv::bam`
 #'
-#' `Learner_gam` fits smooth additive Poisson hazard models and is intended for
-#' use within [Superlearner()] and [fit_learner()]. Any additional arguments
-#' supplied via `...` are forwarded to `mgcv::bam` through `fit_arguments`.
+#' `Learner_gam` is a Reference Class implementing the learner interface used by
+#' [Superlearner()] and [fit_learner()]. It fits **smooth additive Poisson models**
+#' on the internally created long-format Poisson data to estimate
+#' **piecewise-constant cause-specific hazards**.
 #'
-#' @param covariates `character`. Covariate names used in smooth terms.
-#' @param treatment `character`. Optional treatment/exposure variable names.
-#' @param cross_validation `logical`. If `TRUE`, hyperparameter selection uses CV workflow.
+#' At initialization, `Learner_gam` stores additional fitting options in `fit_arguments`.
+#' During fitting, [mgcv::bam()] is called via `do.call()` with:
+#' \itemize{
+#'   \item `data` = the long-format data (after internal aggregation),
+#'   \item `offset` = `log(tij)` (Poisson exposure),
+#'   \item `family` = `poisson()` (set by default, can be overridden via `...`).
+#' }
+#'
+#' @param covariates `character`. Model terms used on the right-hand side of the GAM.
+#'   This is intentionally flexible and may contain plain variable names
+#'   (e.g. `"age"`) and/or `mgcv` smooth terms as strings (e.g. `"s(age, k=10)"`,
+#'   `"te(age, value_LDL)"`). The terms are pasted together with `+`.
+#'
+#'   Internally, the learner parses these terms to identify the underlying variable
+#'   names that must be present in the long data. For example, `"s(age)"` requires
+#'   the column `age`.
+#'
+#' @param cross_validation `logical`. Reserved for future hyperparameter selection.
+#'   Currently stored in the object but not used by `private_fit()`.
+#'
+#' @param intercept `logical`. Model intercept.
+#'
+#' @param add_nodes `logical`. If `TRUE` (default), adds `+ node` to the formula so
+#'   the piecewise baseline hazard is represented by a factor for the time interval.
+#'   If `FALSE`, the formula will not include `node` (advanced use only).
+#'
+#' @param ... Additional arguments saved in `fit_arguments` and later forwarded to
+#'   [mgcv::bam()]. Typical examples include `method`, `discrete`, `nthreads`, `select`,
+#'   `gamma`, etc. You may also supply `family`, but by default the learner sets
+#'   `family = poisson()`.
 #'
 #' @section Fields:
-#' Includes `covariates` (`character`), `treatment` (`character`), `formula`
-#' (`character`), `learner` (`function`), `fit_arguments` (`list`), `model_fit` (`ANY`)
-#' and `data_info` (`list`).
+#' \describe{
+#'   \item{covariates}{`character`. The RHS terms used to build the GAM formula
+#'     (may include smooth terms as strings).}
+#'   \item{cross_validation}{`logical`. Reserved; currently unused in fitting.}
+#'   \item{intercept}{`logical`. Stored;}
+#'   \item{add_nodes}{`logical`. Whether `node` is added to the formula.}
+#'   \item{formula}{`character`. The model formula string typically `"deltaij ~ <terms> + node"`.}
+#'   \item{learner}{`function`. The fitting backend; set to [mgcv::bam()].}
+#'   \item{fit_arguments}{`list`. Additional arguments captured from `...` at
+#'     initialization and later passed to [mgcv::bam()] in `private_fit()`. The
+#'     default includes `family = poisson()`.}
+#' }
 #'
 #' @section Methods:
 #' \describe{
-#'   \item{`initialize(...)`}{Creates and configures the learner object.
-#'   Input: smooth-model settings and optional `mgcv::bam` arguments in `...`.
-#'   Output: configured `Learner_gam` reference object.}
-#'   \item{`private_fit(data, ...)`}{Internal method (not intended for end users).
-#'   Input: long-format `data.table`/`data.frame` with required columns
-#'   (`deltaij`, `tij`, `node`, `k`) and covariates. Output: fitted GAM/BAM
-#'   model object (class `gam`).}
-#'   \item{`private_predictor(model, newdata, ...)`}{Internal method (not intended
-#'   for end users). Input: fitted `model` and compatible `newdata`.
-#'   Output: `numeric` vector of predicted piecewise hazards.}
+#'   \item{`initialize(covariates = NULL, cross_validation = FALSE, intercept = TRUE, add_nodes = TRUE, ...)`}{
+#'     Creates and configures a `Learner_gam` object.
+#'
+#'     \strong{Inputs:}
+#'     \itemize{
+#'       \item `covariates`: character vector of GAM terms (including possible `mgcv` smooth terms).
+#'       \item `...`: stored as `fit_arguments` and forwarded to [mgcv::bam()] at fit time.
+#'     }
+#'
+#'     \strong{Side effects / stored configuration:}
+#'     \itemize{
+#'       \item sets `learner = mgcv::bam`,
+#'       \item sets `fit_arguments[['family']] = poisson()` (unless you overwrite it via `...`).
+#'     }
+#'
+#'     \strong{Output:} a configured `Learner_gam` reference object.
+#'   }
+#'
+#'   \item{`private_fit(data, ...)`}{
+#'     Internal method used by [fit_learner()] / [Superlearner()].
+#'
+#'     \strong{Input `data`:} long-format `data.table`/`data.frame` for a single cause
+#'     (typically after splitting by `k`) containing at least:
+#'     \itemize{
+#'       \item `deltaij`: Poisson outcome (event count in interval; usually 0/1),
+#'       \item `tij`: time-at-risk / exposure in the interval,
+#'       \item `node`: factor identifying the time interval (piecewise-constant grid),
+#'       \item `k`: cause indicator (kept for grouping; may be constant within call),
+#'       \item all variables referenced by `covariates` terms (e.g. `age`, `value_LDL`, ...).
+#'     }
+#'
+#'     \strong{Internal preprocessing:}
+#'     \itemize{
+#'       \item extracts the underlying variable names appearing in `covariates`,
+#'       \item aggregates the long data by `c(<extracted variables>, "node", "k")`,
+#'         computing `tij = sum(tij)` and `deltaij = sum(deltaij)`,
+#'       \item drops incomplete cases after aggregation.
+#'     }
+#'
+#'     \strong{Model fit:}
+#'     calls `mgcv::bam(formula = as.formula(self$formula),
+#'                      data = <aggregated>, offset = log(tij), ...)`
+#'     using the stored `fit_arguments`.
+#'
+#'     \strong{Output:} the fitted `mgcv` model object returned by [mgcv::bam()]
+#'     (class typically includes `"gam"`; exact class attributes are `mgcv`-dependent).
+#'   }
+#'
+#'   \item{`private_predictor(model, newdata, ...)`}{
+#'     Internal prediction method used by the package prediction pipeline.
+#'
+#'     \strong{Inputs:}
+#'     \itemize{
+#'       \item `model`: a fitted object returned by `private_fit()` (a `bam`/`gam` fit),
+#'       \item `newdata`: long-format data with the same required covariate columns and a
+#'         `node` factor. Prediction is performed for rows whose `node` level is present
+#'         in `model$xlevels$node`.
+#'     }
+#'
+#'     \strong{Computation:}
+#'     uses `predict(model, type = "response", offset = log(1), newdata = <subset>, ...)`.
+#'     The `offset = log(1)` implies predicted means correspond to hazards (not multiplied
+#'     by exposure) on the long-format scale expected by downstream code.
+#'
+#'     \strong{Output:} a `numeric` vector of predicted values aligned with `newdata`:
+#'     \itemize{
+#'       \item if all `node` levels in `newdata` are present in the fitted model, returns the
+#'         prediction vector directly,
+#'       \item otherwise, returns a vector with predictions for supported `node` levels and
+#'         `NA` for unsupported levels (preserving the original row order of `newdata`).
+#'     }
+#'   }
 #' }
 #'
 #' @references
@@ -1024,8 +1069,10 @@ Learner_hal <- setRefClass(
 #' sets. Journal of the Royal Statistical Society: Series C, 64(1), 139-155.
 #'
 #' @examples
-#' lrn <- Learner_gam(covariates = c("s(age)", "value_LDL"))
-#' lrn$covariates
+#' # smooth term specified as a string
+#' lrn <- Learner_gam(covariates = c("s(age, k = 10)", "s(value_LDL, k = 10)"),
+#'                    method = "fREML")
+#' lrn$formula
 #'
 #' @export Learner_gam
 #' @exportClass Learner_gam
@@ -1033,38 +1080,26 @@ Learner_gam <- setRefClass(
   "Learner_gam",
   fields = list(
     covariates = "character",
-    treatment = "character",
     cross_validation = "logical",
-    recycle_information = "logical",
     intercept = "logical",
     formula = "character",
     learner = "function",
     add_nodes = "logical",
-    penalise_nodes = "logical",
-    fit_arguments = "list",
-    covariates_attributes_matrix = "list",
-    model_fit = "ANY"
+    fit_arguments = "list"
   ),
   methods = list(
     initialize = function(covariates = NULL,
-                          treatment = NA_character_,
                           cross_validation = FALSE,
                           intercept = TRUE,
                           add_nodes = TRUE,
-                          penalise_nodes = FALSE,
-                          recycle_information = FALSE,
                           ...) {
       .self$covariates <- covariates
-      .self$treatment <- treatment
       .self$cross_validation <- cross_validation
       .self$intercept <- intercept
       .self$add_nodes <- add_nodes
-      .self$penalise_nodes <- penalise_nodes
-      .self$recycle_information <- recycle_information
 
       .self$formula <- create_formula_gam(
         covariates = .self$covariates,
-        treatment = .self$treatment,
         intercept = .self$intercept,
         add_nodes = .self$add_nodes
       )
@@ -1093,7 +1128,7 @@ Learner_gam <- setRefClass(
       }
 
 
-      group_cols <- c(.self$covariates, .self$treatment)[complete.cases(c(.self$covariates, .self$treatment))]
+      group_cols <- .self$covariates[complete.cases(.self$covariates)]
 
 
       group_cols <- group_cols[is.character(group_cols) &
