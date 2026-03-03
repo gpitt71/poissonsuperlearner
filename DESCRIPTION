@@ -31,5 +31,4 @@ Suggests:
     testthat (>= 3.0.0)
 VignetteBuilder: knitr
 LazyData: true
-SystemRequirements: C++11
 Config/testthat/edition: 3

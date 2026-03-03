@@ -399,7 +399,7 @@ Learner_hal <- setRefClass(
   ),
   methods = list(
     initialize = function(covariates = NA_character_,
-                          intercept = FALSE,
+                          intercept = TRUE,
                           cross_validation = TRUE,
                           add_nodes = TRUE,
                           max_degree = 2,
