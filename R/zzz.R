@@ -1,7 +1,7 @@
 utils::globalVariables(c(
   ".", "..columns_ss", "..z_covariates",
   "LDL_hinge3_sq", "age_hinge55_sq",
-  "absolute_risk", "covariate", "deviance",
+  "absolute_risk", "covariate", "deviance", "internal_psl_ix",
   "deltaij", "deltatime", "dummy",
   "event", "folder", "id", "k", "node",
   "pwc_cols", "status_cvd", "survival_function",

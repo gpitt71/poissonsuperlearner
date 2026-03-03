@@ -3,3 +3,4 @@
 ^src/.*\.(o|so|dll|a)$
 ^libs$
 ^libs/.*$
+^\.github$

@@ -1,3 +1,5 @@
+[![R-CMD-check](https://github.com/gpitt71/poissonsuperlearner/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/gpitt71/poissonsuperlearner/actions/workflows/R-CMD-check.yaml)
+
 # Poisson SuperLearner
 
 The package provides an implementation of piece-wise constant hazard models for time-to-event analysis of survival and competing risks data. The piecewise constant hazard models can be combined in an ensemble, the Poisson Superlearner, via cross-validated risk minimization for flexible hazard estimation. It enables estimation of survival functions and risk predictions.

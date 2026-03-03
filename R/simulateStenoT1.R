@@ -89,6 +89,7 @@
 ##' simulateStenoT1(n = 3)
 ##' simulateStenoT1(n = 200, scenario = "alpha", competing_risks = TRUE)
 ##' @author Thomas A. Gerds <tag@@biostat.ku.dk>
+##' @export
 simulateStenoT1 <- function(
     n,
     coefficient_age = 0.05,
