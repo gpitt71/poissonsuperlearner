@@ -58,7 +58,6 @@ predict.poisson_superlearner <- function(object,
                                          ...) {
 
   setDT(newdata)
-
   tmp <- copy(newdata)
   tmp[,internal_psl_ix:=1:.N]
   # here we disregard the event_time column if present in the newdata
@@ -176,7 +175,7 @@ predict.poisson_superlearner <- function(object,
   } else{
     #
 
-    learners_predictions <- mapply(
+        learners_predictions <- mapply(
       function(crisk_cause,
                superlearner,
                newdata,
@@ -320,9 +319,6 @@ predict.poisson_superlearner <- function(object,
   setnames(d, new = object$data_info$id, old = "internal_psl_ix")
   d<-d[order(id),]
   return(d)
-
-
-
 
 }
 

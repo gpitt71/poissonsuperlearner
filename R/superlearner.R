@@ -361,7 +361,37 @@ Superlearner <- function(data,
   z_covariates_list <- select_covariate_path(dt_learners, z_covariates, min_depth = min_depth)
   ##
 
+  dt_learners[,covariate:=NULL]
+
+  dt_learners[,learner:=learners_labels]
   ## Meta learning
+  # Which learner columns are completely NA within each competing risk?
+  failed_by_risk <- lapply(dt_z, function(DT) {
+    z_covariates[vapply(DT[, ..z_covariates], function(x) all(is.na(x)), logical(1))]
+  })
+
+  # Remove a learner globally if it failed in at least one competing risk
+  failed_learners <- Reduce(union, failed_by_risk)
+
+  if (length(failed_learners) > 0L) {
+    keep_z <- setdiff(z_covariates, failed_learners)
+
+    # subset pseudo-observation tables
+    dt_z <- lapply(dt_z, function(DT) {
+      DT[, c(setdiff(names(DT), z_covariates), keep_z), with = FALSE]
+    })
+
+    # keep learners and labels aligned with remaining Z-columns
+    keep_ix <- match(keep_z, z_covariates)
+
+    learners <- learners[keep_ix]
+    learners_labels <- learners_labels[keep_ix]
+    z_covariates <- keep_z
+  }
+
+  if (length(z_covariates) == 0L) {
+    stop("All learners failed: every cross-validated prediction column was entirely NA in at least one competing risk.")
+  }
 
   meta_learner <- Learner_glmnet(
     covariates = z_covariates,
@@ -390,11 +420,6 @@ Superlearner <- function(data,
 
 
   )
-
-
-  dt_learners[,covariate:=NULL]
-
-  dt_learners[,learner:=learners_labels]
 
   out <- list(
     learners = learners,

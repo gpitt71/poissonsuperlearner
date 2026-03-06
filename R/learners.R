@@ -845,6 +845,7 @@ Learner_hal <- setRefClass(
 
 
     private_fit = function(data, ...) {
+
       data_copy = data.table::copy(data)
 
       group_cols <- .self$covariates[complete.cases(.self$covariates)]
@@ -876,38 +877,55 @@ Learner_hal <- setRefClass(
         }
 
         cv_fit <- tryCatch(
-          suppressWarnings(
-            do.call(glmnet::cv.glmnet, c(
-              list(
-                x      = x_pp$X,
-                y      = as.numeric(data_copy[["deltaij"]]),
-                offset = log(data_copy[["tij"]]),
-                penalty.factor =pf
-              ),
-              prefit_args
-            ))
-          ),
-          error = function(e) {
+          {
             suppressWarnings(
-              do.call(glmnet::cv.glmnet, c(
-                list(
-                  x = x,
-                  y = as.vector(data[["deltaij"]]),
-                  offset = log(as.vector(data[["tij"]])),
-                  penalty.factor = rep(1, ncol(x))
-                ),
-                prefit_args
-              ))
+              do.call(
+                glmnet::cv.glmnet,
+                c(
+                  list(
+                    x = x_pp$X,
+                    y = as.numeric(data_copy[["deltaij"]]),
+                    offset = log(data_copy[["tij"]]),
+                    penalty.factor = pf
+                  ),
+                  prefit_args
+                )
+              )
+            )
+          },
+          error = function(e1) {
+            tryCatch(
+              {
+                suppressWarnings(
+                  do.call(
+                    glmnet::cv.glmnet,
+                    c(
+                      list(
+                        x = x_pp$X,
+                        y = as.vector(data[["deltaij"]]),
+                        offset = log(as.vector(data[["tij"]])),
+                        penalty.factor = rep(1, ncol(x_pp$X))
+                      ),
+                      prefit_args
+                    )
+                  )
+                )
+              },
+              error = function(e2) {
+                NULL
+              }
             )
           }
         )
 
 
-
-
-
         ## 2) Choose lambda that minimizes cvm (this is cv_fit$lambda.min)
-        lambda_min_cvm <- cv_fit$lambda.min
+
+      if(is.null(cv_fit)){
+        lambda_min_cvm <- Inf
+
+      }else{
+      lambda_min_cvm <- cv_fit$lambda.min}
         .self$lambda_opt <- lambda_min_cvm
 
         ## 3) Refit a plain glmnet at that single lambda (no CV)
@@ -927,21 +945,6 @@ Learner_hal <- setRefClass(
 
        } else {
         glmnet_args <- .self$fit_arguments
-
-        # If user supplied lambda_grid (single lambda or vector), use it directly
-        # if (!all(is.na(.self$lambda_grid))) {
-        #   lambda_user <- as.numeric(.self$lambda_grid)
-        #   lambda_user <- lambda_user[complete.cases(lambda_user)]
-        #
-        #   if (length(lambda_user) > 0L) {
-        #     glmnet_args[["lambda"]] <- lambda_user
-        #
-        #     # store lambda_opt only if a single lambda was provided
-        #     if (length(lambda_user) == 1L) {
-        #       .self$lambda_opt <- lambda_user
-        #     }
-        #   }
-        # }
 
         suppressWarnings(fit <- do.call(glmnet::glmnet, c(
           glmnet_args, list(
