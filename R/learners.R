@@ -117,169 +117,140 @@ Learner_glmnet <- setRefClass(
 
     private_fit = function(data, ...) {
       .extract_symbols <- function(term) {
-        # try as a bare expression, then as a RHS of a formula
-        out <- tryCatch(
+        tryCatch(
           all.vars(str2lang(term)),
           error = function(e) {
             tryCatch(
-              all.vars(stats::terms(stats::as.formula(
-                paste("~", term)
-              ))),
-              error = function(e2)
-                character(0)
+              all.vars(stats::terms(stats::as.formula(paste("~", term)))),
+              error = function(e2) character(0)
             )
           }
         )
-        out
       }
 
+      fit <- tryCatch({
 
-      group_cols <- .self$covariates[complete.cases(.self$covariates)]
+        group_cols <- .self$covariates[complete.cases(.self$covariates)]
+        group_cols <- group_cols[is.character(group_cols) & !is.na(group_cols) & nzchar(group_cols)]
+        group_cols <- unlist(lapply(group_cols, .extract_symbols), use.names = FALSE)
+        group_cols <- unique(group_cols)
 
+        data <- data[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(group_cols, "node", "k")]
+        data <- data[complete.cases(data), ]
 
-      group_cols <- group_cols[is.character(group_cols) &
-                                 !is.na(group_cols) & nzchar(group_cols)]
-      group_cols <- unlist(lapply(group_cols, .extract_symbols), use.names = FALSE)
+        x <- Matrix::sparse.model.matrix(
+          formula(.self$formula),
+          data,
+          contrasts.arg = NULL
+        )[, -1, drop = FALSE]
 
-      group_cols <- unique(group_cols)
-
-      data <- data[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(group_cols, "node", "k")]
-
-      data <- data[complete.cases(data), ]
-
-      x = Matrix::sparse.model.matrix(formula(.self$formula), data, contrasts.arg = NULL)[, -1]
-
-
-
-
-      pf <- 1 - (grepl("node", colnames(x)))
-
-
-      if (.self$cross_validation) {
-        # Cross-validation is done using cv.glmnet's internally generated
-        # lambda path. We then refit a glmnet model at the lambda that minimizes
-        # the (Poisson) deviance, matching the approach used for Learner_hal.
-
-        cv_args <- .self$fit_arguments
-
-        # Ensure deviance is used unless the user explicitly provided another
-        # type.measure.
-        if (is.null(cv_args[['type.measure']])) {
-          cv_args[['type.measure']] <- 'deviance'
+        if (nrow(x) == 0L || ncol(x) == 0L) {
+          return(make_failed_fit("Empty design matrix in Learner_glmnet::private_fit"))
         }
 
-        cv_fit <- tryCatch(
-          suppressWarnings(
-            do.call(glmnet::cv.glmnet, c(
-              list(
-                x = x,
-                y = as.vector(data[["deltaij"]]),
-                offset = log(as.vector(data[["tij"]])),
-                penalty.factor =pf
-              ),
-              cv_args
-            ))
-          ),
-          error = function(e) {
+        pf <- 1 - grepl("node", colnames(x))
+
+        if (.self$cross_validation) {
+          cv_args <- .self$fit_arguments
+
+          if (is.null(cv_args[["type.measure"]])) {
+            cv_args[["type.measure"]] <- "deviance"
+          }
+
+          cv_fit <- tryCatch(
             suppressWarnings(
               do.call(glmnet::cv.glmnet, c(
                 list(
                   x = x,
                   y = as.vector(data[["deltaij"]]),
                   offset = log(as.vector(data[["tij"]])),
-                  penalty.factor = rep(1, ncol(x))
+                  penalty.factor = pf
                 ),
                 cv_args
               ))
-            )
-          }
-        )
-
-        # suppressWarnings(cv_fit <- do.call(cv.glmnet, c(
-        #   list(
-        #     x = x,
-        #     y = as.vector(data[["deltaij"]]),
-        #     offset = log(as.vector(data[["tij"]]))
-        #   ),cv_args
-        # ))
-
-
-        # lambda.min corresponds to the minimizer of cvm (expected deviance)
-        # over cv.glmnet's lambda path.
-        lambda_opt <- cv_fit$lambda.min
-
-        # Store selected lambda for potential downstream use.
-        .self$lambda <- as.numeric(lambda_opt)
-
-        # Refit glmnet at the selected lambda.
-        glmnet_args <- .self$fit_arguments
-        glmnet_args[['lambda']] <- as.numeric(lambda_opt)
-
-        # Remove CV-only arguments if present.
-        glmnet_args[['nfolds']] <- NULL
-        glmnet_args[['foldid']] <- NULL
-        glmnet_args[['type.measure']] <- NULL
-        glmnet_args[['keep']] <- NULL
-        glmnet_args[['grouped']] <- NULL
-        glmnet_args[['parallel']] <- NULL
-        glmnet_args[['penalty.factor']] <- pf
-
-
-        suppressWarnings(out <- do.call(glmnet::glmnet, c(glmnet_args, list(
-          x = x,
-          y = as.numeric(data[["deltaij"]]),
-          offset = log(data[["tij"]])
-        ))))
-
-      }else {
-        suppressWarnings(out <- do.call(.self$learner, c(
-          .self$fit_arguments,
-          list(
-            x = x,
-            y = as.numeric(data[["deltaij"]]),
-            offset = log(data[["tij"]])
+            ),
+            error = function(e1) {
+              tryCatch(
+                suppressWarnings(
+                  do.call(glmnet::cv.glmnet, c(
+                    list(
+                      x = x,
+                      y = as.vector(data[["deltaij"]]),
+                      offset = log(as.vector(data[["tij"]])),
+                      penalty.factor = rep(1, ncol(x))
+                    ),
+                    cv_args
+                  ))
+                ),
+                error = function(e2) NULL
+              )
+            }
           )
-        )))
-      }
 
-      return(out)
+          if (is.null(cv_fit) || length(cv_fit$lambda.min) == 0L || !is.finite(cv_fit$lambda.min)) {
+            return(make_failed_fit("cv.glmnet failed in Learner_glmnet::private_fit"))
+          }
 
+          .self$lambda <- as.numeric(cv_fit$lambda.min)
+
+          cv_fit
+
+        } else {
+          suppressWarnings(
+            do.call(glmnet::glmnet, c(
+              .self$fit_arguments,
+              list(
+                x = x,
+                y = as.numeric(data[["deltaij"]]),
+                offset = log(data[["tij"]])
+              )
+            ))
+          )
+        }
+
+      }, error = function(e) {
+        make_failed_fit(conditionMessage(e))
+      })
+
+      fit
     },
 
     private_predictor = function(model, newdata, ...) {
-      is_empty_model <- function(model) {
-        if (is.null(model))
-          return(TRUE)
-        if (inherits(model, "cv.glmnet")) {
-          if (is.null(model$glmnet.fit))
-            return(TRUE)
-          beta <- model$glmnet.fit$beta
-        } else {
-          beta <- model$beta
-        }
-        if (is.null(beta))
-          return(TRUE)
-        if (!is.matrix(beta) &&
-            !inherits(beta, "Matrix"))
-          return(FALSE)
-        nrow(beta) == 0 || ncol(beta) == 0
-      }
-
-      if (is_empty_model(model)) {
+      if (is_failed_fit(model)) {
         return(rep(NA_real_, nrow(newdata)))
       }
 
-      out <- predict(
-        model,
-        newx = Matrix::sparse.model.matrix(formula(.self$formula), newdata, contrasts.arg = NULL)[, -1],
-        newoffset = log(1),
-        type = "response",
-        ...
+      x_new <- tryCatch(
+        Matrix::sparse.model.matrix(
+          formula(.self$formula),
+          newdata,
+          contrasts.arg = NULL
+        )[, -1, drop = FALSE],
+        error = function(e) NULL
       )
 
-      return(out)
+      if (is.null(x_new) || nrow(x_new) == 0L || ncol(x_new) == 0L) {
+        return(rep(NA_real_, nrow(newdata)))
+      }
 
+      pred_args <- list(
+        object = model,
+        newx = x_new,
+        newoffset = log(1),
+        type = "response"
+      )
 
+      dots <- list(...)
+      if (inherits(model, "cv.glmnet") && is.null(dots[["s"]])) {
+        pred_args[["s"]] <- "lambda.min"
+      }
+
+      out <- tryCatch(
+        do.call(predict, c(pred_args, dots)),
+        error = function(e) rep(NA_real_, nrow(newdata))
+      )
+
+      as.numeric(out)
     }
 
   )
@@ -394,7 +365,6 @@ Learner_hal <- setRefClass(
     lambda_opt = "numeric",
     maxit_prefit = "numeric",
     fit_arguments = "list",
-    covariates_attributes_matrix = "list",
     num_knots = "numeric"
   ),
   methods = list(
@@ -444,8 +414,6 @@ Learner_hal <- setRefClass(
       }
 
       .self$fit_arguments <- list(...)
-
-      .self$covariates_attributes_matrix <- list()
 
       .self$fit_arguments[['family']] <- "poisson"
 
@@ -846,163 +814,143 @@ Learner_hal <- setRefClass(
 
     private_fit = function(data, ...) {
 
-      data_copy = data.table::copy(data)
+      fit <- tryCatch({
 
-      group_cols <- .self$covariates[complete.cases(.self$covariates)]
+        data_copy <- data.table::copy(data)
 
-      data_copy <- data_copy[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(group_cols, "node", "k")]
+        group_cols <- .self$covariates[complete.cases(.self$covariates)]
 
-      data_copy <- data_copy[complete.cases(data_copy), ]
+        data_copy <- data_copy[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(group_cols, "node", "k")]
+        data_copy <- data_copy[complete.cases(data_copy), ]
 
-      x_pp <- hal_basis(
-        vars = c(group_cols, "node"),
-        DT = data_copy,
-        max_interaction = .self$max_degree,
-        knots_per_order = .self$num_knots
-      )
-
-      pf <- 1 - grepl('^I\\(\\s*node\\s*==[^)]*\\)$', x_pp$colnames)
-
-
-      .self$covariates_attributes_matrix <- x_pp[c("colnames", "meta")]
-
-
-
-      if (.self$cross_validation) {
-        ## 1) Prefit with cv.glmnet to obtain the lambda path + CV curve
-        prefit_args <- .self$fit_arguments
-
-        if (!is.na(.self$maxit_prefit)) {
-          prefit_args[["maxit"]] <- .self$maxit_prefit
-        }
-
-        cv_fit <- tryCatch(
-          {
-            suppressWarnings(
-              do.call(
-                glmnet::cv.glmnet,
-                c(
-                  list(
-                    x = x_pp$X,
-                    y = as.numeric(data_copy[["deltaij"]]),
-                    offset = log(data_copy[["tij"]]),
-                    penalty.factor = pf
-                  ),
-                  prefit_args
-                )
-              )
-            )
-          },
-          error = function(e1) {
-            tryCatch(
-              {
-                suppressWarnings(
-                  do.call(
-                    glmnet::cv.glmnet,
-                    c(
-                      list(
-                        x = x_pp$X,
-                        y = as.vector(data[["deltaij"]]),
-                        offset = log(as.vector(data[["tij"]])),
-                        penalty.factor = rep(1, ncol(x_pp$X))
-                      ),
-                      prefit_args
-                    )
-                  )
-                )
-              },
-              error = function(e2) {
-                NULL
-              }
-            )
-          }
+        x_pp <- hal_basis(
+          vars = c(group_cols, "node"),
+          DT = data_copy,
+          max_interaction = .self$max_degree,
+          knots_per_order = .self$num_knots
         )
 
+        if (nrow(x_pp$X) == 0L || ncol(x_pp$X) == 0L) {
+          return(make_failed_fit("Empty HAL basis in Learner_hal::private_fit"))
+        }
 
-        ## 2) Choose lambda that minimizes cvm (this is cv_fit$lambda.min)
+        pf <- 1 - grepl("^I\\(\\s*node\\s*==[^)]*\\)$", x_pp$colnames)
 
-      if(is.null(cv_fit)){
-        lambda_min_cvm <- Inf
+        if (.self$cross_validation) {
+          prefit_args <- .self$fit_arguments
 
-      }else{
-      lambda_min_cvm <- cv_fit$lambda.min}
-        .self$lambda_opt <- lambda_min_cvm
+          if (!is.na(.self$maxit_prefit)) {
+            prefit_args[["maxit"]] <- .self$maxit_prefit
+          }
 
-        ## 3) Refit a plain glmnet at that single lambda (no CV)
-        glmnet_args <- .self$fit_arguments
-        glmnet_args[["lambda"]] <- lambda_min_cvm
-        glmnet_args[["nfolds"]] <- NULL  # not used by glmnet, but remove if present
-        glmnet_args[["penalty.factor"]] <- pf
-
-
-        suppressWarnings(fit <- do.call(glmnet::glmnet, c(
-          glmnet_args, list(
-            x      = x_pp$X,
-            y      = as.numeric(data_copy[["deltaij"]]),
-            offset = log(data_copy[["tij"]])
+          cv_fit <- tryCatch(
+            suppressWarnings(
+              do.call(glmnet::cv.glmnet, c(
+                list(
+                  x = x_pp$X,
+                  y = as.numeric(data_copy[["deltaij"]]),
+                  offset = log(data_copy[["tij"]]),
+                  penalty.factor = pf
+                ),
+                prefit_args
+              ))
+            ),
+            error = function(e1) {
+              tryCatch(
+                suppressWarnings(
+                  do.call(glmnet::cv.glmnet, c(
+                    list(
+                      x = x_pp$X,
+                      y = as.numeric(data_copy[["deltaij"]]),
+                      offset = log(data_copy[["tij"]]),
+                      penalty.factor = rep(1, ncol(x_pp$X))
+                    ),
+                    prefit_args
+                  ))
+                ),
+                error = function(e2) NULL
+              )
+            }
           )
-        )))
 
-       } else {
-        glmnet_args <- .self$fit_arguments
+          if (is.null(cv_fit) || length(cv_fit$lambda.min) == 0L || !is.finite(cv_fit$lambda.min)) {
+            return(make_failed_fit("cv.glmnet failed in Learner_hal::private_fit"))
+          }
 
-        suppressWarnings(fit <- do.call(glmnet::glmnet, c(
-          glmnet_args, list(
-            x      = x_pp$X,
-            y      = as.numeric(data_copy[["deltaij"]]),
-            offset = log(data_copy[["tij"]])
+          .self$lambda_opt <- as.numeric(cv_fit$lambda.min)
+
+          attach_psl_fit_meta(
+            cv_fit,
+            meta = x_pp[c("colnames", "meta")]
           )
-        )))
-      }
 
-      return(fit)
+        } else {
+          glmnet_args <- .self$fit_arguments
+          glmnet_args[["penalty.factor"]] <- pf
 
+          fit_obj <- suppressWarnings(
+            do.call(glmnet::glmnet, c(
+              glmnet_args,
+              list(
+                x = x_pp$X,
+                y = as.numeric(data_copy[["deltaij"]]),
+                offset = log(data_copy[["tij"]])
+              )
+            ))
+          )
+
+          attach_psl_fit_meta(
+            fit_obj,
+            meta = x_pp[c("colnames", "meta")]
+          )
+        }
+
+      }, error = function(e) {
+        make_failed_fit(conditionMessage(e))
+      })
+
+      fit
     },
 
     private_predictor = function(model, newdata, ...) {
-      is_empty_model <- function(fit) {
-        if (is.null(fit))
-          return(TRUE)
-        df <- if (inherits(fit, "cv.glmnet"))
-          fit$glmnet.fit$df
-        else
-          fit$df
-        if (!is.null(df))
-          return(all(df == 0))
-        beta <- if (inherits(fit, "cv.glmnet"))
-          fit$glmnet.fit$beta
-        else
-          fit$beta
-        if (is.null(beta))
-          return(TRUE)
-        all(beta == 0)
-      }
-
-      if (is_empty_model(model)) {
+      if (is_failed_fit(model)) {
         return(rep(NA_real_, nrow(newdata)))
       }
 
-      X_new <- .self$hal_prepare_new(newdata, .self$covariates_attributes_matrix)
+      fit_meta <- get_psl_fit_meta(model)
 
-      # if(.self$cross_validation){
-      out <- predict(
-        model,
-        newx = X_new,
-        newoffset = log(1),
-        type = "response",
-        ...
+      if (is.null(fit_meta)) {
+        return(rep(NA_real_, nrow(newdata)))
+      }
+
+      X_new <- tryCatch(
+        .self$hal_prepare_new(newdata, fit_meta),
+        error = function(e) NULL
       )
 
+      if (is.null(X_new)) {
+        return(rep(NA_real_, nrow(newdata)))
+      }
 
-      # }
+      pred_args <- list(
+        object = model,
+        newx = X_new,
+        newoffset = log(1),
+        type = "response"
+      )
 
-      return(out)
+      dots <- list(...)
+      if (inherits(model, "cv.glmnet") && is.null(dots[["s"]])) {
+        pred_args[["s"]] <- "lambda.min"
+      }
 
+      out <- tryCatch(
+        do.call(predict, c(pred_args, dots)),
+        error = function(e) rep(NA_real_, nrow(newdata))
+      )
 
+      as.numeric(out)
     }
-
-
-
   )
 )
 
@@ -1098,70 +1046,69 @@ Learner_gam <- setRefClass(
     },
     private_fit = function(data, ...) {
       .extract_symbols <- function(term) {
-        # try as a bare expression, then as a RHS of a formula
-        out <- tryCatch(
+        tryCatch(
           all.vars(str2lang(term)),
           error = function(e) {
             tryCatch(
-              all.vars(stats::terms(stats::as.formula(
-                paste("~", term)
-              ))),
-              error = function(e2)
-                character(0)
+              all.vars(stats::terms(stats::as.formula(paste("~", term)))),
+              error = function(e2) character(0)
             )
           }
         )
-        out
       }
 
+      fit <- tryCatch({
 
-      group_cols <- .self$covariates[complete.cases(.self$covariates)]
+        group_cols <- .self$covariates[complete.cases(.self$covariates)]
+        group_cols <- group_cols[is.character(group_cols) & !is.na(group_cols) & nzchar(group_cols)]
+        group_cols <- unlist(lapply(group_cols, .extract_symbols), use.names = FALSE)
+        group_cols <- unique(group_cols)
 
+        data <- data[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(group_cols, "node", "k")]
+        data <- data[complete.cases(data), ]
 
-      group_cols <- group_cols[is.character(group_cols) &
-                                 !is.na(group_cols) & nzchar(group_cols)]
-      group_cols <- unlist(lapply(group_cols, .extract_symbols), use.names = FALSE)
+        .self$fit_arguments$formula <- as.formula(.self$formula)
 
-      group_cols <- unique(group_cols)
+        do.call(.self$learner, c(
+          .self$fit_arguments,
+          list(
+            data = data,
+            offset = log(data[["tij"]])
+          )
+        ))
 
-      data <- data[, .(tij = sum(tij), deltaij = sum(deltaij)), by = c(group_cols, "node", "k")]
+      }, error = function(e) {
+        make_failed_fit(conditionMessage(e))
+      })
 
-      data <- data[complete.cases(data), ]
-
-
-      .self$fit_arguments$formula <- as.formula(.self$formula)
-      # .self$fit_arguments$data <- data
-      # .self$fit_arguments$offset <- log(data[['tij']])
-
-      fit <- do.call(.self$learner, c(.self$fit_arguments, list(
-        data = data, offset = log(data[['tij']])
-      )))
-      return(fit)
+      fit
     },
 
     private_predictor = function(model, newdata, ...) {
-      pred <- predict(
-        model,
-        newdata = newdata[node %in% model$xlevels$node, ],
-        type = "response",
-        offset = log(1),
-        #log(newdata[['tij']]),
-        ...
+      if (is_failed_fit(model)) {
+        return(rep(NA_real_, nrow(newdata)))
+      }
+
+      pred <- tryCatch(
+        predict(
+          model,
+          newdata = newdata[node %in% model$xlevels$node, ],
+          type = "response",
+          offset = log(1),
+          ...
+        ),
+        error = function(e) NULL
       )
 
+      if (is.null(pred)) {
+        return(rep(NA_real_, nrow(newdata)))
+      }
 
-      if (all((levels(newdata$node) %in% model$xlevels$node))) {
-        return(pred)
-
-      } else{
-        #
+      if (all(levels(newdata$node) %in% model$xlevels$node)) {
+        return(as.numeric(pred))
+      } else {
         newdata[node %in% model$xlevels$node, predictions_model := pred]
-
-        return(as.array(newdata$predictions_model))
-
-
-
-
+        return(as.numeric(newdata$predictions_model))
       }
     }
   )

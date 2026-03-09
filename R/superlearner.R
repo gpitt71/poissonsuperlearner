@@ -120,39 +120,29 @@
 #'
 #' @export
 Superlearner <- function(data,
-                         id = "id", #
-                         status = "status", #
-                         event_time = NULL, #
+                         id = "id",
+                         status = "status",
+                         event_time = NULL,
                          learners,
-                         number_of_nodes = NULL, #
+                         number_of_nodes = NULL,
                          nodes = NULL,
                          variable_transformation = NULL,
-                         nfold = 3, #
+                         nfold = 3,
                          ...) {
 
-
-    if (!(id %in% names(data))) {
-        data[["id"]] <- 1:NROW(data)
-        id <- "id"
-    }
-  # give names to the learners
-  if(is.null(names(learners))){
-
-    names(learners) <- paste0("learner_",1:length(learners))
+  if (!(id %in% names(data))) {
+    data[["id"]] <- 1:NROW(data)
+    id <- "id"
   }
 
-  learners_labels = names(learners)
+  if (is.null(names(learners))) {
+    names(learners) <- paste0("learner_", seq_along(learners))
+  }
 
-  # Data pre-processing ----
+  learners_labels <- names(learners)
 
-  # save some relevant values
-
-  maximum_followup = max(data[[event_time]])
-
-  n <- length(unique(data[[id]]))#nrow(data)
-
-  min_depth = length(learners)
-
+  maximum_followup <- max(data[[event_time]])
+  n <- length(unique(data[[id]]))
 
   if (!(0 %in% data[[status]])) {
     warning(
@@ -163,113 +153,103 @@ Superlearner <- function(data,
       )
     )
     n_crisks <- length(unique(data[[status]]))
-    uncensored_01 <-TRUE
-
-  } else{
-    n_crisks <- length(unique(data[[status]])) - 1
-    uncensored_01 <-FALSE
+    uncensored_01 <- TRUE
+  } else {
+    n_crisks <- length(unique(data[[status]])) - 1L
+    uncensored_01 <- FALSE
   }
 
-
-    # Data pre-processing ----
-
-    #  Handle nodes
-    ##Either the nodes are given or we take all of the realised times
-    if (!is.null(number_of_nodes)) {
-
-      grid_nodes = quantile(data[[event_time]], probs = seq(0, 1, length.out = as.integer(number_of_nodes)+1), type = 1, names = FALSE)
-
-
-
-    } else{
-      if (is.null(nodes)) {
-        grid_nodes <- sort(unique(data[[event_time]]))
-
-      } else{
-        grid_nodes <- nodes
-
-      }
-    }
-
-    # Add zero if missing
-    if (!(0 %in% grid_nodes)) {
-      grid_nodes <- c(0, grid_nodes)
-
-    }
-
-
-
-    grid_nodes <- grid_nodes[grid_nodes <= max(data[[event_time]])]
-
-    # Actual data pp
-    dt <- data_pre_processing(
-      data = data,
-      id = id,
-      status = status,
-      nodes = grid_nodes,
-      event_time = event_time,
-      uncensored_01=uncensored_01
+  if (!is.null(number_of_nodes)) {
+    grid_nodes <- quantile(
+      data[[event_time]],
+      probs = seq(0, 1, length.out = as.integer(number_of_nodes) + 1L),
+      type = 1,
+      names = FALSE
     )
+  } else if (is.null(nodes)) {
+    grid_nodes <- sort(unique(data[[event_time]]))
+  } else {
+    grid_nodes <- nodes
+  }
 
+  if (!(0 %in% grid_nodes)) {
+    grid_nodes <- c(0, grid_nodes)
+  }
 
+  grid_nodes <- grid_nodes[grid_nodes <= max(data[[event_time]])]
 
+  dt <- data_pre_processing(
+    data = data,
+    id = id,
+    status = status,
+    nodes = grid_nodes,
+    event_time = event_time,
+    uncensored_01 = uncensored_01
+  )
 
+  if (!is.null(variable_transformation)) {
+    apply_transformations(dt, variable_transformation)
+  }
 
-
-  lhs_string = NULL
-
-
-  ## Transform the variables if needed ----
-  if (!is.null(variable_transformation)) {apply_transformations(dt,variable_transformation)}
-
-  ## Splitting in folds ----
-
-  id_fold <- sample(1:nfold,
-                      n,
-                      replace = TRUE,
-                      prob = rep(1 / nfold, nfold))
+  id_fold <- sample(
+    1:nfold,
+    n,
+    replace = TRUE,
+    prob = rep(1 / nfold, nfold)
+  )
 
   dt_id <- data.table(folder = id_fold, id = unique(data[[id]]))
+  dt <- merge(dt, dt_id, by = "id", all.x = TRUE)
 
-  dt <- merge(dt, dt_id, by = "id", all.x = T)
+  dt_by_cause <- split(dt, by = "k")
 
+  z_covariates <- paste0("Z", seq_along(learners))
 
-  dt_z <- vector("list", n_crisks)
+  ## ------------------------------------------------------------
+  ## Step 1: fit learners once on the full data, one list per cause
+  ## ------------------------------------------------------------
+  full_train_list <- lapply(dt_by_cause, function(dt_k) {
+    lapply(learners, function(f) f$private_fit(dt_k))
+  })
 
-  z_covariates <- paste0("Z", 1:length(learners))
+  ## Remove learners that already fail on the full data
+  failed_by_full_fit <- lapply(full_train_list, function(fits_k) {
+    z_covariates[vapply(fits_k, is_failed_fit, logical(1))]
+  })
 
-  # if only one learner is present, we simply perform a CV ----
-  if (length(learners) == 1) {
+  failed_learners <- Reduce(union, failed_by_full_fit)
 
-    message("Only one base learner supplied. Fitting the learner directly; no ensemble constructed.")
+  if (length(failed_learners) > 0L) {
+    keep_z <- setdiff(z_covariates, failed_learners)
+    keep_ix <- match(keep_z, z_covariates)
 
-    # The learner on the full dataset ----
-    training_data <- split(dt, by = "k")
-    learner_fit <- mapply(function(x){
+    learners <- learners[keep_ix]
+    learners_labels <- learners_labels[keep_ix]
+    z_covariates <- keep_z
 
-      out <- learners[[1]]$private_fit(x)
-      return(out)
-    },
-    training_data,
-    SIMPLIFY = FALSE
-      )
+    full_train_list <- lapply(full_train_list, function(fits_k) fits_k[keep_ix])
+  }
 
-    one_learner_out <- list()
+  if (length(z_covariates) == 0L) {
+    stop("All learners failed on the full data before cross-validation.")
+  }
 
-    for(causes in 1:n_crisks){
+  ## If pruning leaves one learner, return direct fit
+  if (length(learners) == 1L) {
+    message("Only one usable base learner remains. Fitting the learner directly; no ensemble constructed.")
 
+    one_learner_out <- vector("list", n_crisks)
 
-      one_learner_out[[causes]] <- list(
-        model = NULL,
-        learners_fit=learner_fit[[causes]],
+    for (cause_ix in seq_len(n_crisks)) {
+      one_learner_out[[cause_ix]] <- list(
+        learners_fit = full_train_list[[cause_ix]][[1L]],
         meta_learner_fit = NULL
       )
-
     }
 
     out <- list(
       learners = learners,
-      metalearner = NULL, # it does not exict in this scenario
+      metalearner = NULL,
       superlearner = one_learner_out,
       data_info = list(
         id = id,
@@ -278,41 +258,47 @@ Superlearner <- function(data,
         nodes = sort(unique(as.numeric(levels(dt$node)))),
         nfold = nfold,
         maximum_followup = maximum_followup,
-        n_crisks=n_crisks,
+        n_crisks = n_crisks,
+        learners_labels = learners_labels,
         variable_transformation = variable_transformation
       )
     )
 
     class(out) <- "poisson_superlearner"
-
     return(out)
-
   }
 
+  ## ------------------------------------------------------------
+  ## Step 2: V-fold CV only on retained learners
+  ## ------------------------------------------------------------
+  dt_z <- vector("list", n_crisks)
 
-  # Train your models in the training set ----
-  for (ix in 1:nfold) {
-
-
-    # Training data for each competing risk ----
+  for (ix in seq_len(nfold)) {
     tmp_train <- dt[folder != ix, ]
     training_data <- split(tmp_train, by = "k")
-    # Validation data for each competing risk ----
+
     tmp_val <- dt[folder == ix, ]
     validation_data <- split(tmp_val, by = "k")
 
-    # we find the pseudo observations for each fold ----
     pseudo_observations <- mapply(
       function(training_data,
                validation_data,
                competing_risk,
                learners,
                z_covariates,
-               ix)
-        create_pseudo_observations(training_data, validation_data, competing_risk, learners, z_covariates, ix),
+               ix) {
+        create_pseudo_observations(
+          training_data = training_data,
+          validation_data = validation_data,
+          competing_risk = competing_risk,
+          learners = learners,
+          z_covariates = z_covariates,
+          ix = ix
+        )
+      },
       training_data = training_data,
       validation_data = validation_data,
-      competing_risk=as.list(1:n_crisks),
+      competing_risk = as.list(seq_len(n_crisks)),
       MoreArgs = list(
         learners = learners,
         ix = ix,
@@ -321,128 +307,153 @@ Superlearner <- function(data,
       SIMPLIFY = FALSE
     )
 
-
-
-    dt_z <- mapply(function(x, y)
-      rbind(x, y), dt_z, pseudo_observations, SIMPLIFY = FALSE)
-
+    dt_z <- mapply(function(x, y) rbind(x, y), dt_z, pseudo_observations, SIMPLIFY = FALSE)
   }
 
+  ## ------------------------------------------------------------
+  ## Step 3: CV deviance on retained learners
+  ## ------------------------------------------------------------
 
   L <- length(z_covariates)
-
   dev_sum <- matrix(0.0, nrow = nfold, ncol = L)
 
   for (k in seq_len(n_crisks)) {
-
-
-    loghaz_cols <- (dt_z[[k]][, ..z_covariates])
+    loghaz_cols <- dt_z[[k]][, ..z_covariates]
 
     dev_k <- poisson_deviance_by_folder_cols(
       log_hazard_cols = loghaz_cols,
-      tij    = as.numeric(dt_z[[k]][["tij"]]),
-      delta  = as.integer(dt_z[[k]][["deltaij"]]),
+      tij = as.numeric(dt_z[[k]][["tij"]]),
+      delta = as.integer(dt_z[[k]][["deltaij"]]),
       folder = as.integer(dt_z[[k]][["folder"]]),
-      nfold  = nfold
+      nfold = nfold
     )
+
     dev_sum <- dev_sum + dev_k
   }
 
-  # 2 * sum_i(...) per fold, then mean across folds
   dev_mean <- colMeans(2.0 * dev_sum)
 
   dt_learners <- data.table::data.table(
-    learner  = paste0("learner_", seq_len(L)),
+    learner = learners_labels,
     deviance = dev_mean
   )
 
-
-
-  z_covariates_list <- select_covariate_path(dt_learners, z_covariates, min_depth = min_depth)
-  ##
-
-  dt_learners[,covariate:=NULL]
-
-  dt_learners[,learner:=learners_labels]
-  ## Meta learning
-  # Which learner columns are completely NA within each competing risk?
+  ## ------------------------------------------------------------
+  ## Step 4: after CV, remove only learners that are ALL-NA
+  ## within at least one cause. Partial fold failures are allowed.
+  ## ------------------------------------------------------------
   failed_by_risk <- lapply(dt_z, function(DT) {
     z_covariates[vapply(DT[, ..z_covariates], function(x) all(is.na(x)), logical(1))]
   })
 
-  # Remove a learner globally if it failed in at least one competing risk
-  failed_learners <- Reduce(union, failed_by_risk)
+  failed_cv_learners <- Reduce(union, failed_by_risk)
 
-  if (length(failed_learners) > 0L) {
-    keep_z <- setdiff(z_covariates, failed_learners)
+  if (length(failed_cv_learners) > 0L) {
+    keep_z <- setdiff(z_covariates, failed_cv_learners)
+    keep_ix <- match(keep_z, z_covariates)
 
-    # subset pseudo-observation tables
     dt_z <- lapply(dt_z, function(DT) {
       DT[, c(setdiff(names(DT), z_covariates), keep_z), with = FALSE]
     })
 
-    # keep learners and labels aligned with remaining Z-columns
-    keep_ix <- match(keep_z, z_covariates)
-
     learners <- learners[keep_ix]
     learners_labels <- learners_labels[keep_ix]
     z_covariates <- keep_z
+    full_train_list <- lapply(full_train_list, function(fits_k) fits_k[keep_ix])
+
+    dt_learners <- dt_learners[learner %in% learners_labels]
   }
 
   if (length(z_covariates) == 0L) {
     stop("All learners failed: every cross-validated prediction column was entirely NA in at least one competing risk.")
   }
 
+  ## If post-CV pruning leaves one learner, return direct fit
+  if (length(learners) == 1L) {
+    message("Only one usable base learner remains after cross-validation screening. No ensemble constructed.")
+
+    one_learner_out <- vector("list", n_crisks)
+
+    for (cause_ix in seq_len(n_crisks)) {
+      one_learner_out[[cause_ix]] <- list(
+        learners_fit = full_train_list[[cause_ix]][[1L]],
+        meta_learner_fit = NULL
+      )
+    }
+
+    out <- list(
+      learners = learners,
+      metalearner = NULL,
+      superlearner = one_learner_out,
+      cross_validation_deviance = dt_learners,
+      data_info = list(
+        id = id,
+        status = status,
+        event_time = event_time,
+        nodes = sort(unique(as.numeric(levels(dt$node)))),
+        nfold = nfold,
+        maximum_followup = maximum_followup,
+        n_crisks = n_crisks,
+        learners_labels = learners_labels,
+        variable_transformation = variable_transformation
+      )
+    )
+
+    class(out) <- "poisson_superlearner"
+    return(out)
+  }
+
+  ## ------------------------------------------------------------
+  ## Step 5: meta-learning, without duplicating the meta-learner
+  ## ------------------------------------------------------------
   meta_learner <- Learner_glmnet(
     covariates = z_covariates,
     cross_validation = FALSE,
     intercept = FALSE,
     add_nodes = FALSE,
     penalise_nodes = TRUE,
-    lambda=0
+    lambda = 0
   )
 
   meta_learner_fits <- mapply(
-    function(dt,
-             dt_z,
-             meta_learner,
-             learners,
-             z_covariates)
-      fit_meta_learner(dt, dt_z, meta_learner, learners, z_covariates),
-    split(dt, by = "k"),
+    function(dt_k, dt_z_k) {
+      fit_meta_learner(
+        dt = dt_k,
+        dt_z = dt_z_k,
+        meta_learner = meta_learner,
+        z_covariates = z_covariates
+      )
+    },
+    dt_by_cause,
     dt_z,
-    MoreArgs = list(
-      meta_learner = meta_learner,
-      learners = learners,
-      z_covariates = z_covariates
-    ),
     SIMPLIFY = FALSE
-
-
   )
+
+  superlearner_out <- lapply(seq_len(n_crisks), function(k) {
+    list(
+      learners_fit = full_train_list[[k]],
+      meta_learner_fit = meta_learner_fits[[k]]
+    )
+  })
 
   out <- list(
     learners = learners,
     metalearner = meta_learner,
-    superlearner = meta_learner_fits,
+    superlearner = superlearner_out,
     cross_validation_deviance = dt_learners,
     data_info = list(
       id = id,
       status = status,
-      event_time=event_time,
+      event_time = event_time,
       nodes = sort(unique(as.numeric(levels(dt$node)))),
       nfold = nfold,
       maximum_followup = maximum_followup,
-      n_crisks=n_crisks,
-      learners_labels=learners_labels,
+      n_crisks = n_crisks,
+      learners_labels = learners_labels,
       variable_transformation = variable_transformation
     )
   )
 
   class(out) <- "poisson_superlearner"
-
-  return(out)
-
-
-
+  out
 }

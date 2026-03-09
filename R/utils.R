@@ -318,6 +318,33 @@ create_formula_hal <- function(covariates=NA_character_,
 }
 
 
+## Make fit cheaper
+
+make_failed_fit <- function(reason = NA_character_) {
+  structure(
+    list(reason = reason),
+    class = c("psl_failed_fit", "psl_fit_stub")
+  )
+}
+
+is_failed_fit <- function(model) {
+  inherits(model, "psl_failed_fit")
+}
+
+attach_psl_fit_meta <- function(model, meta = NULL) {
+  if (is.null(model) || is_failed_fit(model)) {
+    return(model)
+  }
+  attr(model, "psl_meta") <- meta
+  model
+}
+
+get_psl_fit_meta <- function(model) {
+  attr(model, "psl_meta", exact = TRUE)
+}
+
+
+## create level one data
 
 create_pseudo_observations <- function(training_data,
                                        validation_data,
@@ -686,28 +713,17 @@ out <- c(out,one_time_learner)
 fit_meta_learner <- function(dt,
                              dt_z,
                              meta_learner,
-                             learners,
-                             z_covariates){
+                             z_covariates) {
 
-  tmp <- merge(dt_z[, !c("tij", "deltaij"), with = FALSE],dt,by=c("id","folder","node"))
+  tmp <- merge(
+    dt_z[, !c("tij", "deltaij"), with = FALSE],
+    dt,
+    by = c("id", "folder", "node")
+  )
 
   meta_learner_fit <- meta_learner$private_fit(tmp)
 
-  # learners on the full dataset ----
-
-  full_train_list <- lapply(learners, function(f) f$private_fit(dt))
-
-  out <- list(
-    model = meta_learner,
-    learners_fit=full_train_list,
-    meta_learner_fit = meta_learner_fit
-  )
-
-
-
-  return(out)
-
-
+  return(meta_learner_fit)
 }
 
 

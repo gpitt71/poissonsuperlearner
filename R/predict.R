@@ -204,16 +204,15 @@ predict.poisson_superlearner <- function(object,
     })
 
     dt_pred <- mapply(
-      function(crisk_cause,
-               superlearner,
-               pseudo_observations_data) {
-        superlearner$model$private_predictor(superlearner$meta_learner_fit,
-                                     newdata = cbind(pseudo_observations_data, data_pp))
+      function(superlearner, pseudo_observations_data) {
+        object$metalearner$private_predictor(
+          model = superlearner$meta_learner_fit,
+          newdata = cbind(pseudo_observations_data, data_pp)
+        )
       },
-      as.list(1:object$data_info$n_crisks),
       object$superlearner,
       pseudo_observations_data,
-      SIMPLIFY = F
+      SIMPLIFY = FALSE
     )
 
 
