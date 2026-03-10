@@ -4,10 +4,24 @@
 \alias{summary.poisson_superlearner}
 \title{Summarize a fitted Poisson Super Learner object}
 \usage{
-\method{summary}{poisson_superlearner}(object, ...)
+\method{summary}{poisson_superlearner}(object, cause = NULL, model = "sl", ...)
 }
 \arguments{
 \item{object}{\code{poisson_superlearner} returned by \code{\link[=Superlearner]{Superlearner()}}.}
+
+\item{cause}{\code{numeric(1)} or \code{NULL}. Which cause’s meta-learner fit to print.
+If \code{NULL}, prints one line per cause (classes only) instead of printing the full
+fitted objects.}
+
+\item{model}{Scalar model selector. Default is \code{"sl"} for the stacked super learner.
+Other allowed values are:
+\describe{
+\item{\code{0} or \code{"sl"}}{Use the super learner prediction.}
+\item{learner label}{Use one stored base learner by its label in
+\code{object$data_info$learners_labels}.}
+\item{\code{"learner_j"}}{Use the \code{j}-th stored learner.}
+\item{integer \code{j >= 1}}{Use the \code{j}-th stored learner.}
+}}
 
 \item{...}{Passed to the underlying \code{coef()} method for the fitted meta-learner
 (learner-dependent; e.g. \code{s} for \code{glmnet}).}

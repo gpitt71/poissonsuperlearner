@@ -5,9 +5,9 @@
 #' prediction horizons `times`, for each row in `newdata`.
 #'
 #' Internally, `newdata` is expanded to a Cartesian product with the requested
-#' `times`, converted to long Poisson format on `object$data_info$nodes`, base-learner
-#' hazards are predicted for each cause, and (if applicable) combined via the
-#' cause-specific meta-learner. Survival and absolute risk are then computed from
+#' `times`, converted to long Poisson format on `object$data_info$nodes`, and hazards
+#' are predicted either from the stacked super learner (`model = "sl"`) or from one
+#' selected fitted base learner. Survival and absolute risk are then computed from
 #' the predicted hazards.
 #'
 #' @param object `poisson_superlearner`. A fitted ensemble from [Superlearner()].
@@ -21,6 +21,16 @@
 #'   returned with `NA` predictions.
 #' @param cause `numeric(1)`. Cause index (1, 2, ...) used for the `absolute_risk`
 #'   calculation.
+#' @param model Scalar model selector. Default is `"sl"` for the stacked super learner.
+#'   Other allowed values are:
+#'   \describe{
+#'     \item{`0` or `"sl"`}{Use the super learner prediction.}
+#'     \item{learner label}{Use one stored base learner by its label in
+#'       `object$data_info$learners_labels`.}
+#'     \item{`"learner_j"`}{Use the `j`-th stored learner.}
+#'     \item{integer `j >= 1`}{Use the `j`-th stored learner.}
+#'   }
+#'   Numeric positions refer to the learners actually stored in the fitted object.
 #' @param ... Additional arguments (currently ignored).
 #'
 #' @details
@@ -41,39 +51,28 @@
 #'   \item{absolute_risk}{Predicted cumulative incidence (absolute risk) for `cause` at the horizon.}
 #' }
 #'
-#' @examples
-#' d <- simulateStenoT1(120, competing_risks = TRUE)
-#' l1 <- Learner_glmnet(covariates = c("age", "value_LDL"), lambda = 0, cross_validation = FALSE)
-#' l2 <- Learner_gam(covariates = c("age", "value_LDL"))
-#' fit <- Superlearner(d, id="id", status="status_cvd", event_time="time_cvd",
-#'                     learners=list(glm=l1, gam=l2), number_of_nodes=8, nfold=3)
-#' p <- predict(fit, newdata = d[1:5,], times = c(2,5,10), cause = 1)
-#' head(p)
-#'
 #' @export
 predict.poisson_superlearner <- function(object,
                                          newdata,
                                          times,
                                          cause = 1,
+                                         model = "sl",
                                          ...) {
+
+  model_sel <- resolve_prediction_model(object, model)
 
   setDT(newdata)
   tmp <- copy(newdata)
-  tmp[,internal_psl_ix:=1:.N]
-  # here we disregard the event_time column if present in the newdata
+  tmp[, internal_psl_ix := 1:.N]
+
   tmp <- tmp[, setdiff(names(tmp), c(object$data_info$event_time,
                                      object$data_info$status,
                                      object$data_info$id)), with = FALSE]
 
-
-  ## checks on the data
   cond_zero <- 0 %in% times
-
-  all_zero <- all(times==0)
-
+  all_zero <- all(times == 0)
   cond_times_larger_than_max <- times > object$data_info$maximum_followup
 
-  ## frame hazard problem
   pwch_cols <- paste0("pwch_", 1:object$data_info$n_crisks)
 
   if (all(cond_times_larger_than_max)) {
@@ -84,37 +83,25 @@ predict.poisson_superlearner <- function(object,
       )
     )
     d <- NULL
-
     return(d)
-
-  } else{
+  } else {
     eval(parse(
       text = paste0(
         "
-    vec_dt <- data.table(
-
-    ",
+        vec_dt <- data.table(
+          ",
         object$data_info$event_time,
         " = times[times <= object$data_info$maximum_followup]
-  )
-    "
+        )
+        "
       )
     ))
 
     tmp[, dummy := 1]
     vec_dt[, dummy := 1]
-
-    # Merge on dummy to create Cartesian product
     data_pp <- merge(tmp, vec_dt, by = "dummy", allow.cartesian = TRUE)[, dummy := NULL]
   }
-  # }
 
-
-
-
-
-
-  # no problem writing over id
   if (is.null(data_pp[[object$data_info$id]])) {
     data_pp[[object$data_info$id]] <- 1:nrow(data_pp)
   }
@@ -123,21 +110,16 @@ predict.poisson_superlearner <- function(object,
     data_pp[[object$data_info$status]] <- 0
   }
 
-
-  if(cond_zero){
-
-
-    tmptcol <- object$data_info$event_time  # character vector
+  if (cond_zero) {
+    tmptcol <- object$data_info$event_time
     zero_time <- data_pp[get(tmptcol) == 0]
     for (cl in pwch_cols) set(zero_time, j = cl, value = 0)
     set(zero_time, j = "survival_function", value = 1)
     set(zero_time, j = "absolute_risk", value = 0)
-    data_pp<-data_pp[get(tmptcol) != 0]
+    data_pp <- data_pp[get(tmptcol) != 0]
   }
 
-
-  if(all_zero){
-
+  if (all_zero) {
     return(zero_time)
   }
 
@@ -145,37 +127,26 @@ predict.poisson_superlearner <- function(object,
     data_pp,
     id = object$data_info$id,
     status = object$data_info$status,
-    predictions=TRUE,
+    predictions = TRUE,
     event_time = object$data_info$event_time,
     nodes = object$data_info$nodes
   )
 
+  if (!is.null(object$data_info$variable_transformation)) {
+    apply_transformations(data_pp, object$data_info$variable_transformation)
+  }
 
-  # In case of variable transformations ----
-  if (!is.null(object$data_info$variable_transformation)) {apply_transformations(data_pp, object$data_info$variable_transformation)}
-
-
-  # Set covariates for metalearner
-  z_covariates <- paste0("Z", 1:length(object$learners))
-
-
-  # Predict on the validation set your pseudo-observations ----
-  #
+  z_covariates <- paste0("Z", seq_along(object$learners))
 
   data_pp[, deltatime := tij][, tij := 1]
 
-  if (length(object$learners) == 1L) {
+  use_superlearner <- isTRUE(model_sel$type == "sl") &&
+    length(object$learners) > 1L &&
+    !is.null(object$metalearner)
 
-    dt_pred <- lapply(object$superlearner, function(sl_fit) {
-      object$learners[[1]]$private_predictor(
-        model = sl_fit$learners_fit, newdata = data_pp)
-    })
+  if (use_superlearner) {
 
-
-  } else{
-    #
-
-        learners_predictions <- mapply(
+    learners_predictions <- mapply(
       function(crisk_cause,
                superlearner,
                newdata,
@@ -187,7 +158,6 @@ predict.poisson_superlearner <- function(object,
       SIMPLIFY = FALSE
     )
 
-
     pseudo_observations_data <- lapply(learners_predictions, function(mx) {
       out <- matrix(
         apply(as.matrix(
@@ -198,8 +168,7 @@ predict.poisson_superlearner <- function(object,
         nrow = nrow(data_pp),
         ncol = length(z_covariates)
       )
-      # out <-as.matrix(mx)
-      colnames(out) <- z_covariates # Name the columns
+      colnames(out) <- z_covariates
       as.data.table(as.data.frame.matrix(out))
     })
 
@@ -215,48 +184,45 @@ predict.poisson_superlearner <- function(object,
       SIMPLIFY = FALSE
     )
 
+  } else {
 
+    learner_index <- if (model_sel$type == "learner") {
+      model_sel$index
+    } else {
+      1L
+    }
+
+    dt_pred <- lapply(seq_len(object$data_info$n_crisks), function(k) {
+      fit_k <- if (length(object$learners) == 1L) {
+        object$superlearner[[k]]$learners_fit
+      } else {
+        object$superlearner[[k]]$learners_fit[[learner_index]]
+      }
+
+      object$learners[[learner_index]]$private_predictor(
+        model = fit_k,
+        newdata = data_pp
+      )
+    })
   }
-
-  #
-
-  # save casue-specific pwch
 
   data_pp[, paste0("pwch_", 1:object$data_info$n_crisks) := dt_pred]
 
-
-
-  # save sum of pwch
-
   sum_of_hazards <- paste(pwch_cols, collapse = " + ")
-
   pwch_dot_string <- paste0("data_pp[, pwch_dot :=", sum_of_hazards, "]")
-
   eval(parse(text = pwch_dot_string))
-
-
-  # compute cumulative hazard
 
   mapply(function(pwch, name) {
     data_pp[, (paste0("cumulative_hazard_", name)) := cumsum(get(pwch) * deltatime), by = id]
   }, pwch_cols, gsub("pwch_", "", pwch_cols))
 
-
-  # compute survival function
-
-  ## c++
   haz <- as.matrix(data_pp[, .SD, .SDcols = patterns("^pwch_[0-9]+$")])
   S <- pch_survival(id = data_pp$id, dt = data_pp$deltatime, haz = haz)
   data_pp[, survival_function := S]
 
-
   data_pp[, absolute_risk := pch_absolute_risk(id, deltatime, haz, cause_idx = cause)]
 
-  ####
-  data_pp <- data_pp[, .SD[.N], by = id][, times := as.numeric(as.character(node)) +
-                                           deltatime]
-
-
+  data_pp <- data_pp[, .SD[.N], by = id][, times := as.numeric(as.character(node)) + deltatime]
 
   columns_ss <- unique(
     c(
@@ -271,27 +237,20 @@ predict.poisson_superlearner <- function(object,
 
   d <- data_pp[, ..columns_ss]
 
-
   if (cond_zero) {
-
-    d<- rbind(zero_time,
-              d)
-
+    d <- rbind(zero_time, d)
   }
-
-
 
   if (any(cond_times_larger_than_max)) {
     eval(parse(
       text = paste0(
         "
-    vec_dt2 <- data.table(
-
-    ",
+        vec_dt2 <- data.table(
+          ",
         object$data_info$event_time,
         " = times[cond_times_larger_than_max]
-  )
-    "
+        )
+        "
       )
     ))
 
@@ -299,28 +258,20 @@ predict.poisson_superlearner <- function(object,
     vec_dt2[, dummy := 1]
 
     d2 <- merge(tmp, vec_dt2, by = "dummy", allow.cartesian = TRUE)[, dummy := NULL]
-    d2[, c(pwch_cols, 'survival_function') := list(rep(NA, length(pwc_cols)), NA)]
-
+    d2[, c(pwch_cols, "survival_function", "absolute_risk") := NA_real_]
 
     if (object$data_info$id %in% colnames(d)) {
       d2[[object$data_info$id]] <- (nrow(data_pp) + 1):(nrow(data_pp) + nrow(d2))
     }
 
-
-
-    d <- rbind(d, d2)
-
-
+    d <- rbind(d, d2, fill = TRUE)
   }
-
 
   d[, (object$data_info$id) := NULL]
   setnames(d, new = object$data_info$id, old = "internal_psl_ix")
-  d<-d[order(id),]
+  d <- d[order(get(object$data_info$id))]
   return(d)
-
 }
-
 
 
 

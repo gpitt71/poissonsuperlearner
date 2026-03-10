@@ -6,6 +6,18 @@
 #' 3) cause-specific meta-learner coefficients (stacking weights).
 #'
 #' @param object `poisson_superlearner` returned by [Superlearner()].
+#' @param cause `numeric(1)` or `NULL`. Which cause’s meta-learner fit to print.
+#'   If `NULL`, prints one line per cause (classes only) instead of printing the full
+#'   fitted objects.
+#' @param model Scalar model selector. Default is `"sl"` for the stacked super learner.
+#'   Other allowed values are:
+#'   \describe{
+#'     \item{`0` or `"sl"`}{Use the super learner prediction.}
+#'     \item{learner label}{Use one stored base learner by its label in
+#'       `object$data_info$learners_labels`.}
+#'     \item{`"learner_j"`}{Use the `j`-th stored learner.}
+#'     \item{integer `j >= 1`}{Use the `j`-th stored learner.}
+#'   }
 #' @param ... Passed to the underlying `coef()` method for the fitted meta-learner
 #'   (learner-dependent; e.g. `s` for `glmnet`).
 #'
@@ -15,131 +27,113 @@
 #'   \item{meta_coefficients}{List of length `n_crisks` with cause-specific coefficient objects (or `NULL`).}
 #' }
 #' @export
-summary.poisson_superlearner <- function(object, ...) {
+summary.poisson_superlearner <- function(object,
+                                         cause = NULL,
+                                         model = "sl",
+                                         ...) {
 
-  .get_labels <- function(object) {
-    labs <- NULL
-    if (!is.null(object$data_info) && !is.null(object$data_info$learners_label)) {
-      labs <- object$data_info$learners_label
-    }
-    if (is.null(labs) || length(labs) == 0L) {
-      if (!is.null(object$learners) && length(object$learners) > 0L) {
-        labs <- names(object$learners)
-      }
-    }
-    if (is.null(labs) || length(labs) == 0L) {
-      labs <- paste0("learner_", seq_along(object$learners))
-    }
-    labs
+  if (is.null(object$superlearner) || length(object$superlearner) == 0L) {
+    cat("No fitted model available (superlearner is NULL).\n")
+    return(invisible(object))
   }
 
-  .z_map <- function(labels) {
-    stats::setNames(as.character(labels), paste0("Z", seq_along(labels)))
-  }
+  model_sel <- resolve_prediction_model(object, model)
+  labels <- psl_get_labels(object)
 
-  .rename_z_in_text <- function(x, zmap) {
-    if (is.null(x)) return(x)
-    x <- as.character(x)
-    for (z in names(zmap)) {
-      # word boundary avoids changing e.g. Z10 when replacing Z1
-      x <- gsub(paste0("\\b", z, "\\b"), zmap[[z]], x, perl = TRUE)
-    }
-    x
-  }
+  ## If the user asks for a stored base learner, or if there is no meta-learner
+  ## (single-learner special case), dispatch directly to the underlying fit.
+  if (model_sel$type == "learner" || is.null(object$metalearner)) {
 
-  .extract_meta_coefs <- function(fit) {
-    if (is.null(fit)) return(NULL)
-
-    # glmnet / cv.glmnet
-    if (inherits(fit, "cv.glmnet")) {
-      lam <- fit$lambda.min
-      cc <- stats::coef(fit, s = lam)
-      cc <- as.matrix(cc)
-      out <- cc[, 1]
-      return(out)
-    }
-    if (inherits(fit, "glmnet")) {
-      lam <- fit$lambda
-      # if multiple lambdas, take the first (or smallest) deterministically
-      lam_use <- if (length(lam) >= 1L) lam[[1L]] else NULL
-      cc <- if (!is.null(lam_use)) stats::coef(fit, s = lam_use) else stats::coef(fit)
-      cc <- as.matrix(cc)
-      out <- cc[, 1]
+    if (is.null(cause)) {
+      out <- lapply(seq_len(object$data_info$n_crisks), function(k) {
+        fit_info <- psl_get_stored_fit(object, cause = k, model = model)
+        summary(fit_info$fit, ...)
+      })
+      names(out) <- paste0("cause_", seq_len(object$data_info$n_crisks))
       return(out)
     }
 
-    # fallback
-    cc <- tryCatch(stats::coef(fit), error = function(e) NULL)
-    if (is.null(cc)) return(NULL)
-    cc
+    fit_info <- psl_get_stored_fit(object, cause = cause, model = model)
+    return(summary(fit_info$fit, ...))
   }
 
-  labels <- .get_labels(object)
-  zmap <- .z_map(labels)
+  ## Default: summarize the stacked superlearner
+  zmap <- stats::setNames(labels, paste0("Z", seq_along(labels)))
 
   cat("Call:\n")
   if (!is.null(object$metalearner)) {
     ml <- object$metalearner
-
-    # Print a compact "call-like" description using fields we know exist
     ml_class <- class(ml)[1]
-    labels <- object$data_info$learners_label
-
-    ml_formula <- if (!is.null(labels) && length(labels) > 0L) {
-      paste(labels, collapse = " + ")
-    } else {
-      NULL
-    }
-
-    cat("  Meta-learner:\n")
-    cat("   ", ml_class, "\n", sep = "")
-    if (!is.null(ml_formula)) cat("    ensemble: ", ml_formula, "\n", sep = "")
-    if (!is.null(object$data_info$nodes)) cat("    number of time knots: ", length(object$data_info$nodes), "\n", sep = "")
-    if (!is.null(object$data_info$nfold)) cat("    number of folds: ", object$data_info$nfold, "\n", sep = "")
-    if (!is.null(object$data_info$n_crisks) & object$data_info$n_crisks > 1) cat("    competing risks: ", object$data_info$n_crisks, "\n", sep = "")
-    if (!is.null(object$data_info$maximum_followup)) cat("    maximum follow-up: ", object$data_info$maximum_followup, "\n", sep = "")
+    cat(
+      sprintf(
+        "  Superlearner(..., learners = c(%s), metalearner = %s)\n",
+        paste(labels, collapse = ", "),
+        ml_class
+      )
+    )
   } else {
-    cat("  Meta-learner: <none>\n")
+    cat("  Superlearner(...)\n")
   }
+
+  cat("\nFitted object:\n")
+  cat("  Class: poisson_superlearner\n")
+  cat("  Number of competing risks:", object$data_info$n_crisks, "\n")
+  cat("  Number of learners:", length(object$learners), "\n")
+  cat("  Learners:", paste(labels, collapse = ", "), "\n")
+  cat("  Number of folds:", object$data_info$nfold, "\n")
+  cat("  Maximum follow-up:", object$data_info$maximum_followup, "\n")
+  cat("  Number of nodes:", length(object$data_info$nodes), "\n")
 
   cat("\nCross-validation deviance (Average across V-Folds):\n")
   if (!is.null(object$cross_validation_deviance)) {
     print(object$cross_validation_deviance)
   } else if (!is.null(object$meta_learner_cross_validation)) {
-    # backward-compatible fallback if your object still uses the older name
     print(object$meta_learner_cross_validation)
   } else {
     cat("  <not available>\n")
   }
 
   cat("\nMeta-learner coefficients:\n")
-  if (is.null(object$superlearner) || length(object$superlearner) == 0L) {
-    cat("  <not available>\n")
-    return(invisible(object))
+
+  causes_to_show <- if (is.null(cause)) {
+    seq_along(object$superlearner)
+  } else {
+    cause
   }
 
-  # one set of coefficients per competing risk (k)
-  for (k in seq_along(object$superlearner)) {
+  meta_out <- vector("list", length(causes_to_show))
+  names(meta_out) <- paste0("cause_", causes_to_show)
+
+  for (ii in seq_along(causes_to_show)) {
+    k <- causes_to_show[ii]
     fit_k <- object$superlearner[[k]]$meta_learner_fit
-    coefs <- .extract_meta_coefs(fit_k)
+
+    coefs <- tryCatch(
+      psl_extract_meta_coefs(fit_k, ...),
+      error = function(e) NULL
+    )
 
     if (is.null(coefs)) {
       cat("  k = ", k, ": <not available>\n", sep = "")
+      meta_out[[ii]] <- NULL
       next
     }
 
     nms <- names(coefs)
-    nms2 <- .rename_z_in_text(nms, zmap)
-    names(coefs) <- nms2
+    names(coefs) <- psl_rename_z_in_text(nms, zmap)
 
     cat("  k = ", k, ":\n", sep = "")
     print(coefs)
     cat("\n")
+
+    meta_out[[ii]] <- coefs
   }
 
-  invisible(object)
+  invisible(list(
+    cross_validation_deviance = object$cross_validation_deviance,
+    meta_coefficients = meta_out
+  ))
 }
-
 
 
 #' Summarize a fitted base learner object

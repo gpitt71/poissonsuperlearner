@@ -4,7 +4,7 @@
 \alias{coef.poisson_superlearner}
 \title{Extract stacking (meta-learner) coefficients from a fitted Poisson Super Learner}
 \usage{
-\method{coef}{poisson_superlearner}(object, cause = NULL, ...)
+\method{coef}{poisson_superlearner}(object, cause = NULL, model = "sl", ...)
 }
 \arguments{
 \item{object}{\code{poisson_superlearner}. A fitted ensemble returned by \code{\link[=Superlearner]{Superlearner()}}.}
@@ -12,6 +12,16 @@
 \item{cause}{\code{numeric(1)} or \code{NULL}. Which cause to extract meta-learner
 coefficients for. If \code{NULL}, coefficients are returned for all causes.
 Causes are indexed \verb{1, 2, ..., object$data_info$n_crisks}.}
+
+\item{model}{Scalar model selector. Default is \code{"sl"} for the stacked super learner.
+Other allowed values are:
+\describe{
+\item{\code{0} or \code{"sl"}}{Use the super learner prediction.}
+\item{learner label}{Use one stored base learner by its label in
+\code{object$data_info$learners_labels}.}
+\item{\code{"learner_j"}}{Use the \code{j}-th stored learner.}
+\item{integer \code{j >= 1}}{Use the \code{j}-th stored learner.}
+}}
 
 \item{...}{Passed to the underlying \code{coef()} method of the fitted meta-learner
 (learner-dependent; e.g., \code{s} for \code{glmnet}).}

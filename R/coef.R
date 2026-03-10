@@ -73,6 +73,15 @@ coef.base_learner <- function(object, cause= NULL, ...) {
 #' @param cause `numeric(1)` or `NULL`. Which cause to extract meta-learner
 #'   coefficients for. If `NULL`, coefficients are returned for all causes.
 #'   Causes are indexed `1, 2, ..., object$data_info$n_crisks`.
+#' @param model Scalar model selector. Default is `"sl"` for the stacked super learner.
+#'   Other allowed values are:
+#'   \describe{
+#'     \item{`0` or `"sl"`}{Use the super learner prediction.}
+#'     \item{learner label}{Use one stored base learner by its label in
+#'       `object$data_info$learners_labels`.}
+#'     \item{`"learner_j"`}{Use the `j`-th stored learner.}
+#'     \item{integer `j >= 1`}{Use the `j`-th stored learner.}
+#'   }
 #' @param ... Passed to the underlying `coef()` method of the fitted meta-learner
 #'   (learner-dependent; e.g., `s` for `glmnet`).
 #'
@@ -118,21 +127,22 @@ coef.base_learner <- function(object, cause= NULL, ...) {
 #' coef(fit)
 #'
 #' @export
-coef.poisson_superlearner <- function(object, cause=NULL,...) {
+coef.poisson_superlearner <- function(object, cause = NULL, model = "sl", ...) {
 
   if (is.null(object$superlearner)) {
-    cat("No fitted model available (learner_fit is NULL).\n")
+    cat("No fitted model available (superlearner is NULL).\n")
     return(invisible(object))
   }
 
   if (is.null(cause)) {
-
-    return(lapply(object$superlearner, function(sl) coef(sl$meta_learner_fit, ...)))
-
-  } else{
-    return(coef(object$superlearner[[cause]]$meta_learner_fit, ...))
+    out <- lapply(seq_len(object$data_info$n_crisks), function(k) {
+      fit_info <- psl_get_stored_fit(object, cause = k, model = model)
+      stats::coef(fit_info$fit, ...)
+    })
+    names(out) <- paste0("cause_", seq_len(object$data_info$n_crisks))
+    return(out)
   }
 
-
+  fit_info <- psl_get_stored_fit(object, cause = cause, model = model)
+  stats::coef(fit_info$fit, ...)
 }
-

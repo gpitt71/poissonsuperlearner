@@ -4,7 +4,7 @@
 \alias{predict.poisson_superlearner}
 \title{Predict hazards, survival and absolute risk from a fitted Poisson Super Learner}
 \usage{
-\method{predict}{poisson_superlearner}(object, newdata, times, cause = 1, ...)
+\method{predict}{poisson_superlearner}(object, newdata, times, cause = 1, model = "sl", ...)
 }
 \arguments{
 \item{object}{\code{poisson_superlearner}. A fitted ensemble from \code{\link[=Superlearner]{Superlearner()}}.}
@@ -21,6 +21,17 @@ returned with \code{NA} predictions.}
 
 \item{cause}{\code{numeric(1)}. Cause index (1, 2, ...) used for the \code{absolute_risk}
 calculation.}
+
+\item{model}{Scalar model selector. Default is \code{"sl"} for the stacked super learner.
+Other allowed values are:
+\describe{
+\item{\code{0} or \code{"sl"}}{Use the super learner prediction.}
+\item{learner label}{Use one stored base learner by its label in
+\code{object$data_info$learners_labels}.}
+\item{\code{"learner_j"}}{Use the \code{j}-th stored learner.}
+\item{integer \code{j >= 1}}{Use the \code{j}-th stored learner.}
+}
+Numeric positions refer to the learners actually stored in the fitted object.}
 
 \item{...}{Additional arguments (currently ignored).}
 }
@@ -41,9 +52,9 @@ prediction horizons \code{times}, for each row in \code{newdata}.
 }
 \details{
 Internally, \code{newdata} is expanded to a Cartesian product with the requested
-\code{times}, converted to long Poisson format on \code{object$data_info$nodes}, base-learner
-hazards are predicted for each cause, and (if applicable) combined via the
-cause-specific meta-learner. Survival and absolute risk are then computed from
+\code{times}, converted to long Poisson format on \code{object$data_info$nodes}, and hazards
+are predicted either from the stacked super learner (\code{model = "sl"}) or from one
+selected fitted base learner. Survival and absolute risk are then computed from
 the predicted hazards.
 
 \strong{Special case \code{times = 0}:} when \code{0} is included in \code{times}, the returned rows
@@ -53,14 +64,4 @@ have \code{survival_function = 1}, \code{absolute_risk = 0}, and all \code{pwch_
 into the output. If \code{newdata} does not contain an id column, an internal id is
 created for computation, but it is not guaranteed to appear in the returned table
 unless it was present in \code{newdata}.
-}
-\examples{
-d <- simulateStenoT1(120, competing_risks = TRUE)
-l1 <- Learner_glmnet(covariates = c("age", "value_LDL"), lambda = 0, cross_validation = FALSE)
-l2 <- Learner_gam(covariates = c("age", "value_LDL"))
-fit <- Superlearner(d, id="id", status="status_cvd", event_time="time_cvd",
-                    learners=list(glm=l1, gam=l2), number_of_nodes=8, nfold=3)
-p <- predict(fit, newdata = d[1:5,], times = c(2,5,10), cause = 1)
-head(p)
-
 }

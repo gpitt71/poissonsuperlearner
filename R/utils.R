@@ -343,7 +343,210 @@ get_psl_fit_meta <- function(model) {
   attr(model, "psl_meta", exact = TRUE)
 }
 
+resolve_prediction_model <- function(object, model = "sl") {
 
+  n_learners <- length(object$learners)
+  labels <- object$data_info$learners_labels
+
+  if (is.null(model) || length(model) != 1L) {
+    stop("'model' must be a scalar.")
+  }
+
+  if (is.numeric(model)) {
+    if (is.na(model) || model != as.integer(model)) {
+      stop("Numeric 'model' must be one of 0, 1, 2, ...")
+    }
+
+    model <- as.integer(model)
+
+    if (model == 0L) {
+      return(list(type = "sl", index = 0L, label = "sl"))
+    }
+
+    if (model >= 1L && model <= n_learners) {
+      return(list(
+        type = "learner",
+        index = model,
+        label = labels[model]
+      ))
+    }
+
+    stop(
+      sprintf(
+        "Numeric 'model' must be 0 for the superlearner or an integer in 1:%d.",
+        n_learners
+      )
+    )
+  }
+
+  if (!is.character(model) || is.na(model)) {
+    stop("'model' must be a character scalar or a numeric scalar.")
+  }
+
+  model_chr <- trimws(model)
+  model_chr_lc <- tolower(model_chr)
+
+  if (model_chr_lc %in% c("sl", "superlearner", "super_learner")) {
+    return(list(type = "sl", index = 0L, label = "sl"))
+  }
+
+  if (model_chr %in% labels) {
+    j <- match(model_chr, labels)
+    return(list(
+      type = "learner",
+      index = j,
+      label = labels[j]
+    ))
+  }
+
+  if (grepl("^learner_[0-9]+$", model_chr_lc)) {
+    j <- as.integer(sub("^learner_", "", model_chr_lc))
+
+    if (j >= 1L && j <= n_learners) {
+      return(list(
+        type = "learner",
+        index = j,
+        label = labels[j]
+      ))
+    }
+
+    stop(
+      sprintf(
+        "'%s' is out of range. Available learners are learner_1, ..., learner_%d.",
+        model_chr,
+        n_learners
+      )
+    )
+  }
+
+  stop(
+    sprintf(
+      paste(
+        "Unknown 'model' selector '%s'.",
+        "Use 'sl', 0, a learner label, 'learner_j', or an integer in 1:%d."
+      ),
+      model_chr,
+      n_learners
+    )
+  )
+}
+
+
+psl_get_labels <- function(object) {
+  labs <- NULL
+
+  if (!is.null(object$data_info) && !is.null(object$data_info$learners_labels)) {
+    labs <- object$data_info$learners_labels
+  }
+
+  if (is.null(labs) || length(labs) == 0L) {
+    if (!is.null(object$learners) && length(object$learners) > 0L) {
+      labs <- names(object$learners)
+    }
+  }
+
+  if (is.null(labs) || length(labs) == 0L) {
+    labs <- paste0("learner_", seq_along(object$learners))
+  }
+
+  as.character(labs)
+}
+
+psl_get_stored_fit <- function(object, cause, model = "sl") {
+
+  if (is.null(object$superlearner) || length(object$superlearner) == 0L) {
+    stop("No fitted superlearner object available.")
+  }
+
+  if (length(cause) != 1L || is.na(cause) || cause != as.integer(cause)) {
+    stop("'cause' must be a single positive integer.")
+  }
+
+  cause <- as.integer(cause)
+
+  if (cause < 1L || cause > object$data_info$n_crisks) {
+    stop(
+      sprintf(
+        "'cause' must be between 1 and %d.",
+        object$data_info$n_crisks
+      )
+    )
+  }
+
+  sel <- resolve_prediction_model(object, model)
+  labels <- psl_get_labels(object)
+  sl_k <- object$superlearner[[cause]]
+
+  if (sel$type == "sl") {
+    if (!is.null(object$metalearner) && !is.null(sl_k$meta_learner_fit)) {
+      return(list(
+        fit = sl_k$meta_learner_fit,
+        type = "sl",
+        index = 0L,
+        label = "sl"
+      ))
+    }
+
+    if (length(object$learners) == 1L) {
+      return(list(
+        fit = sl_k$learners_fit,
+        type = "learner",
+        index = 1L,
+        label = labels[1L]
+      ))
+    }
+
+    stop("No fitted meta-learner available for model = 'sl'.")
+  }
+
+  j <- sel$index
+
+  fit_j <- if (length(object$learners) == 1L) {
+    sl_k$learners_fit
+  } else {
+    sl_k$learners_fit[[j]]
+  }
+
+  list(
+    fit = fit_j,
+    type = "learner",
+    index = j,
+    label = labels[j]
+  )
+}
+
+psl_extract_meta_coefs <- function(fit, ...) {
+  if (is.null(fit)) return(NULL)
+
+  if (inherits(fit, "cv.glmnet")) {
+    cc <- stats::coef(fit, s = "lambda.min", ...)
+    cc <- as.matrix(cc)
+    return(cc[, 1])
+  }
+
+  if (inherits(fit, "glmnet")) {
+    lam <- fit$lambda
+    lam_use <- if (length(lam) >= 1L) lam[[1L]] else NULL
+    cc <- if (!is.null(lam_use)) {
+      stats::coef(fit, s = lam_use, ...)
+    } else {
+      stats::coef(fit, ...)
+    }
+    cc <- as.matrix(cc)
+    return(cc[, 1])
+  }
+
+  stats::coef(fit, ...)
+}
+
+psl_rename_z_in_text <- function(x, zmap) {
+  if (is.null(x)) return(x)
+  x <- as.character(x)
+  for (z in names(zmap)) {
+    x <- gsub(paste0("\\b", z, "\\b"), zmap[[z]], x, perl = TRUE)
+  }
+  x
+}
 ## create level one data
 
 create_pseudo_observations <- function(training_data,

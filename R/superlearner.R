@@ -1,121 +1,119 @@
 #' Fit a Poisson Super Learner ensemble
 #'
-#' Fits an ensemble of **cause-specific** piecewise-constant hazard models using a
-#' long-format Poisson representation and combines them through a **meta-learner**
-#' (stacking). Cross-validation is used to obtain out-of-sample base-learner
-#' predictions for meta-learning and to compute cross-validated deviances for the
-#' base learners.
+#' Fits an ensemble of cause-specific piecewise-constant hazard models using a
+#' long-format Poisson representation and combines them through a meta-learner
+#' (stacking).
 #'
 #' Internally, the function:
 #' \enumerate{
-#'   \item Builds a time grid (`nodes`) and converts the subject-level data to a long
-#'   Poisson format (one row per subject-interval-cause).
-#'   \item Splits subjects into `nfold` folds.
-#'   \item For each fold and each cause, fits each base learner on the training folds
-#'   and predicts on the held-out fold to create out-of-sample pseudo-observations
-#'   (columns `Z1`, `Z2`, ...).
-#'   \item Fits a (cause-specific) meta-learner on the stacked pseudo-observations.
-#'   \item Refits each base learner on the full long data (per cause) and stores all
-#'   fitted objects for prediction.
+#'   \item builds a time grid (`nodes`) and converts the subject-level data to a
+#'   long Poisson format;
+#'   \item fits each base learner once on the full long data for each cause;
+#'   \item removes learners that already fail on the full data;
+#'   \item uses `nfold` cross-validation to obtain out-of-sample base-learner
+#'   predictions (`Z1`, `Z2`, ...) for stacking;
+#'   \item removes learners whose cross-validated prediction column is entirely
+#'   missing for at least one cause;
+#'   \item fits a cause-specific meta-learner on the retained stacked predictions.
 #' }
 #'
-#' @param data `data.frame`. Subject-level input data (one row per subject).
+#' @param data `data.frame`. Subject-level input data, one row per subject.
 #' @param id `character(1)`. Name of the subject identifier column. If missing,
 #'   an `id` column is created automatically.
-#' @param status `character(1)`. Name of the event-status column.
-#'   Must be coded with `0` = censoring and `1,2,...,K` for event types (causes).
-#'   If there is no `0` in `status`, the data are treated as uncensored.
-#' @param event_time `character(1)`. Name of the event/censoring time column.
-#' @param learners `list`. List of initialized learner reference-class objects
-#'   (e.g. [Learner_glmnet()], [Learner_hal()], [Learner_gam()]). If unnamed, learners
-#'   are named `"learner_1"`, `"learner_2"`, ...
-#'   Each learner must implement `$private_fit(dt_long)` and `$private_predictor(model, newdata)`.
+#' @param status `character(1)`. Name of the event-status column. It must be coded
+#'   with `0` for censoring and `1, 2, ..., K` for event types. If there is no
+#'   `0` in `status`, the data are treated as uncensored.
+#' @param event_time `character(1)`. Name of the event or censoring time column.
+#' @param learners `list`. List of initialized learner reference-class objects,
+#'   for example [Learner_glmnet()], [Learner_hal()], or [Learner_gam()]. If
+#'   unnamed, learners are named `"learner_1"`, `"learner_2"`, and so on. Each
+#'   learner must implement `$private_fit(dt_long)` and
+#'   `$private_predictor(model, newdata)`.
 #' @param number_of_nodes `numeric(1)` or `NULL`. If not `NULL`, constructs a
-#'   quantile-based node grid with `number_of_nodes + 1` cut points (including
-#'   endpoints), then adds `0` if missing. Ignored when `nodes` is supplied.
-#' @param nodes `numeric` or `NULL`. Explicit time-node grid (cut points). If
-#'   supplied, `number_of_nodes` is ignored. `0` is added if missing. Nodes beyond
+#'   quantile-based node grid with `number_of_nodes + 1` cut points. Ignored when
+#'   `nodes` is supplied.
+#' @param nodes `numeric` or `NULL`. Explicit time-node grid. If supplied,
+#'   `number_of_nodes` is ignored. `0` is added if missing, and nodes larger than
 #'   `max(event_time)` are dropped.
-#' @param variable_transformation `list`/`character`/`formula` or `NULL`.
-#'   Optional transformations applied to the internally created long Poisson data
-#'   before fitting (via `apply_transformations()`).
+#' @param variable_transformation Optional transformation specification passed to
+#'   `apply_transformations()` on the internally created long-format data.
 #' @param nfold `numeric(1)`. Number of folds for cross-validation stacking.
 #' @param ... Additional arguments currently ignored.
 #'
-#' @return An object of class `poisson_superlearner`, i.e. a named `list` with:
+#' @return An object of class `poisson_superlearner`, stored as a named `list`
+#'   with the following components:
 #'
-#' \describe{
-#' \item{learners}{The list of base learner objects as provided in `learners`
-#'   (possibly auto-named). These store each learner specification (covariates,
-#'   tuning parameters, etc.).}
+#'   `learners`:
+#'   the retained base learner objects.
 #'
-#' \item{metalearner}{The meta-learner object used to combine base learners.
-#'   Currently this is a `Learner_glmnet(...)` created internally with
-#'   `covariates = c("Z1","Z2",...)`, `intercept = FALSE`, and `lambda = 0`.
-#'   \strong{Learner-dependent details:} only the meta-learner \emph{object} is stored
-#'   here; the \emph{fitted} meta-learner for each cause is in `superlearner[[k]]$meta_learner_fit`.
+#'   `metalearner`:
+#'   the meta-learner object used for stacking. If no stacking is performed because
+#'   only one learner remains, `metalearner` is `NULL`.
 #'
-#'   If only one base learner is supplied, `metalearner` is `NULL` and no ensemble is
-#'   constructed (see below).}
-#'
-#' \item{superlearner}{A `list` of length `data_info$n_crisks` (one entry per cause).
-#'   Entry `superlearner[[k]]` (cause `k`) is itself a list with:
-#'   \describe{
-#'     \item{model}{The meta-learner object (same class as `metalearner`).}
-#'     \item{learners_fit}{A `list` of fitted base-learner model objects (one per
-#'       element of `learners`), refit on the \emph{full} long data for cause `k`.
-#'       Each element is \strong{learner-dependent} (e.g. `"glmnet"`/`"fishnet"`,
-#'       `"gam"`, etc.) and is the object passed to that learner’s
-#'       `$private_predictor()` method at prediction time.}
-#'     \item{meta_learner_fit}{The fitted meta-learner object for cause `k`, fit on the
-#'       stacked long data containing the out-of-sample base-learner predictions
-#'       (`Z1`, `Z2`, ...) and the original long data columns. This object is
-#'       \strong{learner-dependent} (for the default meta-learner it is a `"glmnet"`
-#'       fit).}
+#'   `superlearner`:
+#'   a `list` of length `data_info$n_crisks`, one entry per cause. For cause `k`,
+#'   `superlearner[[k]]` is a `list` with two elements:
+#'   \itemize{
+#'     \item `learners_fit`: the fitted base learner object or objects for cause `k`.
+#'     If more than one learner is retained, this is a `list` with one fitted
+#'     object per retained learner. If only one learner remains, this is the
+#'     single fitted learner object itself.
+#'     \item `meta_learner_fit`: the fitted cause-specific meta-learner for cause
+#'     `k`. If no stacking is performed, this is `NULL`.
 #'   }
 #'
-#'   \strong{Single-learner special case:} if `length(learners) == 1`, then
-#'   `superlearner[[k]]$model` and `superlearner[[k]]$meta_learner_fit` are `NULL`,
-#'   and `superlearner[[k]]$learners_fit` contains the fitted base-learner model for
-#'   cause `k` (no stacking performed).}
+#'   `cross_validation_deviance`:
+#'   a `data.table` with columns `learner` and `deviance`, giving the mean
+#'   cross-validated Poisson deviance for each retained base learner. This
+#'   component is present when cross-validated model comparison is available.
 #'
-#' \item{cross_validation_deviance}{A `data.table` with columns:
-#'   \describe{
-#'     \item{learner}{Learner labels (taken from `names(learners)`).}
-#'     \item{deviance}{Mean cross-validated Poisson deviance for each base learner,
-#'       aggregated across causes and averaged over folds.}
+#'   `data_info`:
+#'   a `list` of bookkeeping information used for prediction and interpretation,
+#'   containing:
+#'   \itemize{
+#'     \item `id`: identifier column name used.
+#'     \item `status`: status column name used.
+#'     \item `event_time`: event-time column name used.
+#'     \item `nodes`: numeric vector of node cut points used for the piecewise grid.
+#'     \item `nfold`: number of folds used for stacking.
+#'     \item `maximum_followup`: maximum observed follow-up time.
+#'     \item `n_crisks`: number of event types detected.
+#'     \item `learners_labels`: character vector of retained learner labels.
+#'     \item `variable_transformation`: the transformation specification passed in
+#'     `variable_transformation`, or `NULL`.
 #'   }
-#'   This is only present when `length(learners) > 1`.}
 #'
-#' \item{data_info}{A `list` of bookkeeping information needed for prediction and
-#'   interpretation:
-#'   \describe{
-#'     \item{id}{Identifier column name used.}
-#'     \item{status}{Status column name used.}
-#'     \item{event_time}{Event/censoring time column name used.}
-#'     \item{nodes}{Numeric vector of node cut points used for the piecewise grid
-#'       (includes `0` and is sorted). These are the interval boundaries used in the
-#'       long Poisson representation.}
-#'     \item{nfold}{Number of folds used for stacking.}
-#'     \item{maximum_followup}{`max(data[[event_time]])`.}
-#'     \item{n_crisks}{Number of event types (causes) detected.
-#'       If censoring is present (`0` in `status`), then `n_crisks = #unique(status) - 1`;
-#'       otherwise `n_crisks = #unique(status)`.}
-#'     \item{learners_labels}{Character vector of learner labels (names of the `learners` list).}
-#'     \item{variable_transformation}{The transformation specification passed in
-#'       `variable_transformation` (or `NULL`).}
-#'   }}
-#' }
+#' @details
+#' If all learners fail on the full data, the function stops with an error.
+#' If only one learner remains after the full-data screening step or after the
+#' cross-validation screening step, no meta-learner is fit. In that case,
+#' `metalearner` is `NULL`, each `superlearner[[k]]$meta_learner_fit` is `NULL`,
+#' and prediction is based directly on the stored fitted base learner.Numeric
+#' learner positions always refer to the learners actually retained in the
+#' fitted object.
 #'
 #' @examples
 #' data <- simulateStenoT1(200, competing_risks = TRUE)
+#'
 #' learners <- list(
-#'   glm = Learner_glmnet(covariates = c("age", "value_LDL"), lambda = 0, cross_validation = FALSE),
-#'   gam = Learner_gam(covariates = c("age", "value_LDL"))
+#'   glm = Learner_glmnet(
+#'     covariates = c("age", "value_LDL"),
+#'     lambda = 0,
+#'     cross_validation = FALSE
+#'   ),
+#'   gam = Learner_gam(
+#'     covariates = c("age", "value_LDL")
+#'   )
 #' )
+#'
 #' fit <- Superlearner(
-#'   data = data, id = "id", status = "status_cvd", event_time = "time_cvd",
-#'   learners = learners, number_of_nodes = 10, nfold = 3
+#'   data = data,
+#'   id = "id",
+#'   status = "status_cvd",
+#'   event_time = "time_cvd",
+#'   learners = learners,
+#'   number_of_nodes = 10,
+#'   nfold = 3
 #' )
 #'
 #' @export

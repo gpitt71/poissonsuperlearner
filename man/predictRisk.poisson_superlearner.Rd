@@ -4,7 +4,7 @@
 \alias{predictRisk.poisson_superlearner}
 \title{Absolute-risk matrix predictions for a fitted Poisson Super Learner}
 \usage{
-\method{predictRisk}{poisson_superlearner}(object, newdata, times, cause = 1, ...)
+\method{predictRisk}{poisson_superlearner}(object, newdata, times, cause = 1, model = "sl", ...)
 }
 \arguments{
 \item{object}{\code{poisson_superlearner}. Fitted object.}
@@ -14,6 +14,9 @@
 \item{times}{\code{numeric}. Prediction times.}
 
 \item{cause}{\code{numeric(1)}. Cause index.}
+
+\item{model}{Scalar model selector. Default is \code{"sl"}. Allowed values are the
+same as in \code{\link[=predict.poisson_superlearner]{predict.poisson_superlearner()}}.}
 
 \item{...}{Unused.}
 }

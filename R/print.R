@@ -38,23 +38,36 @@ print.base_learner <- function(x, cause=1, ...) {
 #' @param cause `numeric(1)` or `NULL`. Which cause’s meta-learner fit to print.
 #'   If `NULL`, prints one line per cause (classes only) instead of printing the full
 #'   fitted objects.
+#' @param model Scalar model selector. Default is `"sl"` for the stacked super learner.
+#'   Other allowed values are:
+#'   \describe{
+#'     \item{`0` or `"sl"`}{Use the super learner prediction.}
+#'     \item{learner label}{Use one stored base learner by its label in
+#'       `object$data_info$learners_labels`.}
+#'     \item{`"learner_j"`}{Use the `j`-th stored learner.}
+#'     \item{integer `j >= 1`}{Use the `j`-th stored learner.}
+#'   }
 #' @param ... Passed to the underlying fitted meta-learner `print()` method when
 #'   `cause` is a single integer.
 #'
 #' @return Invisibly returns `x`.
 #' @export
-print.poisson_superlearner <- function(x, cause=1, ...) {
+print.poisson_superlearner <- function(x, cause = 1, model = "sl", ...) {
 
   if (is.null(x$superlearner)) {
-    cat("No fitted model available (learner_fit is NULL).\n")
+    cat("No fitted model available (superlearner is NULL).\n")
     return(invisible(x))
   }
 
-
   if (is.null(cause)) {
-    return(invisible(lapply(x$superlearner, function(sl) print(sl$meta_learner_fit, ...))))
+    invisible(lapply(seq_len(x$data_info$n_crisks), function(k) {
+      fit_info <- psl_get_stored_fit(x, cause = k, model = model)
+      print(fit_info$fit, ...)
+    }))
+    return(invisible(x))
   }
 
-  return(print(x$superlearner[[cause]]$meta_learner_fit, ...))
+  fit_info <- psl_get_stored_fit(x, cause = cause, model = model)
+  print(fit_info$fit, ...)
+  invisible(x)
 }
-

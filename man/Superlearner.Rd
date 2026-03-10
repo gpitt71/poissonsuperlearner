@@ -18,134 +18,131 @@ Superlearner(
 )
 }
 \arguments{
-\item{data}{\code{data.frame}. Subject-level input data (one row per subject).}
+\item{data}{\code{data.frame}. Subject-level input data, one row per subject.}
 
 \item{id}{\code{character(1)}. Name of the subject identifier column. If missing,
 an \code{id} column is created automatically.}
 
-\item{status}{\code{character(1)}. Name of the event-status column.
-Must be coded with \code{0} = censoring and \verb{1,2,...,K} for event types (causes).
-If there is no \code{0} in \code{status}, the data are treated as uncensored.}
+\item{status}{\code{character(1)}. Name of the event-status column. It must be coded
+with \code{0} for censoring and \verb{1, 2, ..., K} for event types. If there is no
+\code{0} in \code{status}, the data are treated as uncensored.}
 
-\item{event_time}{\code{character(1)}. Name of the event/censoring time column.}
+\item{event_time}{\code{character(1)}. Name of the event or censoring time column.}
 
-\item{learners}{\code{list}. List of initialized learner reference-class objects
-(e.g. \code{\link[=Learner_glmnet]{Learner_glmnet()}}, \code{\link[=Learner_hal]{Learner_hal()}}, \code{\link[=Learner_gam]{Learner_gam()}}). If unnamed, learners
-are named \code{"learner_1"}, \code{"learner_2"}, ...
-Each learner must implement \verb{$private_fit(dt_long)} and \verb{$private_predictor(model, newdata)}.}
+\item{learners}{\code{list}. List of initialized learner reference-class objects,
+for example \code{\link[=Learner_glmnet]{Learner_glmnet()}}, \code{\link[=Learner_hal]{Learner_hal()}}, or \code{\link[=Learner_gam]{Learner_gam()}}. If
+unnamed, learners are named \code{"learner_1"}, \code{"learner_2"}, and so on. Each
+learner must implement \verb{$private_fit(dt_long)} and
+\verb{$private_predictor(model, newdata)}.}
 
 \item{number_of_nodes}{\code{numeric(1)} or \code{NULL}. If not \code{NULL}, constructs a
-quantile-based node grid with \code{number_of_nodes + 1} cut points (including
-endpoints), then adds \code{0} if missing. Ignored when \code{nodes} is supplied.}
+quantile-based node grid with \code{number_of_nodes + 1} cut points. Ignored when
+\code{nodes} is supplied.}
 
-\item{nodes}{\code{numeric} or \code{NULL}. Explicit time-node grid (cut points). If
-supplied, \code{number_of_nodes} is ignored. \code{0} is added if missing. Nodes beyond
+\item{nodes}{\code{numeric} or \code{NULL}. Explicit time-node grid. If supplied,
+\code{number_of_nodes} is ignored. \code{0} is added if missing, and nodes larger than
 \code{max(event_time)} are dropped.}
 
-\item{variable_transformation}{\code{list}/\code{character}/\code{formula} or \code{NULL}.
-Optional transformations applied to the internally created long Poisson data
-before fitting (via \code{apply_transformations()}).}
+\item{variable_transformation}{Optional transformation specification passed to
+\code{apply_transformations()} on the internally created long-format data.}
 
 \item{nfold}{\code{numeric(1)}. Number of folds for cross-validation stacking.}
 
 \item{...}{Additional arguments currently ignored.}
 }
 \value{
-An object of class \code{poisson_superlearner}, i.e. a named \code{list} with:
+An object of class \code{poisson_superlearner}, stored as a named \code{list}
+with the following components:
 
-\describe{
-\item{learners}{The list of base learner objects as provided in \code{learners}
-(possibly auto-named). These store each learner specification (covariates,
-tuning parameters, etc.).}
+\code{learners}:
+the retained base learner objects.
 
-\item{metalearner}{The meta-learner object used to combine base learners.
-Currently this is a \code{Learner_glmnet(...)} created internally with
-\code{covariates = c("Z1","Z2",...)}, \code{intercept = FALSE}, and \code{lambda = 0}.
-\strong{Learner-dependent details:} only the meta-learner \emph{object} is stored
-here; the \emph{fitted} meta-learner for each cause is in \code{superlearner[[k]]$meta_learner_fit}.
+\code{metalearner}:
+the meta-learner object used for stacking. If no stacking is performed because
+only one learner remains, \code{metalearner} is \code{NULL}.
 
-If only one base learner is supplied, \code{metalearner} is \code{NULL} and no ensemble is
-constructed (see below).}
-
-\item{superlearner}{A \code{list} of length \code{data_info$n_crisks} (one entry per cause).
-Entry \code{superlearner[[k]]} (cause \code{k}) is itself a list with:
-\describe{
-\item{model}{The meta-learner object (same class as \code{metalearner}).}
-\item{learners_fit}{A \code{list} of fitted base-learner model objects (one per
-element of \code{learners}), refit on the \emph{full} long data for cause \code{k}.
-Each element is \strong{learner-dependent} (e.g. \code{"glmnet"}/\code{"fishnet"},
-\code{"gam"}, etc.) and is the object passed to that learner’s
-\verb{$private_predictor()} method at prediction time.}
-\item{meta_learner_fit}{The fitted meta-learner object for cause \code{k}, fit on the
-stacked long data containing the out-of-sample base-learner predictions
-(\code{Z1}, \code{Z2}, ...) and the original long data columns. This object is
-\strong{learner-dependent} (for the default meta-learner it is a \code{"glmnet"}
-fit).}
+\code{superlearner}:
+a \code{list} of length \code{data_info$n_crisks}, one entry per cause. For cause \code{k},
+\code{superlearner[[k]]} is a \code{list} with two elements:
+\itemize{
+\item \code{learners_fit}: the fitted base learner object or objects for cause \code{k}.
+If more than one learner is retained, this is a \code{list} with one fitted
+object per retained learner. If only one learner remains, this is the
+single fitted learner object itself.
+\item \code{meta_learner_fit}: the fitted cause-specific meta-learner for cause
+\code{k}. If no stacking is performed, this is \code{NULL}.
 }
 
-\strong{Single-learner special case:} if \code{length(learners) == 1}, then
-\code{superlearner[[k]]$model} and \code{superlearner[[k]]$meta_learner_fit} are \code{NULL},
-and \code{superlearner[[k]]$learners_fit} contains the fitted base-learner model for
-cause \code{k} (no stacking performed).}
+\code{cross_validation_deviance}:
+a \code{data.table} with columns \code{learner} and \code{deviance}, giving the mean
+cross-validated Poisson deviance for each retained base learner. This
+component is present when cross-validated model comparison is available.
 
-\item{cross_validation_deviance}{A \code{data.table} with columns:
-\describe{
-\item{learner}{Learner labels (taken from \code{names(learners)}).}
-\item{deviance}{Mean cross-validated Poisson deviance for each base learner,
-aggregated across causes and averaged over folds.}
-}
-This is only present when \code{length(learners) > 1}.}
-
-\item{data_info}{A \code{list} of bookkeeping information needed for prediction and
-interpretation:
-\describe{
-\item{id}{Identifier column name used.}
-\item{status}{Status column name used.}
-\item{event_time}{Event/censoring time column name used.}
-\item{nodes}{Numeric vector of node cut points used for the piecewise grid
-(includes \code{0} and is sorted). These are the interval boundaries used in the
-long Poisson representation.}
-\item{nfold}{Number of folds used for stacking.}
-\item{maximum_followup}{\code{max(data[[event_time]])}.}
-\item{n_crisks}{Number of event types (causes) detected.
-If censoring is present (\code{0} in \code{status}), then \verb{n_crisks = #unique(status) - 1};
-otherwise \verb{n_crisks = #unique(status)}.}
-\item{learners_labels}{Character vector of learner labels (names of the \code{learners} list).}
-\item{variable_transformation}{The transformation specification passed in
-\code{variable_transformation} (or \code{NULL}).}
-}}
+\code{data_info}:
+a \code{list} of bookkeeping information used for prediction and interpretation,
+containing:
+\itemize{
+\item \code{id}: identifier column name used.
+\item \code{status}: status column name used.
+\item \code{event_time}: event-time column name used.
+\item \code{nodes}: numeric vector of node cut points used for the piecewise grid.
+\item \code{nfold}: number of folds used for stacking.
+\item \code{maximum_followup}: maximum observed follow-up time.
+\item \code{n_crisks}: number of event types detected.
+\item \code{learners_labels}: character vector of retained learner labels.
+\item \code{variable_transformation}: the transformation specification passed in
+\code{variable_transformation}, or \code{NULL}.
 }
 }
 \description{
-Fits an ensemble of \strong{cause-specific} piecewise-constant hazard models using a
-long-format Poisson representation and combines them through a \strong{meta-learner}
-(stacking). Cross-validation is used to obtain out-of-sample base-learner
-predictions for meta-learning and to compute cross-validated deviances for the
-base learners.
+Fits an ensemble of cause-specific piecewise-constant hazard models using a
+long-format Poisson representation and combines them through a meta-learner
+(stacking).
 }
 \details{
 Internally, the function:
 \enumerate{
-\item Builds a time grid (\code{nodes}) and converts the subject-level data to a long
-Poisson format (one row per subject-interval-cause).
-\item Splits subjects into \code{nfold} folds.
-\item For each fold and each cause, fits each base learner on the training folds
-and predicts on the held-out fold to create out-of-sample pseudo-observations
-(columns \code{Z1}, \code{Z2}, ...).
-\item Fits a (cause-specific) meta-learner on the stacked pseudo-observations.
-\item Refits each base learner on the full long data (per cause) and stores all
-fitted objects for prediction.
+\item builds a time grid (\code{nodes}) and converts the subject-level data to a
+long Poisson format;
+\item fits each base learner once on the full long data for each cause;
+\item removes learners that already fail on the full data;
+\item uses \code{nfold} cross-validation to obtain out-of-sample base-learner
+predictions (\code{Z1}, \code{Z2}, ...) for stacking;
+\item removes learners whose cross-validated prediction column is entirely
+missing for at least one cause;
+\item fits a cause-specific meta-learner on the retained stacked predictions.
 }
+
+If all learners fail on the full data, the function stops with an error.
+If only one learner remains after the full-data screening step or after the
+cross-validation screening step, no meta-learner is fit. In that case,
+\code{metalearner} is \code{NULL}, each \code{superlearner[[k]]$meta_learner_fit} is \code{NULL},
+and prediction is based directly on the stored fitted base learner.Numeric
+learner positions always refer to the learners actually retained in the
+fitted object.
 }
 \examples{
 data <- simulateStenoT1(200, competing_risks = TRUE)
+
 learners <- list(
-  glm = Learner_glmnet(covariates = c("age", "value_LDL"), lambda = 0, cross_validation = FALSE),
-  gam = Learner_gam(covariates = c("age", "value_LDL"))
+  glm = Learner_glmnet(
+    covariates = c("age", "value_LDL"),
+    lambda = 0,
+    cross_validation = FALSE
+  ),
+  gam = Learner_gam(
+    covariates = c("age", "value_LDL")
+  )
 )
+
 fit <- Superlearner(
-  data = data, id = "id", status = "status_cvd", event_time = "time_cvd",
-  learners = learners, number_of_nodes = 10, nfold = 3
+  data = data,
+  id = "id",
+  status = "status_cvd",
+  event_time = "time_cvd",
+  learners = learners,
+  number_of_nodes = 10,
+  nfold = 3
 )
 
 }

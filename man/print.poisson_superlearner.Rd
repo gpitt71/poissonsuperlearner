@@ -4,7 +4,7 @@
 \alias{print.poisson_superlearner}
 \title{Print method for \code{poisson_superlearner}}
 \usage{
-\method{print}{poisson_superlearner}(x, cause = 1, ...)
+\method{print}{poisson_superlearner}(x, cause = 1, model = "sl", ...)
 }
 \arguments{
 \item{x}{\code{poisson_superlearner} object returned by \code{\link[=Superlearner]{Superlearner()}}.}
@@ -12,6 +12,16 @@
 \item{cause}{\code{numeric(1)} or \code{NULL}. Which cause’s meta-learner fit to print.
 If \code{NULL}, prints one line per cause (classes only) instead of printing the full
 fitted objects.}
+
+\item{model}{Scalar model selector. Default is \code{"sl"} for the stacked super learner.
+Other allowed values are:
+\describe{
+\item{\code{0} or \code{"sl"}}{Use the super learner prediction.}
+\item{learner label}{Use one stored base learner by its label in
+\code{object$data_info$learners_labels}.}
+\item{\code{"learner_j"}}{Use the \code{j}-th stored learner.}
+\item{integer \code{j >= 1}}{Use the \code{j}-th stored learner.}
+}}
 
 \item{...}{Passed to the underlying fitted meta-learner \code{print()} method when
 \code{cause} is a single integer.}
