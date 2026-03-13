@@ -269,65 +269,66 @@ Superlearner <- function(data,
   ## ------------------------------------------------------------
   ## Step 2: V-fold CV only on retained learners
   ## ------------------------------------------------------------
-  dt_z <- vector("list", n_crisks)
+  dt_by_cause_cv <- lapply(dt_by_cause, function(dt_k) {
+    out <- copy(dt_k)
+    out[, row_ix := .I]
+    out
+  })
+
+  oof_buffers <- lapply(
+    dt_by_cause_cv,
+    psl_init_oof_buffer,
+    z_covariates = z_covariates
+  )
 
   for (ix in seq_len(nfold)) {
-    tmp_train <- dt[folder != ix, ]
-    training_data <- split(tmp_train, by = "k")
-
-    tmp_val <- dt[folder == ix, ]
-    validation_data <- split(tmp_val, by = "k")
-
     pseudo_observations <- mapply(
-      function(training_data,
-               validation_data,
-               competing_risk,
-               learners,
-               z_covariates,
-               ix) {
+      function(dt_k, competing_risk) {
         create_pseudo_observations(
-          training_data = training_data,
-          validation_data = validation_data,
+          training_data = dt_k[folder != ix, ],
+          validation_data = dt_k[folder == ix, ],
           competing_risk = competing_risk,
           learners = learners,
           z_covariates = z_covariates,
           ix = ix
         )
       },
-      training_data = training_data,
-      validation_data = validation_data,
+      dt_k = dt_by_cause_cv,
       competing_risk = as.list(seq_len(n_crisks)),
-      MoreArgs = list(
-        learners = learners,
-        ix = ix,
-        z_covariates = z_covariates
-      ),
-      SIMPLIFY = FALSE
+      SIMPLIFY = FALSE,
+      USE.NAMES = FALSE
     )
 
-    dt_z <- mapply(function(x, y) rbind(x, y), dt_z, pseudo_observations, SIMPLIFY = FALSE)
+    for (k in seq_len(n_crisks)) {
+      oof_buffers[[k]] <- psl_write_oof_buffer(
+        oof_buffer = oof_buffers[[k]],
+        oof_chunk = pseudo_observations[[k]]
+      )
+    }
   }
 
-  ## ------------------------------------------------------------
-  ## Step 3: CV deviance on retained learners
-  ## ------------------------------------------------------------
+## ------------------------------------------------------------
+## Step 3: CV deviance on retained learners
+## ------------------------------------------------------------
+L <- length(z_covariates)
+dev_sum <- matrix(0.0, nrow = nfold, ncol = L)
 
-  L <- length(z_covariates)
-  dev_sum <- matrix(0.0, nrow = nfold, ncol = L)
+for (k in seq_len(n_crisks)) {
+  loghaz_cols <- psl_oof_loghaz_dt(
+    oof_buffer = oof_buffers[[k]],
+    z_covariates = z_covariates
+  )
 
-  for (k in seq_len(n_crisks)) {
-    loghaz_cols <- dt_z[[k]][, ..z_covariates]
+  dev_k <- poisson_deviance_by_folder_cols(
+    log_hazard_cols = loghaz_cols,
+    tij = as.numeric(dt_by_cause_cv[[k]][["tij"]]),
+    delta = as.integer(dt_by_cause_cv[[k]][["deltaij"]]),
+    folder = as.integer(dt_by_cause_cv[[k]][["folder"]]),
+    nfold = nfold
+  )
 
-    dev_k <- poisson_deviance_by_folder_cols(
-      log_hazard_cols = loghaz_cols,
-      tij = as.numeric(dt_z[[k]][["tij"]]),
-      delta = as.integer(dt_z[[k]][["deltaij"]]),
-      folder = as.integer(dt_z[[k]][["folder"]]),
-      nfold = nfold
-    )
-
-    dev_sum <- dev_sum + dev_k
-  }
+  dev_sum <- dev_sum + dev_k
+}
 
   dev_mean <- colMeans(2.0 * dev_sum)
 
@@ -340,8 +341,8 @@ Superlearner <- function(data,
   ## Step 4: after CV, remove only learners that are ALL-NA
   ## within at least one cause. Partial fold failures are allowed.
   ## ------------------------------------------------------------
-  failed_by_risk <- lapply(dt_z, function(DT) {
-    z_covariates[vapply(DT[, ..z_covariates], function(x) all(is.na(x)), logical(1))]
+  failed_by_risk <- lapply(oof_buffers, function(buf) {
+    z_covariates[colSums(!is.na(buf$Z)) == 0L]
   })
 
   failed_cv_learners <- Reduce(union, failed_by_risk)
@@ -350,8 +351,9 @@ Superlearner <- function(data,
     keep_z <- setdiff(z_covariates, failed_cv_learners)
     keep_ix <- match(keep_z, z_covariates)
 
-    dt_z <- lapply(dt_z, function(DT) {
-      DT[, c(setdiff(names(DT), z_covariates), keep_z), with = FALSE]
+    oof_buffers <- lapply(oof_buffers, function(buf) {
+      buf$Z <- buf$Z[, keep_ix, drop = FALSE]
+      buf
     })
 
     learners <- learners[keep_ix]
@@ -414,16 +416,16 @@ Superlearner <- function(data,
   )
 
   meta_learner_fits <- mapply(
-    function(dt_k, dt_z_k) {
+    function(dt_k, oof_k) {
       fit_meta_learner(
         dt = dt_k,
-        dt_z = dt_z_k,
+        dt_z = oof_k,
         meta_learner = meta_learner,
         z_covariates = z_covariates
       )
     },
     dt_by_cause,
-    dt_z,
+    oof_buffers,
     SIMPLIFY = FALSE
   )
 

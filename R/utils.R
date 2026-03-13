@@ -547,56 +547,164 @@ psl_rename_z_in_text <- function(x, zmap) {
   }
   x
 }
-## create level one data
 
+
+# Cross-validation helpers ----
+
+
+psl_init_oof_buffer <- function(dt_k, z_covariates) {
+  structure(
+    list(
+      Z = matrix(
+        NA_real_,
+        nrow = nrow(dt_k),
+        ncol = length(z_covariates),
+        dimnames = list(NULL, z_covariates)
+      )
+    ),
+    class = "psl_oof_buffer"
+  )
+}
+
+psl_write_oof_buffer <- function(oof_buffer, oof_chunk) {
+  if (is.null(oof_chunk) || length(oof_chunk$row_ix) == 0L) {
+    return(oof_buffer)
+  }
+
+  oof_buffer$Z[oof_chunk$row_ix, ] <- oof_chunk$Z
+  oof_buffer
+}
+
+psl_compact_oof_to_dt <- function(dt, dt_z, z_covariates) {
+  if (is.data.table(dt_z)) {
+    return(
+      merge(
+        dt_z[, !c("tij", "deltaij"), with = FALSE],
+        dt,
+        by = c("id", "folder", "node")
+      )
+    )
+  }
+
+  if (!(is.list(dt_z) && !is.null(dt_z$Z))) {
+    stop("'dt_z' must be either a data.table or a compact OOF buffer with element 'Z'.")
+  }
+
+  tmp <- copy(dt)
+
+  if ("row_ix" %in% names(tmp)) {
+    tmp[, row_ix := NULL]
+  }
+
+  z_dt <- as.data.table(dt_z$Z)
+  setnames(z_dt, z_covariates)
+
+  tmp[, (z_covariates) := z_dt]
+
+  # Preserve the old meta-learning interface, where a competing_risk column
+  # was present after merging dt_z back into dt.
+  tmp[, competing_risk := as.integer(as.character(k))]
+
+  tmp
+}
+psl_oof_loghaz_dt <- function(oof_buffer, z_covariates) {
+  out <- data.table::as.data.table(oof_buffer$Z)
+  data.table::setnames(out, z_covariates)
+  out
+}
 create_pseudo_observations <- function(training_data,
                                        validation_data,
                                        competing_risk,
                                        learners,
                                        z_covariates,
-                                       ix){
-  "
-  This function creates the pseudo-observations.
-
-  "
+                                       ix) {
+  if (nrow(validation_data) == 0L) {
+    return(list(
+      row_ix = integer(0),
+      Z = matrix(
+        NA_real_,
+        nrow = 0L,
+        ncol = length(z_covariates),
+        dimnames = list(NULL, z_covariates)
+      )
+    ))
+  }
 
   train_list <- lapply(learners, function(f) f$private_fit(training_data))
 
-
-  # Predict on the validation set your pseudo-observations ----
   val_list <- mapply(
-    function(f, model, newdata)
-      f$private_predictor(model = model, newdata = newdata),
+    function(f, model, newdata) {
+      f$private_predictor(model = model, newdata = newdata)
+    },
     learners,
     train_list,
-    MoreArgs = list(newdata = validation_data)
+    MoreArgs = list(newdata = validation_data),
+    SIMPLIFY = FALSE
   )
 
+  val_mat <- do.call(cbind, lapply(val_list, as.numeric))
 
+  if (is.null(dim(val_mat))) {
+    val_mat <- matrix(val_mat, ncol = length(z_covariates))
+  }
 
-  # val_list<- as.matrix(val_list)
+  val_mat <- log(val_mat)
+  storage.mode(val_mat) <- "double"
+  colnames(val_mat) <- z_covariates
 
-
-  val_list<- apply(as.matrix(val_list),
-                 MARGIN = 2,
-                 log)
-
-
-  # Name the columns
-
-  colnames(val_list) <- z_covariates
-
-
-  dt_z <-  data.table(val_list)[, c("id", "folder","node",paste0("deltaij"), "tij") := validation_data[,.(id,folder,node,deltaij,tij)]] #
-
-  dt_z[,competing_risk:= competing_risk]
-
-  return(dt_z)
-
-
-
+  list(
+    row_ix = validation_data[["row_ix"]],
+    Z = val_mat
+  )
 }
-
+# create_pseudo_observations <- function(training_data,
+#                                        validation_data,
+#                                        competing_risk,
+#                                        learners,
+#                                        z_covariates,
+#                                        ix){
+#   "
+#   This function creates the pseudo-observations.
+#
+#   "
+#
+#   train_list <- lapply(learners, function(f) f$private_fit(training_data))
+#
+#
+#   # Predict on the validation set your pseudo-observations ----
+#   val_list <- mapply(
+#     function(f, model, newdata)
+#       f$private_predictor(model = model, newdata = newdata),
+#     learners,
+#     train_list,
+#     MoreArgs = list(newdata = validation_data)
+#   )
+#
+#
+#
+#   # val_list<- as.matrix(val_list)
+#
+#
+#   val_list<- apply(as.matrix(val_list),
+#                  MARGIN = 2,
+#                  log)
+#
+#
+#   # Name the columns
+#
+#   colnames(val_list) <- z_covariates
+#
+#
+#   dt_z <-  data.table(val_list)[, c("id", "folder","node",paste0("deltaij"), "tij") := validation_data[,.(id,folder,node,deltaij,tij)]] #
+#
+#   dt_z[,competing_risk:= competing_risk]
+#
+#   return(dt_z)
+#
+#
+#
+# }
+#
 
 select_covariate_path <- function(dt, z_covariates, min_depth) {
   # add covariates column
@@ -913,15 +1021,30 @@ out <- c(out,one_time_learner)
 }
 
 
+# fit_meta_learner <- function(dt,
+#                              dt_z,
+#                              meta_learner,
+#                              z_covariates) {
+#
+#   tmp <- merge(
+#     dt_z[, !c("tij", "deltaij"), with = FALSE],
+#     dt,
+#     by = c("id", "folder", "node")
+#   )
+#
+#   meta_learner_fit <- meta_learner$private_fit(tmp)
+#
+#   return(meta_learner_fit)
+# }
+
 fit_meta_learner <- function(dt,
                              dt_z,
                              meta_learner,
                              z_covariates) {
-
-  tmp <- merge(
-    dt_z[, !c("tij", "deltaij"), with = FALSE],
-    dt,
-    by = c("id", "folder", "node")
+  tmp <- psl_compact_oof_to_dt(
+    dt = dt,
+    dt_z = dt_z,
+    z_covariates = z_covariates
   )
 
   meta_learner_fit <- meta_learner$private_fit(tmp)
@@ -929,53 +1052,93 @@ fit_meta_learner <- function(dt,
   return(meta_learner_fit)
 }
 
-
 # super-learner hyper parameters cross-validation ----
-
-
 meta_learner_cross_validation <- function(dt,
-                             dt_z,
-                             cr_ix,
-                             nfold,
-                             meta_learner){
+                                          dt_z,
+                                          cr_ix,
+                                          nfold,
+                                          meta_learner) {
+  out <- NULL
 
+  z_covariates <- grep("^Z[0-9]+$", names(dt_z), value = TRUE)
+  if (length(z_covariates) == 0L && is.list(dt_z) && !is.null(dt_z$Z)) {
+    z_covariates <- colnames(dt_z$Z)
+  }
 
-
-  # model output ---
-  out<-NULL
-
-  dt_z <- merge(dt_z,dt,by=c("id","folder","node"))
-
-
-  for(v_fold_id in 1:nfold){
-
-  meta_learner_fit <- meta_learner$private_fit(dt_z[folder!=v_fold_id,])
-
-  oos_data <- copy(dt_z[folder == v_fold_id, ])
-
-  # forced tij to be one
-  oos_data[,tij:=1]
-
-
-  fitted_hazard = data.table(
-    oos_data[['id']],
-    oos_data[['node']],
-    oos_data[['deltaij']],
-    v_fold_id,
-    as.vector(meta_learner$private_predictor(meta_learner_fit, oos_data))
+  dt_meta <- psl_compact_oof_to_dt(
+    dt = dt,
+    dt_z = dt_z,
+    z_covariates = z_covariates
   )
 
-  setnames(fitted_hazard,c("id","node",paste0("delta_",cr_ix),"folder",paste0("pwch_", cr_ix)))
+  for (v_fold_id in seq_len(nfold)) {
+    meta_learner_fit <- meta_learner$private_fit(dt_meta[folder != v_fold_id, ])
 
-  out <- rbind(out,fitted_hazard)
+    oos_data <- copy(dt_meta[folder == v_fold_id, ])
+    oos_data[, tij := 1]
 
+    fitted_hazard <- data.table(
+      oos_data[["id"]],
+      oos_data[["node"]],
+      oos_data[["deltaij"]],
+      v_fold_id,
+      as.vector(meta_learner$private_predictor(meta_learner_fit, oos_data))
+    )
+
+    setnames(
+      fitted_hazard,
+      c("id", "node", paste0("delta_", cr_ix), "folder", paste0("pwch_", cr_ix))
+    )
+
+    out <- rbind(out, fitted_hazard)
   }
 
   return(out)
-
-
 }
 
+# meta_learner_cross_validation <- function(dt,
+#                              dt_z,
+#                              cr_ix,
+#                              nfold,
+#                              meta_learner){
+#
+#
+#
+#   # model output ---
+#   out<-NULL
+#
+#   dt_z <- merge(dt_z,dt,by=c("id","folder","node"))
+#
+#
+#   for(v_fold_id in 1:nfold){
+#
+#   meta_learner_fit <- meta_learner$private_fit(dt_z[folder!=v_fold_id,])
+#
+#   oos_data <- copy(dt_z[folder == v_fold_id, ])
+#
+#   # forced tij to be one
+#   oos_data[,tij:=1]
+#
+#
+#   fitted_hazard = data.table(
+#     oos_data[['id']],
+#     oos_data[['node']],
+#     oos_data[['deltaij']],
+#     v_fold_id,
+#     as.vector(meta_learner$private_predictor(meta_learner_fit, oos_data))
+#   )
+#
+#   setnames(fitted_hazard,c("id","node",paste0("delta_",cr_ix),"folder",paste0("pwch_", cr_ix)))
+#
+#   out <- rbind(out,fitted_hazard)
+#
+#   }
+#
+#   return(out)
+#
+#
+# }
+#
 
 
 learners_hat <- function(crisk_cause,superlearner,newdata,learners){

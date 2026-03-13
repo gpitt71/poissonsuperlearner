@@ -97,11 +97,21 @@ summary(sl_model)
 
 # Risk predictions
 
+You can do risk predictions using individual model fits.
 
 ```{r}
 cbind(predictRisk(sl_model,newdata=d[1,],times=5),
 predictRisk(l0_model,newdata=d[1,],times=5),
 predictRisk(l1_model,newdata=d[1,],times=5))
+```
+
+Alternatively, risk predictions using the fitted superlearner for the ensemble or the learners.
+
+
+```{r}
+cbind(predictRisk(sl_model,newdata=d[1,],times=5,model="sl"),
+predictRisk(sl_model,newdata=d[1,],times=5,model="glm"),
+predictRisk(sl_model,newdata=d[1,],times=5,model="lasso"))
 ```
 
 

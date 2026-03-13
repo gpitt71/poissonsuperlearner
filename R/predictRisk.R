@@ -27,19 +27,34 @@ predictRisk.poisson_superlearner <- function(object,
     ncol = length(times)
   )
 
+  pred <- predict(
+    object,
+    newdata = newdata,
+    times = times,
+    cause = cause,
+    model = model
+  )
+
+  if (is.null(pred)) {
+    return(NULL)
+  }
+
+  time_col <- object$data_info$event_time
+  id_col <- object$data_info$id
+
   for (ix in seq_along(times)) {
-    rr_output[, ix] <- predict(
-      object,
-      newdata = newdata,
-      times = times[ix],
-      cause = cause,
-      model = model
-    )$absolute_risk
+    tmp <- pred[get(time_col) == times[ix]]
+
+    if (nrow(tmp) == 0L) {
+      next
+    }
+
+    data.table::setorderv(tmp, id_col)
+    rr_output[, ix] <- tmp[["absolute_risk"]]
   }
 
   return(rr_output)
 }
-
 #' Absolute-risk matrix predictions for a fitted base learner
 #'
 #' @param object `base_learner`. Fitted object from [fit_learner()].
@@ -50,24 +65,42 @@ predictRisk.poisson_superlearner <- function(object,
 #'
 #' @return `numeric` matrix with `nrow(newdata)` rows and `length(times)` columns.
 #' @export
-predictRisk.base_learner <- function(object,newdata,times,cause=1, ...){
+predictRisk.base_learner <- function(object,
+                                     newdata,
+                                     times,
+                                     cause = 1,
+                                     ...) {
 
-  rr_output <- matrix(NA_real_,
-                      nrow=nrow(newdata),
-                      ncol=length(times))
+  rr_output <- matrix(
+    NA_real_,
+    nrow = nrow(newdata),
+    ncol = length(times)
+  )
 
+  pred <- predict(
+    object,
+    newdata = newdata,
+    times = times,
+    cause = cause
+  )
 
-  for(ix in seq_along(times)){
+  if (is.null(pred)) {
+    return(NULL)
+  }
 
+  time_col <- object$data_info$event_time
+  id_col <- object$data_info$id
 
-    rr_output[,ix]<- predict(object,
-                             newdata = newdata,
-                             times = times[ix],
-                             cause = cause)$absolute_risk
+  for (ix in seq_along(times)) {
+    tmp <- pred[get(time_col) == times[ix]]
 
+    if (nrow(tmp) == 0L) {
+      next
+    }
+
+    data.table::setorderv(tmp, id_col)
+    rr_output[, ix] <- tmp[["absolute_risk"]]
   }
 
   return(rr_output)
-
-
 }

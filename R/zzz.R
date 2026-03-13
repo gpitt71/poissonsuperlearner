@@ -10,5 +10,5 @@ utils::globalVariables(c(
   "uncensored_event", "uncensored_status_cvd", "uncensored_time", "uncensored_time_cvd",
   "value_AlbuminuriaMacro", "value_AlbuminuriaMicro",
   "vec_dt", "vec_dt2",
-  "log2_eGFR_old", "log2_eGFR_young"
+  "log2_eGFR_old", "log2_eGFR_young","row_ix","competing_risk"
 ))
