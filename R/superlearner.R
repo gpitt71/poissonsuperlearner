@@ -93,16 +93,19 @@
 #' fitted object.
 #'
 #' @examples
-#' data <- simulateStenoT1(200, competing_risks = TRUE)
+#' data <- simulateStenoT1(50, competing_risks = TRUE)
 #'
 #' learners <- list(
 #'   glm = Learner_glmnet(
-#'     covariates = c("age", "value_LDL"),
+#'     covariates = c("sex", "value_LDL"),
 #'     lambda = 0,
 #'     cross_validation = FALSE
 #'   ),
-#'   gam = Learner_gam(
-#'     covariates = c("age", "value_LDL")
+#'   ridge = Learner_glmnet(
+#'     covariates = c("sex", "value_LDL"),
+#'     alpha = 0,
+#'     lambda = 0.01,
+#'     cross_validation = FALSE
 #'   )
 #' )
 #'
@@ -112,8 +115,8 @@
 #'   status = "status_cvd",
 #'   event_time = "time_cvd",
 #'   learners = learners,
-#'   number_of_nodes = 10,
-#'   nfold = 3
+#'   number_of_nodes = 3,
+#'   nfold = 2
 #' )
 #'
 #' @export

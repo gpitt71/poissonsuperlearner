@@ -26,6 +26,39 @@
 #'   \item{cross_validation_deviance}{`data.table` (or `NULL`).}
 #'   \item{meta_coefficients}{List of length `n_crisks` with cause-specific coefficient objects (or `NULL`).}
 #' }
+#'
+#' @examples
+#' d <- simulateStenoT1(30, competing_risks = TRUE)
+#'
+#' learners <- list(
+#'   lasso = Learner_glmnet(
+#'     covariates = "sex",
+#'     alpha = 1,
+#'     lambda = 0.01,
+#'     cross_validation = FALSE
+#'   ),
+#'   ridge = Learner_glmnet(
+#'     covariates = c("sex", "value_LDL"),
+#'     alpha = 0,
+#'     lambda = 0.01,
+#'     cross_validation = FALSE
+#'   )
+#' )
+#'
+#' fit <- Superlearner(
+#'   data = d,
+#'   id = "id",
+#'   status = "status_cvd",
+#'   event_time = "time_cvd",
+#'   learners = learners,
+#'   number_of_nodes = 3,
+#'   nfold = 2
+#' )
+#'
+#' s <- summary(fit, cause = 1)
+#' names(s)
+#'
+#'
 #' @export
 summary.poisson_superlearner <- function(object,
                                          cause = NULL,
@@ -148,6 +181,25 @@ summary.poisson_superlearner <- function(object,
 #'
 #' @return If `cause` is a single integer, returns the underlying model summary for
 #' that cause. If `cause = NULL`, returns a list of summaries (one per cause).
+#'
+#' @examples
+#' d <- simulateStenoT1(30, competing_risks = TRUE)
+#' lrn <- Learner_glmnet(
+#'   covariates = c("sex", "value_LDL"),
+#'   lambda = 0.01,
+#'   cross_validation = FALSE
+#' )
+#' bl <- fit_learner(
+#'   d,
+#'   learner = lrn,
+#'   id = "id",
+#'   status = "status_cvd",
+#'   event_time = "time_cvd",
+#'   number_of_nodes = 3
+#' )
+#' out <- summary(bl, cause = 1)
+#'
+#'
 #' @export
 summary.base_learner <- function(object, cause=1, ...) {
 

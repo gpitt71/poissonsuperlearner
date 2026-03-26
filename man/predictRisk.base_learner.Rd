@@ -23,3 +23,25 @@
 \description{
 Absolute-risk matrix predictions for a fitted base learner
 }
+\examples{
+d <- simulateStenoT1(30, competing_risks = TRUE)
+lrn <- Learner_glmnet(
+  covariates = c("sex", "value_LDL"),
+  lambda = 0.01,
+  cross_validation = FALSE
+)
+bl <- fit_learner(
+  d,
+  learner = lrn,
+  id = "id",
+  status = "status_cvd",
+  event_time = "time_cvd",
+  number_of_nodes = 3
+)
+
+if (requireNamespace("riskRegression", quietly = TRUE)) {
+  riskRegression::predictRisk(bl, newdata = d[1:3], times = c(1, 3), cause = 1)
+}
+
+
+}

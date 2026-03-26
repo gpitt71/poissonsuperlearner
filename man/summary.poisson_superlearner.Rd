@@ -41,3 +41,36 @@ Prints:
 \item cause-specific meta-learner coefficients (stacking weights).
 }
 }
+\examples{
+d <- simulateStenoT1(30, competing_risks = TRUE)
+
+learners <- list(
+  lasso = Learner_glmnet(
+    covariates = "sex",
+    alpha = 1,
+    lambda = 0.01,
+    cross_validation = FALSE
+  ),
+  ridge = Learner_glmnet(
+    covariates = c("sex", "value_LDL"),
+    alpha = 0,
+    lambda = 0.01,
+    cross_validation = FALSE
+  )
+)
+
+fit <- Superlearner(
+  data = d,
+  id = "id",
+  status = "status_cvd",
+  event_time = "time_cvd",
+  learners = learners,
+  number_of_nodes = 3,
+  nfold = 2
+)
+
+s <- summary(fit, cause = 1)
+names(s)
+
+
+}

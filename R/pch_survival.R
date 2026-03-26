@@ -10,6 +10,17 @@
 #'
 #' @return Numeric vector of survival probabilities at the end of each interval.
 #'
+#' @examples
+#' id <- c(1L, 1L, 2L, 2L)
+#' dt <- c(1, 1, 1, 1)
+#' haz <- rbind(
+#'   c(0.10, 0.05),
+#'   c(0.20, 0.10),
+#'   c(0.05, 0.02),
+#'   c(0.10, 0.03)
+#' )
+#' pch_survival(id = id, dt = dt, haz = haz)
+#'
 #' @export
 #' @useDynLib poissonsuperlearner, .registration = TRUE
 #' @importFrom Rcpp evalCpp

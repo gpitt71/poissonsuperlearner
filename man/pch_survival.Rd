@@ -22,3 +22,15 @@ Numeric vector of survival probabilities at the end of each interval.
 Computes survival at the end of each interval for competing risks with
 piecewise constant hazards.
 }
+\examples{
+id <- c(1L, 1L, 2L, 2L)
+dt <- c(1, 1, 1, 1)
+haz <- rbind(
+  c(0.10, 0.05),
+  c(0.20, 0.10),
+  c(0.05, 0.02),
+  c(0.10, 0.03)
+)
+pch_survival(id = id, dt = dt, haz = haz)
+
+}

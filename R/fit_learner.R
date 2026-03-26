@@ -69,7 +69,7 @@
 #' }
 #'
 #' @examples
-#' d <- simulateStenoT1(150, competing_risks = TRUE)
+#' d <- simulateStenoT1(50, competing_risks = TRUE)
 #' lrn <- Learner_glmnet(covariates = c("age", "value_LDL"),
 #'                       lambda = 0,
 #'                       cross_validation = FALSE)
@@ -96,7 +96,7 @@ fit_learner <- function(data,
 
   if (!(id %in% names(data))) {
     data[["id"]] <- 1:NROW(data)
-    id <<- "id"
+    id <- "id"
   }
 
 

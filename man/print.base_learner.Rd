@@ -24,3 +24,22 @@ Prints a compact description of the fitted base learner, including the learner
 type, the time-grid used, and (optionally) the fitted model object for a given
 cause.
 }
+\examples{
+d <- simulateStenoT1(30, competing_risks = TRUE)
+lrn <- Learner_glmnet(
+  covariates = c("sex", "value_LDL"),
+  lambda = 0.01,
+  cross_validation = FALSE
+)
+bl <- fit_learner(
+  d,
+  learner = lrn,
+  id = "id",
+  status = "status_cvd",
+  event_time = "time_cvd",
+  number_of_nodes = 3
+)
+print(bl, cause = NULL)
+
+
+}

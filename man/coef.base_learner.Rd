@@ -41,12 +41,12 @@ This method does not post-process or rename coefficients; it returns the output
 of \code{coef(object$learner_fit[[k]], ...)} unchanged.
 }
 \examples{
-d <- simulateStenoT1(200, competing_risks = TRUE)
+d <- simulateStenoT1(50, competing_risks = TRUE)
 lrn <- Learner_glmnet(covariates = c("age", "value_LDL"),
                       lambda = 0, cross_validation = FALSE)
 bl <- fit_learner(d, learner = lrn, id = "id",
                   status = "status_cvd", event_time = "time_cvd",
-                  number_of_nodes = 8)
+                  number_of_nodes = 4)
 
 # coefficients for cause 1
 coef(bl, cause = 1)

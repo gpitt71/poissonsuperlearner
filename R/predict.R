@@ -51,6 +51,37 @@
 #'   \item{absolute_risk}{Predicted cumulative incidence (absolute risk) for `cause` at the horizon.}
 #' }
 #'
+#' @examples
+#' d <- simulateStenoT1(30, competing_risks = TRUE)
+#'
+#' learners <- list(
+#'   lasso = Learner_glmnet(
+#'     covariates = "sex",
+#'     alpha = 1,
+#'     lambda = 0.01,
+#'     cross_validation = FALSE
+#'   ),
+#'   ridge = Learner_glmnet(
+#'     covariates = c("sex", "value_LDL"),
+#'     alpha = 0,
+#'     lambda = 0.01,
+#'     cross_validation = FALSE
+#'   )
+#' )
+#'
+#' fit <- Superlearner(
+#'   data = d,
+#'   id = "id",
+#'   status = "status_cvd",
+#'   event_time = "time_cvd",
+#'   learners = learners,
+#'   number_of_nodes = 3,
+#'   nfold = 2
+#' )
+#' p <- predict(fit, newdata = d[1:3], times = c(0, 2), cause = 1)
+#' p[, .(id, time_cvd, absolute_risk)]
+#'
+#'
 #' @export
 predict.poisson_superlearner <- function(object,
                                          newdata,
@@ -568,7 +599,7 @@ if (is.null(data_pp[[object$data_info$status]])) {
     vec_dt2[, dummy := 1]
 
     d2 <- merge(tmp, vec_dt2, by = "dummy", allow.cartesian = TRUE)[, dummy := NULL]
-    d2[, c(pwch_cols, 'survival_function') := list(rep(NA, length(pwc_cols)), NA)]
+    d2[, c(pwch_cols, "survival_function", "absolute_risk") := NA_real_]
 
 
     if (object$data_info$id %in% colnames(d)) {
@@ -577,7 +608,7 @@ if (is.null(data_pp[[object$data_info$status]])) {
 
 
 
-    d <- rbind(d, d2)
+    d <- rbind(d, d2, fill = TRUE)
 
 
   }
@@ -585,7 +616,7 @@ if (is.null(data_pp[[object$data_info$status]])) {
 
   d[, (object$data_info$id) := NULL]
   setnames(d, new = object$data_info$id, old = "internal_psl_ix")
-  d<-d[order(id),]
+  d <- d[order(get(object$data_info$id))]
   return(d)
 
 

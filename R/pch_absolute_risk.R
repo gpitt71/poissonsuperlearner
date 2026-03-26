@@ -13,6 +13,18 @@
 #'
 #' @return Numeric vector of cumulative incidence values at the end of each interval.
 #'
+#' @examples
+#' id <- c(1L, 1L, 2L, 2L)
+#' dt <- c(1, 1, 1, 1)
+#' haz <- rbind(
+#'   c(0.10, 0.05),
+#'   c(0.20, 0.10),
+#'   c(0.05, 0.02),
+#'   c(0.10, 0.03)
+#' )
+#' pch_absolute_risk(id = id, dt = dt, haz = haz, cause_idx = 1)
+#'
+#'
 #' @export
 #' @useDynLib poissonsuperlearner, .registration = TRUE
 #' @importFrom Rcpp evalCpp
@@ -26,7 +38,9 @@ pch_absolute_risk <- function(id, dt, haz, cause_idx, one_based = TRUE, na_is_ze
 #'
 #' Computes the cumulative incidence function using the first-order Euler
 #' (discrete) approximation:
-#'   \deqn{F_j(t) ≈ \sum S(t_{k-1}) \lambda_{j,k} \Delta t_k}
+#'   \deqn{F_j(t) \approx \sum S(t_{k-1}) \lambda_{j,k} \Delta t_k}{
+#'     F_j(t) = approx sum S(t_{k-1}) lambda_{j,k} Delta t_k
+#'   }
 #' Grouped by `id`, this returns the cumulative incidence at the end of each interval.
 #'
 #' @param id Integer vector. Sorted by `id` then time.
@@ -38,6 +52,18 @@ pch_absolute_risk <- function(id, dt, haz, cause_idx, one_based = TRUE, na_is_ze
 #'
 #' @return Numeric vector of cumulative incidence values (Euler approximation)
 #'         at the end of each interval.
+#'
+#'
+#' @examples
+#' id <- c(1L, 1L, 2L, 2L)
+#' dt <- c(1, 1, 1, 1)
+#' haz <- rbind(
+#'   c(0.10, 0.05),
+#'   c(0.20, 0.10),
+#'   c(0.05, 0.02),
+#'   c(0.10, 0.03)
+#' )
+#' pch_absolute_risk_euler(id = id, dt = dt, haz = haz, cause_idx = 1)
 #'
 #' @export
 #' @useDynLib poissonsuperlearner, .registration = TRUE

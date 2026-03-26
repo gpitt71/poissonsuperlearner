@@ -95,8 +95,7 @@ Event time variables are generated from latent Weibull PH models:
 construct the observed outcome variables returned by the function (see below).
 }
 \examples{
-simulateStenoT1(n = 3)
-simulateStenoT1(n = 200, scenario = "alpha", competing_risks = TRUE)
+simulateStenoT1(n = 20, scenario = "alpha", competing_risks = TRUE)
 }
 \author{
 Thomas A. Gerds \href{mailto:tag@biostat.ku.dk}{tag@biostat.ku.dk}

@@ -31,12 +31,12 @@
 #' and returns `invisible(object)`.
 #'
 #' @examples
-#' d <- simulateStenoT1(200, competing_risks = TRUE)
+#' d <- simulateStenoT1(50, competing_risks = TRUE)
 #' lrn <- Learner_glmnet(covariates = c("age", "value_LDL"),
 #'                       lambda = 0, cross_validation = FALSE)
 #' bl <- fit_learner(d, learner = lrn, id = "id",
 #'                   status = "status_cvd", event_time = "time_cvd",
-#'                   number_of_nodes = 8)
+#'                   number_of_nodes = 4)
 #'
 #' # coefficients for cause 1
 #' coef(bl, cause = 1)
@@ -112,13 +112,13 @@ coef.base_learner <- function(object, cause= NULL, ...) {
 #' and returns `invisible(object)`.
 #'
 #' @examples
-#' d <- simulateStenoT1(200, competing_risks = TRUE)
+#' d <- simulateStenoT1(50, competing_risks = TRUE)
 #' learners <- list(
 #'   glm = Learner_glmnet(covariates = c("age", "value_LDL"), lambda = 0, cross_validation = FALSE),
 #'   gam = Learner_gam(covariates = c("age", "value_LDL"))
 #' )
 #' fit <- Superlearner(d, id="id", status="status_cvd", event_time="time_cvd",
-#'                     learners=learners, number_of_nodes=8, nfold=3)
+#'                     learners=learners, number_of_nodes=4, nfold=2)
 #'
 #' # meta-learner coefficients (cause 1)
 #' coef(fit, cause = 1)

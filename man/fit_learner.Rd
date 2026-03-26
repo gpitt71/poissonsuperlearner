@@ -98,7 +98,7 @@ For competing risks, a separate model is fit for each event type (cause)
 using the standard cause-specific Poisson likelihood on the long data.
 }
 \examples{
-d <- simulateStenoT1(150, competing_risks = TRUE)
+d <- simulateStenoT1(50, competing_risks = TRUE)
 lrn <- Learner_glmnet(covariates = c("age", "value_LDL"),
                       lambda = 0,
                       cross_validation = FALSE)
