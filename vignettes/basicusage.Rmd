@@ -1,0 +1,292 @@
+---
+title: "Basic Usage"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Basic Usage}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+
+library(poissonsuperlearner)
+library(riskRegression)
+```
+
+# Introduction
+
+This vignette gives a minimal example of how to use `poissonsuperlearner` to fit
+piecewise-constant hazard models and combine them in a Poisson super learner.
+The package works by expanding subject-level time-to-event data to a long
+Poisson format on a grid of time intervals, fitting one or more base learners to
+the corresponding cause-specific hazards, and optionally combining them through a
+meta-learner.
+
+The same workflow can be used both for a single fitted learner via
+`fit_learner()` and for an ensemble via `Superlearner()`.
+
+# Generate synthetic Steno data
+
+We first simulate a small synthetic data set with `simulateStenoT1()`. The
+simulator is inspired by the Steno Type-1 risk engine and generates correlated
+baseline covariates such as age, diabetes duration, LDL, systolic blood
+pressure, HbA1c, albuminuria, eGFR, smoking, and physical activity. Event times
+are then generated from Weibull proportional hazards models. In scenario
+`"alpha"`, the event mechanism is linear in the covariates, and with
+`competing_risks = TRUE` the data contain two causes: cardiovascular disease
+(CVD) and death without prior CVD. In scenario `"beta"`, the CVD hazard instead
+includes additional nonlinear hinge-squared effects of age and LDL.
+
+Here we use the `"alpha"` scenario with competing risks to illustrate the
+cause-specific output of the package on a subset of the covariates.
+
+```{r}
+set.seed(42)
+d <- simulateStenoT1(
+  n = 150,
+  scenario = "alpha",
+  competing_risks = TRUE
+)
+
+head(d[, .(id, time, event, age, diabetes_duration, value_LDL, sex)])
+```
+
+The observed follow-up time is stored in `time` and the event indicator in
+`event`. With competing risks, `event = 0` denotes censoring, `event = 1`
+corresponds to CVD, and `event = 2` to death without prior CVD.
+
+# Define a small learner library
+
+Each learner models the piecewise-constant hazard on a grid of time intervals.
+In the examples below, the grid is controlled by `number_of_nodes = 5`, which
+creates a quantile-based time grid used internally for the long Poisson
+representation.
+
+We define two simple learners based on `glmnet`: one unpenalized Poisson model
+and one lasso-type learner.
+
+```{r}
+lglmnet0 <- Learner_glmnet(
+  covariates = c("sex", "diabetes_duration"),
+  cross_validation = FALSE,
+  lambda = 0,
+  intercept = TRUE
+)
+
+lglmnet1 <- Learner_glmnet(
+  covariates = c("value_Smoking", "value_LDL"),
+  cross_validation = TRUE,
+  alpha = 1,
+  intercept = TRUE
+)
+
+learners_list <- list(
+  glm = lglmnet0,
+  lasso = lglmnet1
+)
+```
+
+# Alternative learner definitions and wrapper arguments
+
+The package currently provides three learner classes: `Learner_glmnet()`,
+`Learner_gam()`, and `Learner_hal()`. The code below is shown for
+illustration only and is therefore not run. It highlights how learners are
+defined by initializing Reference Class objects and then passing them to
+`fit_learner()` or `Superlearner()`.
+
+```{r, eval = FALSE}
+l_glmnet <- Learner_glmnet(
+  covariates = c("sex", "diabetes_duration", "value_LDL"),
+  add_nodes = TRUE,
+  cross_validation = TRUE,
+  alpha = 1
+)
+
+l_gam <- Learner_gam(
+  covariates = c("s(age)", "s(value_LDL)", "sex"),
+  add_nodes = TRUE,
+  method = "fREML",
+  discrete = TRUE
+)
+
+l_hal <- Learner_hal(
+  covariates = c("age", "diabetes_duration", "value_LDL"),
+  add_nodes = TRUE,
+  cross_validation = TRUE,
+  num_knots = c(10L, 5L),
+  max_degree = 2L
+)
+```
+
+Some learner arguments are specific to the piecewise-constant hazard workflow
+implemented in `poissonsuperlearner`. In particular, `covariates` defines the
+terms used in the long-format hazard model, and `add_nodes = TRUE` adds the
+interval-specific node effects that represent the baseline hazard across the
+time grid. For the HAL learner, `num_knots`, `max_degree`, and `maxit_prefit`
+also control the package-specific basis construction and screening step used
+before the final penalized fit.
+
+A useful feature of the package is that, except for HAL, the learners mainly
+wrap existing fitting routines. `Learner_glmnet()` forwards additional
+arguments in `...` to `glmnet::glmnet()` or `glmnet::cv.glmnet()`, and
+`Learner_gam()` forwards them to `mgcv::bam()`. This means that most tuning can
+be done with the familiar arguments from the underlying packages rather than
+through a separate package-specific interface.
+
+For GAMs, smooth terms are specified directly in the `covariates` vector using
+standard `mgcv` syntax. For example, if a spline effect of age is desired, one
+simply writes `"s(age)"`; tensor products or other `mgcv` terms can be passed in
+the same way.
+
+The HAL learner is more specialized. It includes several parameters that are
+specific to the piecewise-constant hazard implementation, such as the number of
+basis cutpoints per interaction order (`num_knots`) and the maximum interaction
+degree (`max_degree`), while still relying on the underlying `glmnet` fitting
+routine for the penalized Poisson regression step. In other words, HAL combines
+a package-specific basis expansion with the familiar `glmnet` optimization
+controls available through `...`.
+
+# Fit an ensemble and individual learners
+
+`Superlearner()` fits all learners, obtains cross-validated predictions for the
+meta-learning step, and then fits one cause-specific meta-learner per cause.
+For comparison, `fit_learner()` fits a single learner directly. 
+
+`Superlearner()` and `fit_learner()` can be supplied either with an explicit 
+grid of time nodes `(nodes)` or with the number of nodes selected 
+from the observed quantiles (`number_of_nodes`) used to construct that grid; 
+`nfolds` specifies the number of folds used for internal cross-validation; 
+if an `id` variable is provided it identifies 
+which rows belong to the same individual, whereas 
+if `id` is omitted each row is treated as a separate observation; 
+the `status` variable must be coded as `0` for censoring and positive integers 
+for the competing event types; and `time_event` is the event or 
+follow-up time variable on which the model is built.
+
+
+
+```{r}
+sl_model <- Superlearner(
+  d,
+  id = "id",
+  status = "event",
+  event_time = "time",
+  learners = learners_list,
+  number_of_nodes = 5,
+  nfold = 3
+)
+
+l0_model <- fit_learner(
+  d,
+  id = "id",
+  learner = lglmnet0,
+  status = "event",
+  event_time = "time",
+  number_of_nodes = 5
+)
+
+l1_model <- fit_learner(
+  d,
+  id = "id",
+  learner = lglmnet1,
+  status = "event",
+  event_time = "time",
+  number_of_nodes = 5
+)
+```
+
+# Inspect the fitted objects
+
+The fitted objects have `print()`, `summary()`, and `coef()` methods.
+
+`print()` is useful for a quick look at the stored fitted object. For a fitted
+super learner, you can print the stacked meta-learner or one of the stored base
+learners.
+
+```{r}
+print(sl_model, cause = 1)
+print(sl_model, cause = 1, model = "glm")
+print(l0_model, cause = 1)
+```
+
+`summary()` provides a more informative overview. For a fitted super learner, it
+prints a compact description of the ensemble, the number of causes, learners,
+folds and nodes, the cross-validated Poisson deviance used to compare the base
+learners, and the cause-specific meta-learner coefficients. These coefficients
+show how the ensemble combines the learners for each cause.
+
+```{r}
+summary(sl_model)
+```
+
+You can also summarize one of the base learners stored inside the ensemble, or a
+learner fitted directly with `fit_learner()`.
+
+```{r}
+summary(sl_model, cause = 1, model = "glm")
+summary(l0_model, cause = 1)
+```
+
+`coef()` extracts model coefficients. For a fitted super learner, `coef()`
+returns the meta-learner coefficients by default, while the `model` argument can
+be used to extract coefficients from one of the stored base learners.
+
+```{r}
+coef(sl_model, cause = 1)
+coef(sl_model, cause = 1, model = "glm")
+coef(l0_model, cause = 1)
+```
+
+# Predict hazards, survival, and absolute risk
+
+The low-level `predict()` method returns a data set with one row per requested
+prediction time. In addition to the original covariates, it includes the
+predicted cause-specific piecewise hazards (`pwch_1`, `pwch_2`, ...), the
+predicted survival function, and the absolute risk for the chosen cause.
+
+```{r}
+pred_sl <- predict(
+  sl_model,
+  newdata = d[1:2],
+  times = c(2, 5),
+  cause = 1
+)
+
+pred_sl
+```
+
+For interoperability with `riskRegression`, the package also provides
+`predictRisk()`. This returns a matrix with one column per requested time.
+
+Risk predictions can be obtained directly from a learner fitted with
+`fit_learner()`:
+
+```{r}
+cbind(
+  glm_direct = predictRisk(l0_model, newdata = d[1, ], times = 5, cause = 1),
+  lasso_direct = predictRisk(l1_model, newdata = d[1, ], times = 5, cause = 1)
+)
+```
+
+The same is possible from the fitted super learner object. Setting
+`model = "sl"` uses the ensemble prediction, while setting `model` equal to a
+learner label such as `"glm"` or `"lasso"` uses the corresponding stored base
+learner from the fitted ensemble.
+
+```{r}
+cbind(
+  sl = predictRisk(sl_model, newdata = d[1, ], times = 5, cause = 1, model = "sl"),
+  glm_from_ensemble = predictRisk(sl_model, newdata = d[1, ], times = 5, cause = 1, model = "glm"),
+  lasso_from_ensemble = predictRisk(sl_model, newdata = d[1, ], times = 5, cause = 1, model = "lasso")
+)
+```
+
+This illustrates the two main prediction workflows supported by the package:
+using a single fitted learner with `fit_learner()` or using the fitted ensemble
+returned by `Superlearner()`.
+
+
