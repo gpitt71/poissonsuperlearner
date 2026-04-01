@@ -1,11 +1,11 @@
 Package: poissonsuperlearner
 Title: Poisson Super Learner
-Version: 0.1.0
+Version: 0.1.1
 Authors@R: 
     c(person(given="Gabriele", family="Pittarello", email ="gabriele.pittarello@sund.ku.dk", role = c("aut", "cre")),
     person(given="Helene", family="Rytgaard", email ="hely@sund.ku.dk", role = c("aut")),
     person(given="Thomas", family="Gerds", email = "tag@biostat.ku.dk", role = c("aut")))
-Description: Provides an implementation of piece-wise constant hazard models for time-to-event analysis of survival and competing risks data. The package includes an ensemble approach, the Poisson Superlearner, for flexible hazard estimation. It enables estimation of survival functions and risk predictions.
+Description: Provides tools for fitting piece-wise constant hazard models for survival and competing risks data, including ensemble hazard estimation via the Super Learner framework. The package supports estimation of survival functions and absolute risk predictions from fitted cause-specific hazard models. For the Super Learner framework see van der Laan, Polley and Hubbard (2007) <doi:10.2202/1544-6115.1309>.
 License: GPL (>=2)
 LinkingTo: 
     Rcpp

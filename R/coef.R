@@ -27,7 +27,7 @@
 #' If `cause = NULL`, returns a `list` of length `object$data_info$n_crisks`,
 #' where element `[[k]]` contains coefficients for cause `k`.
 #'
-#' If no fitted model is present (`object$learner_fit` is `NULL`), prints a message
+#' If no fitted model is present (`object$learner_fit` is `NULL`), signals a message
 #' and returns `invisible(object)`.
 #'
 #' @examples
@@ -45,17 +45,16 @@
 #' coef(bl)
 #'
 #' @export
-coef.base_learner <- function(object, cause= NULL, ...) {
+coef.base_learner <- function(object, cause = NULL, ...) {
 
   if (is.null(object$learner_fit)) {
-    cat("No fitted model available (learner_fit is NULL).\n")
+    message("No fitted model available (learner_fit is NULL).")
     return(invisible(object))
   }
 
-
   if (is.null(cause)) {
     return(lapply(object$learner_fit, coef, ...))
-  } else{
+  } else {
     return(coef(object$learner_fit[[cause]], ...))
   }
 }
@@ -108,7 +107,7 @@ coef.base_learner <- function(object, cause= NULL, ...) {
 #' If `cause = NULL`, returns a `list` of length `object$data_info$n_crisks`,
 #' where element `[[k]]` contains meta-learner coefficients for cause `k`.
 #'
-#' If no fitted ensemble is present (`object$superlearner` is `NULL`), prints a message
+#' If no fitted ensemble is present (`object$superlearner` is `NULL`), signals a message
 #' and returns `invisible(object)`.
 #'
 #' @examples
@@ -130,7 +129,7 @@ coef.base_learner <- function(object, cause= NULL, ...) {
 coef.poisson_superlearner <- function(object, cause = NULL, model = "sl", ...) {
 
   if (is.null(object$superlearner)) {
-    cat("No fitted model available (superlearner is NULL).\n")
+    message("No fitted model available (superlearner is NULL).")
     return(invisible(object))
   }
 

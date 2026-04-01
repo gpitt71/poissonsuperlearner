@@ -23,7 +23,7 @@ If \code{cause} is a single integer, returns the coefficient object produced by
 If \code{cause = NULL}, returns a \code{list} of length \code{object$data_info$n_crisks},
 where element \verb{[[k]]} contains coefficients for cause \code{k}.
 
-If no fitted model is present (\code{object$learner_fit} is \code{NULL}), prints a message
+If no fitted model is present (\code{object$learner_fit} is \code{NULL}), signals a message
 and returns \code{invisible(object)}.
 }
 \description{

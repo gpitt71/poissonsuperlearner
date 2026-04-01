@@ -6,7 +6,7 @@
 \alias{poissonsuperlearner-package}
 \title{poissonsuperlearner: Poisson Super Learner}
 \description{
-Provides an implementation of piece-wise constant hazard models for time-to-event analysis of survival and competing risks data. The package includes an ensemble approach, the Poisson Superlearner, for flexible hazard estimation. It enables estimation of survival functions and risk predictions.
+Provides tools for fitting piece-wise constant hazard models for survival and competing risks data, including ensemble hazard estimation via the Super Learner framework. The package supports estimation of survival functions and absolute risk predictions from fitted cause-specific hazard models. For the Super Learner framework see van der Laan, Polley and Hubbard (2007) \doi{10.2202/1544-6115.1309}.
 }
 \author{
 \strong{Maintainer}: Gabriele Pittarello \email{gabriele.pittarello@sund.ku.dk}
