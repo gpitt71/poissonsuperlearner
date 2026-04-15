@@ -213,6 +213,31 @@ Superlearner <- function(data,
     lapply(learners, function(f) f$private_fit(dt_k))
   })
 
+  ## Save failure reasons before pruning
+  failed_reason_table <- lapply(seq_along(full_train_list), function(k) {
+    data.frame(
+      cause = k,
+      learner = learners_labels,
+      reason = vapply(
+        full_train_list[[k]],
+        function(fit) if (is_failed_fit(fit)) fit$reason else NA_character_,
+        character(1)
+      ),
+      stringsAsFactors = FALSE
+    )
+  })
+  failed_reason_table <- do.call(rbind, failed_reason_table)
+  failed_reason_table <- failed_reason_table[!is.na(failed_reason_table$reason), , drop = FALSE]
+
+  reason_txt <- NULL
+  if (nrow(failed_reason_table) > 0L) {
+    reason_txt <- paste(
+      apply(failed_reason_table, 1, function(x) {
+        sprintf("cause %s, learner '%s': %s", x["cause"], x["learner"], x["reason"])
+      }),
+      collapse = "\n"
+    )
+  }
   ## Remove learners that already fail on the full data
   failed_by_full_fit <- lapply(full_train_list, function(fits_k) {
     z_covariates[vapply(fits_k, is_failed_fit, logical(1))]
@@ -232,12 +257,31 @@ Superlearner <- function(data,
   }
 
   if (length(z_covariates) == 0L) {
-    stop("All learners failed on the full data before cross-validation.")
+
+    stop(
+      paste(
+        "All learners failed on the full data before cross-validation.",
+        reason_txt,
+        sep = "\n"
+      ),
+      call. = FALSE
+    )
   }
 
   ## If pruning leaves one learner, return direct fit
   if (length(learners) == 1L) {
-    message("Only one usable base learner remains. Fitting the learner directly; no ensemble constructed.")
+
+    msg <- paste0(
+      "Only one usable base learner remains after full-data screening (",
+      nrow(failed_reason_table),
+      " learner(s) dropped). Fitting the learner directly; no ensemble constructed."
+    )
+
+    if (!is.null(reason_txt)) {
+      msg <- paste(msg, reason_txt, sep = "\n")
+    }
+
+    message(msg)
 
     one_learner_out <- vector("list", n_crisks)
 
