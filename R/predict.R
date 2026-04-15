@@ -92,12 +92,6 @@ predict.poisson_superlearner <- function(object,
 
   model_sel <- resolve_prediction_model(object, model)
 
-  has_user_id <- object$data_info$id %in% names(newdata)
-  user_id <- NULL
-  if (has_user_id) {
-    user_id <- newdata[[object$data_info$id]]
-  }
-
   setDT(newdata)
   tmp <- copy(newdata)
   tmp[, internal_psl_ix := 1:.N]
@@ -157,13 +151,6 @@ predict.poisson_superlearner <- function(object,
   }
 
   if (all_zero) {
-    data.table::setorderv(zero_time, "internal_psl_ix")
-
-    if (has_user_id) {
-      zero_time[, (object$data_info$id) := user_id[internal_psl_ix]]
-    }
-
-    zero_time[, internal_psl_ix := NULL]
     return(zero_time)
   }
 
@@ -270,7 +257,7 @@ predict.poisson_superlearner <- function(object,
 
   columns_ss <- unique(
     c(
-      setdiff(colnames(newdata), object$data_info$id),
+      colnames(newdata),
       object$data_info$event_time,
       pwch_cols,
       "survival_function",
@@ -304,24 +291,18 @@ predict.poisson_superlearner <- function(object,
     d2 <- merge(tmp, vec_dt2, by = "dummy", allow.cartesian = TRUE)[, dummy := NULL]
     d2[, c(pwch_cols, "survival_function", "absolute_risk") := NA_real_]
 
-    # if (object$data_info$id %in% colnames(d)) {
-    #   d2[[object$data_info$id]] <- (nrow(data_pp) + 1):(nrow(data_pp) + nrow(d2))
-    # }
+    if (object$data_info$id %in% colnames(d)) {
+      d2[[object$data_info$id]] <- (nrow(data_pp) + 1):(nrow(data_pp) + nrow(d2))
+    }
 
     d <- rbind(d, d2, fill = TRUE)
   }
 
-  data.table::setorderv(d, "internal_psl_ix")
-
   if (object$data_info$id %in% names(d)) {
     d[, (object$data_info$id) := NULL]
   }
-
-  if (has_user_id) {
-    d[, (object$data_info$id) := user_id[internal_psl_ix]]
-  }
-
-  d[, internal_psl_ix := NULL]
+  setnames(d, new = object$data_info$id, old = "internal_psl_ix")
+  d <- d[order(get(object$data_info$id))]
   return(d)
 }
 
@@ -386,13 +367,6 @@ predict.base_learner <- function(object,
                                          times,
                                          cause = 1,
                                          ...) {
-
-  has_user_id <- object$data_info$id %in% names(newdata)
-  user_id <- NULL
-  if (has_user_id) {
-    user_id <- newdata[[object$data_info$id]]
-  }
-
 
   setDT(newdata)
 
@@ -480,14 +454,8 @@ if (is.null(data_pp[[object$data_info$status]])) {
     data_pp<-data_pp[get(tmptcol) != 0]
   }
 
-  if (all_zero) {
-    data.table::setorderv(zero_time, "internal_psl_ix")
+  if(all_zero){
 
-    if (has_user_id) {
-      zero_time[, (object$data_info$id) := user_id[internal_psl_ix]]
-    }
-
-    zero_time[, internal_psl_ix := NULL]
     return(zero_time)
   }
 
@@ -512,7 +480,7 @@ if (is.null(data_pp[[object$data_info$status]])) {
 
 
   # Set covariates for metalearner
-  # z_covariates <- paste0("Z", 1:length(object$learners))
+  z_covariates <- paste0("Z", 1:length(object$learners))
 
 
   # Predict on the validation set your pseudo-observations ----
@@ -594,7 +562,7 @@ if (is.null(data_pp[[object$data_info$status]])) {
 
   columns_ss <- unique(
     c(
-      setdiff(colnames(newdata), object$data_info$id),
+      colnames(newdata),
       object$data_info$event_time,
       pwch_cols,
       "survival_function",
@@ -636,9 +604,9 @@ if (is.null(data_pp[[object$data_info$status]])) {
     d2[, c(pwch_cols, "survival_function", "absolute_risk") := NA_real_]
 
 
-    # if (object$data_info$id %in% colnames(d)) {
-    #   d2[[object$data_info$id]] <- (nrow(data_pp) + 1):(nrow(data_pp) + nrow(d2))
-    # }
+    if (object$data_info$id %in% colnames(d)) {
+      d2[[object$data_info$id]] <- (nrow(data_pp) + 1):(nrow(data_pp) + nrow(d2))
+    }
 
 
 
@@ -648,17 +616,11 @@ if (is.null(data_pp[[object$data_info$status]])) {
   }
 
 
-  data.table::setorderv(d, "internal_psl_ix")
-
   if (object$data_info$id %in% names(d)) {
     d[, (object$data_info$id) := NULL]
   }
-
-  if (has_user_id) {
-    d[, (object$data_info$id) := user_id[internal_psl_ix]]
-  }
-
-  d[, internal_psl_ix := NULL]
+  setnames(d, new = object$data_info$id, old = "internal_psl_ix")
+  d <- d[order(get(object$data_info$id))]
   return(d)
 
 
