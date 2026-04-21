@@ -68,7 +68,8 @@ data_pre_processing <- function(data,
         tte <- .SD[[1L]]   # time-to-event vector
         del <- .SD[[2L]]   # status/delta vector
         off <- create_offset_variable(nodes, time_to_event = tte)
-        .(node    = off[, 1L],
+        .(node_start    = off[, 1L],
+          node    = off[, 1L],
           tij     = off[, 2L],
           deltaij = create_response_variable_c_risks(nodes,time_to_event = tte,delta = del,event_type = k)
           )
@@ -81,26 +82,41 @@ data_pre_processing <- function(data,
 
   setnames(dt_fit, c(id),c("id"))
 
-  if(predictions){
-    maxn <-last(nodes)
-    lvls <- as.character(sort(unique(nodes)))
+  # if(predictions){
+  #   maxn <-last(nodes)
+  #   lvls <- as.character(sort(unique(nodes)))
+  #
+  #
+  # }else{
+  #
+  #   maxn <- max(dt_fit$node)
+  #   lvls <- as.character(sort(unique(dt_fit$node)))
+  # }
+  #
+  #
+  #
+  # dt_fit[,c("node",
+  #           "k"):=list(factor(node, levels=lvls),
+  #                      as.factor(k))]
+  #
+  # dt_fit[,node:=relevel(node,ref=as.character(maxn))]
 
+  node_values <- sort(unique(as.numeric(nodes)))
+  node_labels <- paste0("n", seq_along(node_values))
+  names(node_labels) <- as.character(node_values)
 
-  }else{
+  # keep numeric node values only for optional debugging / future use
+  # dt_fit[, node_value := node]
 
-    maxn <- max(dt_fit$node)
-    lvls <- as.character(sort(unique(dt_fit$node)))
-  }
+  dt_fit[, node := factor(
+    node_labels[as.character(node)],
+    levels = node_labels
+  )]
 
+  dt_fit[, k := as.factor(k)]
 
-
-  dt_fit[,c("node",
-            "k"):=list(factor(node, levels=lvls),
-                       as.factor(k))]
-
-  dt_fit[,node:=relevel(node,ref=as.character(maxn))]
-
-  # dt_fit[,node:=relevel(node,ref=as.character(last(nodes)))]
+  # keep the last grid node as the reference level, consistently in fit and predict
+  dt_fit[, node := relevel(node, ref = tail(node_labels, 1L))]
 
   return(dt_fit)
 

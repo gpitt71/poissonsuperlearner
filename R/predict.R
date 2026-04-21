@@ -90,6 +90,8 @@ predict.poisson_superlearner <- function(object,
                                          model = "sl",
                                          ...) {
 
+
+
   model_sel <- resolve_prediction_model(object, model)
 
   setDT(newdata)
@@ -105,6 +107,8 @@ predict.poisson_superlearner <- function(object,
   cond_times_larger_than_max <- times > object$data_info$maximum_followup
 
   pwch_cols <- paste0("pwch_", 1:object$data_info$n_crisks)
+
+
 
   if (all(cond_times_larger_than_max)) {
     warning(
@@ -162,6 +166,7 @@ predict.poisson_superlearner <- function(object,
     event_time = object$data_info$event_time,
     nodes = object$data_info$nodes
   )
+
 
   if (!is.null(object$data_info$variable_transformation)) {
     apply_transformations(data_pp, object$data_info$variable_transformation)
@@ -253,7 +258,8 @@ predict.poisson_superlearner <- function(object,
 
   data_pp[, absolute_risk := pch_absolute_risk(id, deltatime, haz, cause_idx = cause)]
 
-  data_pp <- data_pp[, .SD[.N], by = id][, times := as.numeric(as.character(node)) + deltatime]
+  # data_pp <- data_pp[, .SD[.N], by = id][, times := as.numeric(as.character(node)) + deltatime]
+  data_pp <- data_pp[, .SD[.N], by = id][, times := node_start + deltatime]
 
   columns_ss <- unique(
     c(
@@ -555,9 +561,9 @@ if (is.null(data_pp[[object$data_info$status]])) {
   # eval(parse(text = absolute_risk_string))
 
   ####
-  data_pp <- data_pp[, .SD[.N], by = id][, times := as.numeric(as.character(node)) +
-                                           deltatime]
-
+  # data_pp <- data_pp[, .SD[.N], by = id][, times := as.numeric(as.character(node)) +
+  #                                          deltatime]
+  data_pp <- data_pp[, .SD[.N], by = id][, times := node_start + deltatime]
 
 
   columns_ss <- unique(

@@ -191,7 +191,7 @@ fit_learner <- function(data,
       id = id,
       status = status,
       event_time = event_time,
-      nodes = sort(unique(as.numeric(levels(dt$node)))),
+      nodes = sort(unique(grid_nodes)),
       maximum_followup = maximum_followup,
       n_crisks=n_crisks,
       variable_transformation = variable_transformation    )
