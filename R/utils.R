@@ -1,3 +1,22 @@
+# New utils
+
+fill_missing_names <- function(x, prefix) {
+  nm <- names(x)
+
+  if (is.null(nm)) {
+    nm <- rep.int("", length(x))
+  }
+
+  missing_nm <- is.na(nm) | nm == ""
+
+  nm[missing_nm] <- paste0(prefix, seq_along(x))[missing_nm]
+
+  names(x) <- make.unique(nm, sep = "_")
+  x
+}
+
+
+
 # Data preprocessing ----
 
 create_response_variable_c_risks <- function(nodes, time_to_event, delta, event_type){
@@ -123,7 +142,59 @@ data_pre_processing <- function(data,
 }
 
 
+make_validation_skeleton <- function(valid_data,
+                                     grid_nodes,
+                                     cause,
+                                     node_col  = "node",
+                                     tij_col   = "tij",
+                                     event_col = "deltaij",
+                                     keep_cols = NULL) {
+  stopifnot(data.table::is.data.table(valid_data))
+  stopifnot(is.numeric(grid_nodes))
+  stopifnot(!is.unsorted(grid_nodes))
 
+  cols <- unique(c(keep_cols, node_col, tij_col, event_col))
+
+  x <- data.table::copy(valid_data[, .SD, .SDcols = cols])
+
+  data.table::setnames(x, node_col,  "terminal_node")
+  data.table::setnames(x, tij_col,   "terminal_tij")
+  data.table::setnames(x, event_col, "terminal_event")
+
+  x[, pred_id := .I]
+
+  x[, terminal_node_ix := match(terminal_node, grid_nodes)]
+
+  if (anyNA(x$terminal_node_ix)) {
+    stop("Some terminal_node values are not exactly in grid_nodes.")
+  }
+
+  widths <- c(diff(grid_nodes), NA_real_)
+
+  idx <- rep.int(seq_len(nrow(x)), times = x$terminal_node_ix)
+
+  out <- x[idx]
+
+  out[, node_ix := sequence(x$terminal_node_ix)]
+  out[, node := grid_nodes[node_ix]]
+
+  # Full-width exposure before the terminal node.
+  out[, tij := widths[node_ix]]
+
+  # Observed terminal exposure at the terminal node.
+  out[node_ix == terminal_node_ix, tij := terminal_tij]
+
+  # Events only occur at the terminal node, and only if event cause == cause.
+  out[, deltaij := 0.0]
+  out[node_ix == terminal_node_ix, deltaij := as.numeric(terminal_event == cause)]
+
+  out[, `:=`(
+    terminal_tij = NULL,
+    terminal_event = NULL
+  )]
+
+  out[]
+}
 ## Matrix transformation ----
 
 apply_transformations <- function(dt, variable_transformation) {
