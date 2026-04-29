@@ -501,6 +501,13 @@ Superlearner <- function(data,
 
   for (jj in seq_len(n_crisks)) {
 
+
+    if (length(library_per_risk[[jj]]) == 1L) {
+      meta_learner_fits[[jj]] <- NULL
+      cross_validation_deviance[[jj]] <- NULL
+      next
+    }
+
     n_learners <- length(library_per_risk[[jj]])
     z_cols <- paste0("Z", seq_len(n_learners))
 
