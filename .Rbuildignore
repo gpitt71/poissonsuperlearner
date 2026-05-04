@@ -4,3 +4,5 @@
 ^libs$
 ^libs/.*$
 ^\.github$
+^\.positai$
+^\.claude$

@@ -70,54 +70,267 @@ summary.poisson_superlearner <- function(object,
     return(invisible(object))
   }
 
-  model_sel <- resolve_prediction_model(object, model)
-  labels <- psl_get_labels(object)
+  n_crisks <- object$data_info$n_crisks
 
-  ## If the user asks for a stored base learner, or if there is no meta-learner
-  ## (single-learner special case), dispatch directly to the underlying fit.
-  if (model_sel$type == "learner" || is.null(object$metalearner)) {
+  ## ------------------------------------------------------------
+  ## Recover cause-specific bookkeeping, with backward compatibility
+  ## ------------------------------------------------------------
 
-    if (is.null(cause)) {
-      out <- lapply(seq_len(object$data_info$n_crisks), function(k) {
-        fit_info <- psl_get_stored_fit(object, cause = k, model = model)
-        summary(fit_info$fit, ...)
-      })
-      names(out) <- paste0("cause_", seq_len(object$data_info$n_crisks))
-      return(out)
+  learners_by_cause <- object$learners_by_cause
+  learners_labels_by_cause <- object$learners_labels_by_cause
+  z_covariates_by_cause <- object$z_covariates_by_cause
+
+  if (is.null(learners_by_cause)) {
+    if (is.null(object$learners)) {
+      stop("No learner library found in the fitted object.", call. = FALSE)
     }
 
-    fit_info <- psl_get_stored_fit(object, cause = cause, model = model)
-    return(summary(fit_info$fit, ...))
+    learners_by_cause <- replicate(
+      n_crisks,
+      object$learners,
+      simplify = FALSE
+    )
   }
 
+  if (is.null(learners_labels_by_cause)) {
+    learners_labels_by_cause <- object$data_info$learners_labels_by_cause
+  }
+
+  if (is.null(learners_labels_by_cause)) {
+    learners_labels_by_cause <- lapply(learners_by_cause, function(x) {
+      labs <- names(x)
+      if (is.null(labs)) {
+        labs <- paste0("learner_", seq_along(x))
+      }
+      labs
+    })
+  }
+
+  if (is.null(z_covariates_by_cause)) {
+    z_covariates_by_cause <- object$data_info$z_covariates_by_cause
+  }
+
+  if (is.null(z_covariates_by_cause)) {
+    z_covariates_by_cause <- lapply(
+      learners_by_cause,
+      function(x) paste0("Z", seq_along(x))
+    )
+  }
+
+  n_learners_by_cause <- lengths(learners_by_cause)
+
+  if (length(learners_by_cause) != n_crisks) {
+    stop("'object$learners_by_cause' must have length equal to n_crisks.", call. = FALSE)
+  }
+
+  if (length(learners_labels_by_cause) != n_crisks) {
+    stop("'object$learners_labels_by_cause' must have length equal to n_crisks.", call. = FALSE)
+  }
+
+  if (length(z_covariates_by_cause) != n_crisks) {
+    stop("'object$z_covariates_by_cause' must have length equal to n_crisks.", call. = FALSE)
+  }
+
+
+  ## ------------------------------------------------------------
+  ## Validate cause
+  ## ------------------------------------------------------------
+
+  if (!is.null(cause)) {
+    if (length(cause) != 1L || is.na(cause) || cause != as.integer(cause)) {
+      stop("'cause' must be NULL or a single positive integer.", call. = FALSE)
+    }
+
+    cause <- as.integer(cause)
+
+    if (cause < 1L || cause > n_crisks) {
+      stop(
+        sprintf("'cause' must be between 1 and %d.", n_crisks),
+        call. = FALSE
+      )
+    }
+
+    causes_to_show <- cause
+  } else {
+    causes_to_show <- seq_len(n_crisks)
+  }
+
+
+  ## ------------------------------------------------------------
+  ## Local model resolver for cause-specific libraries
+  ## ------------------------------------------------------------
+
+  resolve_model_for_cause <- function(model, k) {
+
+    if (is.null(model) || length(model) != 1L) {
+      stop("'model' must be a scalar.", call. = FALSE)
+    }
+
+    if (is.numeric(model)) {
+      if (is.na(model) || model != as.integer(model)) {
+        stop("Numeric 'model' must be one of 0, 1, 2, ...", call. = FALSE)
+      }
+
+      model <- as.integer(model)
+
+      if (model == 0L) {
+        return(list(type = "sl", index = 0L, label = "sl"))
+      }
+
+      if (model < 1L || model > n_learners_by_cause[k]) {
+        stop(
+          sprintf(
+            "Numeric model %d is unavailable for cause %d. Available learners are 1:%d.",
+            model,
+            k,
+            n_learners_by_cause[k]
+          ),
+          call. = FALSE
+        )
+      }
+
+      return(list(
+        type = "learner",
+        index = model,
+        label = learners_labels_by_cause[[k]][model]
+      ))
+    }
+
+    if (!is.character(model) || is.na(model)) {
+      stop("'model' must be a character scalar or a numeric scalar.", call. = FALSE)
+    }
+
+    model_chr <- trimws(model)
+    model_chr_lc <- tolower(model_chr)
+
+    if (model_chr_lc %in% c("sl", "superlearner", "super_learner")) {
+      return(list(type = "sl", index = 0L, label = "sl"))
+    }
+
+    if (grepl("^learner_[0-9]+$", model_chr_lc)) {
+      j <- as.integer(sub("^learner_", "", model_chr_lc))
+
+      if (j < 1L || j > n_learners_by_cause[k]) {
+        stop(
+          sprintf(
+            "'%s' is unavailable for cause %d. Available learners are learner_1, ..., learner_%d.",
+            model_chr,
+            k,
+            n_learners_by_cause[k]
+          ),
+          call. = FALSE
+        )
+      }
+
+      return(list(
+        type = "learner",
+        index = j,
+        label = learners_labels_by_cause[[k]][j]
+      ))
+    }
+
+    j <- match(model_chr, learners_labels_by_cause[[k]])
+
+    if (is.na(j)) {
+      stop(
+        sprintf(
+          "Learner label '%s' is not available for cause %d.",
+          model_chr,
+          k
+        ),
+        call. = FALSE
+      )
+    }
+
+    list(
+      type = "learner",
+      index = j,
+      label = model_chr
+    )
+  }
+
+
+  ## ------------------------------------------------------------
+  ## If model selects a base learner, dispatch to that fitted learner
+  ## ------------------------------------------------------------
+
+  first_sel <- resolve_model_for_cause(model, causes_to_show[1L])
+
+  if (first_sel$type == "learner") {
+
+    out <- lapply(causes_to_show, function(k) {
+      sel_k <- resolve_model_for_cause(model, k)
+      sl_k <- object$superlearner[[k]]
+
+      fit_k <- if (n_learners_by_cause[k] == 1L) {
+        sl_k$learners_fit
+      } else {
+        sl_k$learners_fit[[sel_k$index]]
+      }
+
+      summary(fit_k, ...)
+    })
+
+    names(out) <- paste0("cause_", causes_to_show)
+
+    if (length(out) == 1L) {
+      return(out[[1L]])
+    }
+
+    return(out)
+  }
+
+
+  ## ------------------------------------------------------------
   ## Default: summarize the stacked superlearner
-  zmap <- stats::setNames(labels, paste0("Z", seq_along(labels)))
+  ## ------------------------------------------------------------
 
   cat("Call:\n")
-  if (!is.null(object$metalearner)) {
-    ml <- object$metalearner
-    ml_class <- class(ml)[1]
-    cat(
-      sprintf(
-        "  Superlearner(..., learners = c(%s), metalearner = %s)\n",
-        paste(labels, collapse = ", "),
-        ml_class
-      )
-    )
-  } else {
-    cat("  Superlearner(...)\n")
-  }
+  cat("  Superlearner(...)\n")
 
   cat("\nFitted object:\n")
   cat("  Class: poisson_superlearner\n")
-  cat("  Number of competing risks:", object$data_info$n_crisks, "\n")
-  cat("  Number of learners:", length(object$learners), "\n")
-  cat("  Learners:", paste(labels, collapse = ", "), "\n")
+  cat("  Number of competing risks:", n_crisks, "\n")
   cat("  Number of folds:", object$data_info$nfold, "\n")
   cat("  Maximum follow-up:", object$data_info$maximum_followup, "\n")
   cat("  Number of nodes:", length(object$data_info$nodes), "\n")
 
-  cat("\nCross-validation deviance (Average across V-Folds):\n")
+  cat("\nLearners by cause:\n")
+  for (k in seq_len(n_crisks)) {
+    cat(
+      sprintf(
+        "  cause %d: %d learner(s): %s\n",
+        k,
+        n_learners_by_cause[k],
+        paste(learners_labels_by_cause[[k]], collapse = ", ")
+      )
+    )
+  }
+
+  cat("\nMeta-learner by cause:\n")
+  for (k in seq_len(n_crisks)) {
+    fit_k <- object$superlearner[[k]]$meta_learner_fit
+
+    if (is.null(fit_k)) {
+      cat(
+        sprintf(
+          "  cause %d: <none; direct learner: %s>\n",
+          k,
+          learners_labels_by_cause[[k]][1L]
+        )
+      )
+    } else {
+      cat(
+        sprintf(
+          "  cause %d: %s\n",
+          k,
+          class(fit_k)[1L]
+        )
+      )
+    }
+  }
+
+  cat("\nCross-validation deviance (average across V-folds):\n")
   if (!is.null(object$cross_validation_deviance)) {
     print(object$cross_validation_deviance)
   } else if (!is.null(object$meta_learner_cross_validation)) {
@@ -126,20 +339,32 @@ summary.poisson_superlearner <- function(object,
     cat("  <not available>\n")
   }
 
-  cat("\nMeta-learner coefficients:\n")
 
-  causes_to_show <- if (is.null(cause)) {
-    seq_along(object$superlearner)
-  } else {
-    cause
-  }
+  ## ------------------------------------------------------------
+  ## Meta-learner coefficients
+  ## ------------------------------------------------------------
+
+  cat("\nMeta-learner coefficients:\n")
 
   meta_out <- vector("list", length(causes_to_show))
   names(meta_out) <- paste0("cause_", causes_to_show)
 
   for (ii in seq_along(causes_to_show)) {
+
     k <- causes_to_show[ii]
     fit_k <- object$superlearner[[k]]$meta_learner_fit
+
+    if (is.null(fit_k)) {
+      cat(
+        sprintf(
+          "  cause %d: <not available; direct learner: %s>\n",
+          k,
+          learners_labels_by_cause[[k]][1L]
+        )
+      )
+      meta_out[[ii]] <- NULL
+      next
+    }
 
     coefs <- tryCatch(
       psl_extract_meta_coefs(fit_k, ...),
@@ -147,15 +372,28 @@ summary.poisson_superlearner <- function(object,
     )
 
     if (is.null(coefs)) {
-      cat("  k = ", k, ": <not available>\n", sep = "")
+      cat(sprintf("  cause %d: <not available>\n", k))
       meta_out[[ii]] <- NULL
       next
     }
 
-    nms <- names(coefs)
-    names(coefs) <- psl_rename_z_in_text(nms, zmap)
+    zmap <- stats::setNames(
+      learners_labels_by_cause[[k]],
+      z_covariates_by_cause[[k]]
+    )
 
-    cat("  k = ", k, ":\n", sep = "")
+    if (!is.null(names(coefs))) {
+      names(coefs) <- psl_rename_z_in_text(names(coefs), zmap)
+    }
+
+    if (is.matrix(coefs) || inherits(coefs, "Matrix")) {
+      rn <- rownames(coefs)
+      if (!is.null(rn)) {
+        rownames(coefs) <- psl_rename_z_in_text(rn, zmap)
+      }
+    }
+
+    cat(sprintf("  cause %d:\n", k))
     print(coefs)
     cat("\n")
 
@@ -167,8 +405,6 @@ summary.poisson_superlearner <- function(object,
     meta_coefficients = meta_out
   ))
 }
-
-
 #' Summarize a fitted base learner object
 #'
 #' Dispatches to the underlying fitted model’s `summary()` method for the selected

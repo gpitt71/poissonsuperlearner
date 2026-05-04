@@ -126,6 +126,7 @@ coef.base_learner <- function(object, cause = NULL, ...) {
 #' coef(fit)
 #'
 #' @export
+#' @export
 coef.poisson_superlearner <- function(object, cause = NULL, model = "sl", ...) {
 
   if (is.null(object$superlearner)) {
@@ -133,15 +134,225 @@ coef.poisson_superlearner <- function(object, cause = NULL, model = "sl", ...) {
     return(invisible(object))
   }
 
-  if (is.null(cause)) {
-    out <- lapply(seq_len(object$data_info$n_crisks), function(k) {
-      fit_info <- psl_get_stored_fit(object, cause = k, model = model)
-      stats::coef(fit_info$fit, ...)
-    })
-    names(out) <- paste0("cause_", seq_len(object$data_info$n_crisks))
-    return(out)
+  n_crisks <- object$data_info$n_crisks
+
+  learners_by_cause <- object$learners_by_cause
+  learners_labels_by_cause <- object$learners_labels_by_cause
+  z_covariates_by_cause <- object$z_covariates_by_cause
+
+  ## Backward compatibility with old fitted objects
+  if (is.null(learners_by_cause)) {
+    learners_by_cause <- replicate(
+      n_crisks,
+      object$learners,
+      simplify = FALSE
+    )
   }
 
-  fit_info <- psl_get_stored_fit(object, cause = cause, model = model)
-  stats::coef(fit_info$fit, ...)
+  if (is.null(learners_labels_by_cause)) {
+    learners_labels_by_cause <- object$data_info$learners_labels_by_cause
+  }
+
+  if (is.null(learners_labels_by_cause)) {
+    learners_labels_by_cause <- lapply(learners_by_cause, function(x) {
+      labs <- names(x)
+      if (is.null(labs)) {
+        labs <- paste0("learner_", seq_along(x))
+      }
+      labs
+    })
+  }
+
+  if (is.null(z_covariates_by_cause)) {
+    z_covariates_by_cause <- object$data_info$z_covariates_by_cause
+  }
+
+  if (is.null(z_covariates_by_cause)) {
+    z_covariates_by_cause <- lapply(
+      learners_by_cause,
+      function(x) paste0("Z", seq_along(x))
+    )
+  }
+
+  n_learners_by_cause <- lengths(learners_by_cause)
+
+  if (!is.null(cause)) {
+    if (length(cause) != 1L || is.na(cause) || cause != as.integer(cause)) {
+      stop("'cause' must be NULL or a single positive integer.", call. = FALSE)
+    }
+
+    cause <- as.integer(cause)
+
+    if (cause < 1L || cause > n_crisks) {
+      stop(
+        sprintf("'cause' must be between 1 and %d.", n_crisks),
+        call. = FALSE
+      )
+    }
+
+    causes_to_extract <- cause
+  } else {
+    causes_to_extract <- seq_len(n_crisks)
+  }
+
+
+  ## ------------------------------------------------------------
+  ## Local model resolver for cause-specific libraries
+  ## ------------------------------------------------------------
+
+  resolve_model_for_cause <- function(model, k) {
+
+    if (is.null(model) || length(model) != 1L) {
+      stop("'model' must be a scalar.", call. = FALSE)
+    }
+
+    if (is.numeric(model)) {
+      if (is.na(model) || model != as.integer(model)) {
+        stop("Numeric 'model' must be one of 0, 1, 2, ...", call. = FALSE)
+      }
+
+      model <- as.integer(model)
+
+      if (model == 0L) {
+        return(list(type = "sl", index = 0L, label = "sl"))
+      }
+
+      if (model < 1L || model > n_learners_by_cause[k]) {
+        stop(
+          sprintf(
+            "Numeric model %d is unavailable for cause %d. Available learners are 1:%d.",
+            model,
+            k,
+            n_learners_by_cause[k]
+          ),
+          call. = FALSE
+        )
+      }
+
+      return(list(
+        type = "learner",
+        index = model,
+        label = learners_labels_by_cause[[k]][model]
+      ))
+    }
+
+    if (!is.character(model) || is.na(model)) {
+      stop("'model' must be a character scalar or a numeric scalar.", call. = FALSE)
+    }
+
+    model_chr <- trimws(model)
+    model_chr_lc <- tolower(model_chr)
+
+    if (model_chr_lc %in% c("sl", "superlearner", "super_learner")) {
+      return(list(type = "sl", index = 0L, label = "sl"))
+    }
+
+    if (grepl("^learner_[0-9]+$", model_chr_lc)) {
+      j <- as.integer(sub("^learner_", "", model_chr_lc))
+
+      if (j < 1L || j > n_learners_by_cause[k]) {
+        stop(
+          sprintf(
+            "'%s' is unavailable for cause %d. Available learners are learner_1, ..., learner_%d.",
+            model_chr,
+            k,
+            n_learners_by_cause[k]
+          ),
+          call. = FALSE
+        )
+      }
+
+      return(list(
+        type = "learner",
+        index = j,
+        label = learners_labels_by_cause[[k]][j]
+      ))
+    }
+
+    j <- match(model_chr, learners_labels_by_cause[[k]])
+
+    if (is.na(j)) {
+      stop(
+        sprintf(
+          "Learner label '%s' is not available for cause %d.",
+          model_chr,
+          k
+        ),
+        call. = FALSE
+      )
+    }
+
+    list(
+      type = "learner",
+      index = j,
+      label = model_chr
+    )
+  }
+
+
+  ## ------------------------------------------------------------
+  ## Extract coefficients for one cause
+  ## ------------------------------------------------------------
+
+  extract_one_cause <- function(k) {
+
+    sel <- resolve_model_for_cause(model, k)
+    sl_k <- object$superlearner[[k]]
+
+    if (sel$type == "sl") {
+
+      fit_k <- sl_k$meta_learner_fit
+
+      if (is.null(fit_k)) {
+        return(NULL)
+      }
+
+      coefs <- tryCatch(
+        psl_extract_meta_coefs(fit_k, ...),
+        error = function(e) stats::coef(fit_k, ...)
+      )
+
+      zmap <- stats::setNames(
+        learners_labels_by_cause[[k]],
+        z_covariates_by_cause[[k]]
+      )
+
+      if (!is.null(names(coefs))) {
+        names(coefs) <- psl_rename_z_in_text(names(coefs), zmap)
+      }
+
+      if (is.matrix(coefs) || inherits(coefs, "Matrix")) {
+        rn <- rownames(coefs)
+        if (!is.null(rn)) {
+          rownames(coefs) <- psl_rename_z_in_text(rn, zmap)
+        }
+      }
+
+      return(coefs)
+    }
+
+    j <- sel$index
+
+    fit_j <- if (n_learners_by_cause[k] == 1L) {
+      sl_k$learners_fit
+    } else {
+      sl_k$learners_fit[[j]]
+    }
+
+    stats::coef(fit_j, ...)
+  }
+
+
+  ## ------------------------------------------------------------
+  ## Return one cause or all causes
+  ## ------------------------------------------------------------
+
+  if (length(causes_to_extract) == 1L) {
+    return(extract_one_cause(causes_to_extract))
+  }
+
+  out <- lapply(causes_to_extract, extract_one_cause)
+  names(out) <- paste0("cause_", causes_to_extract)
+
+  out
 }
