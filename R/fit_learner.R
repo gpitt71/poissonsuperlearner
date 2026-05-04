@@ -81,29 +81,55 @@
 #'                   number_of_nodes = 4)
 #'
 #' @export
+#' Fit a single base learner
+#'
+#' Pre-processes subject-level time-to-event data into the compressed long
+#' Poisson representation used by the current learner interface, then fits one
+#' initialized learner object separately for each competing cause.
+#'
+#' @export
 fit_learner <- function(data,
-                    learner,
-                    id = "id",
-                    stratified_k_fold = FALSE,
-                    status = "status",
-                    event_time = NULL,
-                    number_of_nodes = NULL,
-                    nodes = NULL,
-                    variable_transformation = NULL,
-                    ...) {
-  # Multiple checks about the input ----
+                        learner,
+                        id = "id",
+                        stratified_k_fold = FALSE,
+                        status = "status",
+                        event_time = NULL,
+                        number_of_nodes = NULL,
+                        nodes = NULL,
+                        variable_transformation = NULL,
+                        ...) {
 
+  ## ------------------------------------------------------------
+  ## Basic checks and bookkeeping
+  ## ------------------------------------------------------------
+
+  data <- data.table::as.data.table(data.table::copy(data))
+
+  if (is.null(event_time) || !(event_time %in% names(data))) {
+    stop("'event_time' must name a column in 'data'.", call. = FALSE)
+  }
+
+  if (!(status %in% names(data))) {
+    stop("'status' must name a column in 'data'.", call. = FALSE)
+  }
+
+  if (
+    !any(grepl("Learner_", class(learner), fixed = TRUE)) ||
+    !is.function(learner$private_fit) ||
+    !is.function(learner$private_predictor)
+  ) {
+    stop(
+      "'learner' must be an initialized learner object with private_fit() and private_predictor().",
+      call. = FALSE
+    )
+  }
 
   if (!(id %in% names(data))) {
-    data[["id"]] <- 1:NROW(data)
+    data[, id := seq_len(.N)]
     id <- "id"
   }
 
-
-  maximum_followup = max(data[[event_time]])
-
-
-  n <- length(unique(data[[id]]))
+  maximum_followup <- max(data[[event_time]])
 
   if (!(0 %in% data[[status]])) {
     warning(
@@ -111,93 +137,109 @@ fit_learner <- function(data,
         "There is no value of ",
         status,
         " equal to zero. We will consider the data uncensored."
-      )
+      ),
+      call. = FALSE
     )
-    n_crisks <- length(unique(data[[status]]))
-    uncensored_01 <- TRUE
 
-  } else{
-    n_crisks <- length(unique(data[[status]])) - 1
-    uncensored_01 <- FALSE
+    n_crisks <- length(unique(data[[status]]))
+  } else {
+    n_crisks <- length(unique(data[[status]])) - 1L
   }
 
 
-    #  Handle nodes
-    ##Either the nodes are given or we take all of the realised times
-    if (!is.null(number_of_nodes)) {
+  ## ------------------------------------------------------------
+  ## Build node grid
+  ## ------------------------------------------------------------
 
-      grid_nodes = quantile(
-        data[[event_time]],
-        probs = seq(0, 1, length.out = as.integer(number_of_nodes) + 1),
-        type = 1,
-        names = FALSE
-      )
-
-
-
-    } else{
-      if (is.null(nodes)) {
-        grid_nodes <- sort(unique(data[[event_time]]))
-
-      } else{
-        grid_nodes <- nodes
-
-      }
-    }
-
-    # Add zero if missing
-    if (!(0 %in% grid_nodes)) {
-      grid_nodes <- c(0, grid_nodes)
-
-    }
-
-
-
-    grid_nodes <- grid_nodes[grid_nodes <= max(data[[event_time]])]
-
-    # Actual data pp
-    dt <- data_pre_processing(
-      data = data,
-      id = id,
-      status = status,
-      nodes = grid_nodes,
-      event_time = event_time,
-      uncensored_01 = uncensored_01
+  if (!is.null(number_of_nodes)) {
+    grid_nodes <- quantile(
+      data[[event_time]],
+      probs = seq(0, 1, length.out = as.integer(number_of_nodes) + 1L),
+      type = 1,
+      names = FALSE
     )
+  } else if (is.null(nodes)) {
+    grid_nodes <- sort(unique(data[[event_time]]))
+  } else {
+    grid_nodes <- sort(nodes)
+  }
+
+  if (!(0 %in% grid_nodes)) {
+    grid_nodes <- c(0, grid_nodes)
+  }
+
+  grid_nodes <- sort(unique(grid_nodes))
+  grid_nodes <- grid_nodes[grid_nodes <= maximum_followup]
 
 
+  ## ------------------------------------------------------------
+  ## Compressed long-data construction
+  ## Same structure expected by Learner_glmnet/Learner_hal/Learner_gam
+  ## ------------------------------------------------------------
 
+  grid_dt <- data.table::data.table(node = grid_nodes)
+  grid_dt[, prev_node_psl := data.table::shift(node)]
+  grid_dt[, (event_time) := node]
 
+  dt <- grid_dt[data, on = event_time, roll = Inf]
 
+  event_time_col <- event_time
 
-  lhs_string = NULL
+  dt[
+    ,
+    node_start := data.table::fifelse(
+      get(event_time_col) == node,
+      prev_node_psl,
+      node
+    )
+  ]
+
+  dt <- dt[
+    !is.na(node_start),
+    c("node", "tij") := list(
+      node_start,
+      get(event_time_col) - node_start
+    )
+  ]
+
+  data.table::setnames(dt, old = status, new = "deltaij")
 
   if (!is.null(variable_transformation)) {
     apply_transformations(dt, variable_transformation)
   }
 
-  training_data <- split(dt, by = "k")
 
-  model_fit <- mapply(function(x) {
-    out <- learner$private_fit(x)
-    return(out)
-  }, training_data, SIMPLIFY = FALSE)
+  ## ------------------------------------------------------------
+  ## Fit the same learner once per cause
+  ## ------------------------------------------------------------
 
+  causes <- seq_len(n_crisks)
+
+  learner_fit <- learner$private_fit_all_causes(
+    data = dt,
+    causes = causes,
+    grid_nodes = grid_nodes
+  )
+
+  ## ------------------------------------------------------------
+  ## Output
+  ## ------------------------------------------------------------
 
   out <- list(
-    model=learner,
-    learner_fit=model_fit,
+    model = learner,
+    learner_fit = learner_fit,
     data_info = list(
       id = id,
       status = status,
       event_time = event_time,
-      nodes = sort(unique(grid_nodes)),
+      nodes = grid_nodes,
       maximum_followup = maximum_followup,
-      n_crisks=n_crisks,
-      variable_transformation = variable_transformation    )
+      n_crisks = n_crisks,
+      variable_transformation = variable_transformation
+    )
   )
 
   class(out) <- "base_learner"
 
-  return(out)
+  out
 }
