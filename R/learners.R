@@ -1387,6 +1387,269 @@ Learner_hal <- setRefClass(
       fit
     },
 
+    private_fit_all_causes = function(data, causes, grid_nodes, ...) {
+
+      fits <- tryCatch({
+
+        n_causes <- length(causes)
+        widths <- c(diff(grid_nodes), 1.0)
+        node_support <- grid_nodes
+
+        train_d <- data.table::copy(data)
+
+        ## gid identifies covariate pattern only
+        if (length(.self$basic_covariates) > 0L) {
+          group_key <- unique(train_d[, .SD, .SDcols = .self$basic_covariates])
+          group_key[, gid := .I]
+
+          train_d <- group_key[train_d, on = (.self$basic_covariates)]
+        } else {
+          group_key <- data.table::data.table(gid = 1L)
+          train_d[, gid := 1L]
+        }
+
+        train_d <- train_d[
+          complete.cases(train_d[, c("gid", "node", "tij"), with = FALSE])
+        ]
+
+        train_d[, node_ix := match(node, node_support)]
+
+        ## Event counts by cause. This is the cause-dependent part.
+        event_counts <- train_d[
+          deltaij %in% causes,
+          .N,
+          by = .(gid, node_ix, deltaij)
+        ]
+
+        ## Cause-independent exposure / terminal-count skeleton.
+        terminal_base <- train_d[, .(
+          tij        = sum(tij),
+          N_terminal = .N
+        ), by = .(gid, node, node_ix)]
+
+        data.table::setorder(terminal_base, gid, node_ix)
+
+        terminal_base[, deltaij := 0.0]
+
+        ans <- expand_terminal_grouped_cpp(
+          gid     = terminal_base$gid,
+          node_ix = terminal_base$node_ix,
+          tij     = terminal_base$tij,
+          deltaij = terminal_base$deltaij,
+          N       = terminal_base$N_terminal,
+          widths  = widths
+        )
+
+        train_long <- data.table::as.data.table(ans)
+        train_long[, node := node_support[node_ix]]
+
+        train_long <- group_key[train_long, on = "gid"]
+
+        data.table::setcolorder(
+          train_long,
+          c(
+            intersect(
+              c(
+                .self$basic_covariates,
+                "gid",
+                "node",
+                "node_ix",
+                "deltaij",
+                "tij",
+                "N_terminal"
+              ),
+              names(train_long)
+            ),
+            setdiff(
+              names(train_long),
+              c(
+                .self$basic_covariates,
+                "gid",
+                "node",
+                "node_ix",
+                "deltaij",
+                "tij",
+                "N_terminal"
+              )
+            )
+          )
+        )
+
+        data.table::setorder(train_long, gid, node_ix)
+
+        node_labels <- paste0("n", seq_along(grid_nodes))
+        names(node_labels) <- as.character(grid_nodes)
+
+        train_long[, node := factor(
+          node_labels[as.character(node)],
+          levels = node_labels
+        )]
+
+        x_pp <- .self$hal_basis(
+          vars = c(.self$basic_covariates, "node"),
+          DT = train_long,
+          max_interaction = .self$max_degree,
+          knots_per_order = .self$num_knots
+        )
+
+        if (nrow(x_pp$X) == 0L || ncol(x_pp$X) == 0L) {
+          out <- vector("list", n_causes)
+          names(out) <- as.character(causes)
+
+          for (ii in seq_len(n_causes)) {
+            out[[ii]] <- make_failed_fit(
+              "Empty HAL basis in Learner_hal::private_fit_all_causes"
+            )
+          }
+
+          return(out)
+        }
+
+        offset <- log(train_long[["tij"]])
+
+        pf <- 1 - grepl("^I\\(\\s*node\\s*==[^)]*\\)$", x_pp$colnames)
+
+        out <- vector("list", n_causes)
+        names(out) <- as.character(causes)
+
+        if (.self$cross_validation) {
+
+          prefit_args <- .self$fit_arguments
+
+          if (!is.na(.self$maxit_prefit)) {
+            prefit_args[["maxit"]] <- .self$maxit_prefit
+          }
+
+          for (ii in seq_len(n_causes)) {
+
+            cause_i <- causes[ii]
+
+            y <- event_counts[
+              deltaij == cause_i,
+              .(gid, node_ix, N)
+            ][
+              train_long,
+              on = .(gid, node_ix)
+            ][["N"]]
+
+            y[is.na(y)] <- 0.0
+
+            cv_fit <- tryCatch(
+              suppressWarnings(
+                do.call(glmnet::cv.glmnet, c(
+                  list(
+                    x = x_pp$X,
+                    y = as.numeric(y),
+                    offset = offset,
+                    penalty.factor = pf
+                  ),
+                  prefit_args
+                ))
+              ),
+              error = function(e1) {
+                tryCatch(
+                  suppressWarnings(
+                    do.call(glmnet::cv.glmnet, c(
+                      list(
+                        x = x_pp$X,
+                        y = as.numeric(y),
+                        offset = offset,
+                        penalty.factor = rep(1, ncol(x_pp$X))
+                      ),
+                      prefit_args
+                    ))
+                  ),
+                  error = function(e2) NULL
+                )
+              }
+            )
+
+            if (
+              is.null(cv_fit) ||
+              length(cv_fit$lambda.min) == 0L ||
+              !is.finite(cv_fit$lambda.min)
+            ) {
+              out[[ii]] <- make_failed_fit(
+                paste0(
+                  "cv.glmnet failed in Learner_hal::private_fit_all_causes for cause ",
+                  as.character(cause_i)
+                )
+              )
+            } else {
+              out[[ii]] <- attach_psl_fit_meta(
+                cv_fit,
+                meta = x_pp[c("colnames", "meta")]
+              )
+            }
+          }
+
+        } else {
+
+          glmnet_args <- .self$fit_arguments
+          glmnet_args[["penalty.factor"]] <- pf
+
+          for (ii in seq_len(n_causes)) {
+
+            cause_i <- causes[ii]
+
+            y <- event_counts[
+              deltaij == cause_i,
+              .(gid, node_ix, N)
+            ][
+              train_long,
+              on = .(gid, node_ix)
+            ][["N"]]
+
+            y[is.na(y)] <- 0.0
+
+            out[[ii]] <- tryCatch({
+
+              fit_obj <- suppressWarnings(
+                do.call(glmnet::glmnet, c(
+                  glmnet_args,
+                  list(
+                    x = x_pp$X,
+                    y = as.numeric(y),
+                    offset = offset
+                  )
+                ))
+              )
+
+              attach_psl_fit_meta(
+                fit_obj,
+                meta = x_pp[c("colnames", "meta")]
+              )
+
+            }, error = function(e) {
+              make_failed_fit(
+                paste0(
+                  "glmnet failed in Learner_hal::private_fit_all_causes for cause ",
+                  as.character(cause_i),
+                  ": ",
+                  conditionMessage(e)
+                )
+              )
+            })
+          }
+        }
+
+        out
+
+      }, error = function(e) {
+
+        out <- vector("list", length(causes))
+        names(out) <- as.character(causes)
+
+        for (ii in seq_along(out)) {
+          out[[ii]] <- make_failed_fit(conditionMessage(e))
+        }
+
+        out
+      })
+
+      fits
+    },
+
     private_predictor = function(model, newdata, grid_nodes, ...) {
 
       pred_cols <- unique(c(.self$basic_covariates, "node"))
@@ -1697,6 +1960,166 @@ Learner_gam <- setRefClass(
       })
 
       fit
+    },
+
+    private_fit_all_causes = function(data, causes, grid_nodes, ...) {
+
+      fits <- tryCatch({
+
+        n_causes <- length(causes)
+        widths <- c(diff(grid_nodes), 1.0)
+        node_support <- grid_nodes
+
+        train_d <- data.table::copy(data)
+
+        ## gid identifies covariate pattern only
+        if (length(.self$basic_covariates) > 0L) {
+          group_key <- unique(train_d[, .SD, .SDcols = .self$basic_covariates])
+          group_key[, gid := .I]
+
+          train_d <- group_key[train_d, on = (.self$basic_covariates)]
+        } else {
+          group_key <- data.table::data.table(gid = 1L)
+          train_d[, gid := 1L]
+        }
+
+        train_d <- train_d[
+          complete.cases(train_d[, c("gid", "node", "tij"), with = FALSE])
+        ]
+
+        train_d[, node_ix := match(node, node_support)]
+
+        ## Event counts by cause. This is the only cause-dependent part.
+        event_counts <- train_d[
+          deltaij %in% causes,
+          .N,
+          by = .(gid, node_ix, deltaij)
+        ]
+
+        ## Cause-independent exposure / terminal-count skeleton.
+        terminal_base <- train_d[, .(
+          tij        = sum(tij),
+          N_terminal = .N
+        ), by = .(gid, node, node_ix)]
+
+        data.table::setorder(terminal_base, gid, node_ix)
+
+        terminal_base[, deltaij := 0.0]
+
+        ans <- expand_terminal_grouped_cpp(
+          gid     = terminal_base$gid,
+          node_ix = terminal_base$node_ix,
+          tij     = terminal_base$tij,
+          deltaij = terminal_base$deltaij,
+          N       = terminal_base$N_terminal,
+          widths  = widths
+        )
+
+        train_long <- data.table::as.data.table(ans)
+        train_long[, node := node_support[node_ix]]
+
+        train_long <- group_key[train_long, on = "gid"]
+
+        data.table::setcolorder(
+          train_long,
+          c(
+            intersect(
+              c(
+                .self$basic_covariates,
+                "gid",
+                "node",
+                "node_ix",
+                "deltaij",
+                "tij",
+                "N_terminal"
+              ),
+              names(train_long)
+            ),
+            setdiff(
+              names(train_long),
+              c(
+                .self$basic_covariates,
+                "gid",
+                "node",
+                "node_ix",
+                "deltaij",
+                "tij",
+                "N_terminal"
+              )
+            )
+          )
+        )
+
+        data.table::setorder(train_long, gid, node_ix)
+
+        node_labels <- paste0("n", seq_along(grid_nodes))
+        names(node_labels) <- as.character(grid_nodes)
+
+        train_long[, node := factor(
+          node_labels[as.character(node)],
+          levels = node_labels
+        )]
+
+        offset <- log(train_long[["tij"]])
+
+        fit_args <- .self$fit_arguments
+        fit_args[["formula"]] <- as.formula(.self$formula)
+
+        out <- vector("list", n_causes)
+        names(out) <- as.character(causes)
+
+        for (ii in seq_len(n_causes)) {
+
+          cause_i <- causes[ii]
+
+          y <- event_counts[
+            deltaij == cause_i,
+            .(gid, node_ix, N)
+          ][
+            train_long,
+            on = .(gid, node_ix)
+          ][["N"]]
+
+          y[is.na(y)] <- 0.0
+
+          train_long[, deltaij := as.numeric(y)]
+
+          out[[ii]] <- tryCatch(
+            do.call(.self$learner, c(
+              fit_args,
+              list(
+                data = train_long,
+                offset = offset
+              )
+            )),
+            error = function(e) {
+              make_failed_fit(
+                paste0(
+                  "mgcv::bam failed in Learner_gam::private_fit_all_causes for cause ",
+                  as.character(cause_i),
+                  ": ",
+                  conditionMessage(e)
+                )
+              )
+            }
+          )
+        }
+
+        out
+
+      }, error = function(e) {
+
+        out <- vector("list", length(causes))
+        names(out) <- as.character(causes)
+
+        for (ii in seq_along(out)) {
+          out[[ii]] <- make_failed_fit(conditionMessage(e))
+        }
+
+        out
+      })
+
+      fits
     },
 
     private_predictor = function(model, newdata, grid_nodes, ...) {
