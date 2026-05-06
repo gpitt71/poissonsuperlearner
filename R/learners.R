@@ -326,14 +326,6 @@ Learner_glmnet <- setRefClass(
 
         train_d[, node_ix := match(node, node_support)]
 
-        ## Event counts by cause are kept separately.
-        ## This is the only cause-dependent part.
-        event_counts <- train_d[
-          deltaij %in% causes,
-          .N,
-          by = .(gid, node_ix, deltaij)
-        ]
-
         ## Cause-independent terminal exposure skeleton.
         terminal_base <- train_d[, .(
           tij        = sum(tij),
@@ -409,41 +401,41 @@ Learner_glmnet <- setRefClass(
         out <- vector("list", n_causes)
         names(out) <- as.character(causes)
         ##############
-        cause_names <- as.character(causes)
+        make_y_for_cause <- function(cause_i) {
+          terminal_y <- train_d[, .(
+            deltaij = sum(as.numeric(deltaij == cause_i))
+          ), by = .(gid, node, node_ix)]
 
-        train_index <- train_long[, .(gid, node_ix)]
+          terminal_y <- terminal_y[
+            terminal_base[, .(gid, node, node_ix)],
+            on = .(gid, node, node_ix)
+          ][["deltaij"]]
 
-        if (nrow(event_counts) > 0L) {
-          event_wide <- data.table::dcast(
-            event_counts,
-            gid + node_ix ~ deltaij,
-            value.var = "N",
-            fill = 0L
+          terminal_y[is.na(terminal_y)] <- 0.0
+
+          ans_y <- expand_terminal_grouped_cpp(
+            gid     = terminal_base$gid,
+            node_ix = terminal_base$node_ix,
+            tij     = terminal_base$tij,
+            deltaij = terminal_y,
+            N       = terminal_base$N_terminal,
+            widths  = widths
           )
-        } else {
-          event_wide <- unique(train_index)
-        }
 
-        missing_causes <- setdiff(cause_names, names(event_wide))
+          y <- as.numeric(ans_y[["deltaij"]])
 
-        if (length(missing_causes) > 0L) {
-          event_wide[, (missing_causes) := 0L]
-        }
-
-        event_wide <- event_wide[
-          train_index,
-          on = .(gid, node_ix)
-        ]
-
-        for (cc in cause_names) {
-          ii_na <- which(is.na(event_wide[[cc]]))
-
-          if (length(ii_na) > 0L) {
-            data.table::set(event_wide, ii_na, cc, 0L)
+          if (length(y) != nrow(train_long)) {
+            stop(
+              paste0(
+                "Cause-specific response length mismatch in private_fit_all_causes for cause ",
+                as.character(cause_i),
+                "."
+              )
+            )
           }
-        }
 
-        y_mat <- as.matrix(event_wide[, ..cause_names])
+          y
+        }
 
         ##############
         if (.self$cross_validation) {
@@ -459,19 +451,7 @@ Learner_glmnet <- setRefClass(
           for (ii in seq_len(n_causes)) {
             cause_i <- causes[ii]
 
-            y <- as.numeric(y_mat[, ii])
-            # cause_i <- causes[ii]
-            #
-            # y <- event_counts[
-            #   deltaij == cause_i,
-            #   .(gid, node_ix, N)
-            # ][
-            #   train_long,
-            #   on = .(gid, node_ix)
-            # ][["N"]]
-            #
-            # y[is.na(y)] <- 0.0
-
+            y <- make_y_for_cause(cause_i)
             cv_fit <- tryCatch(
               suppressWarnings(
                 do.call(glmnet::cv.glmnet, c(
@@ -522,21 +502,9 @@ Learner_glmnet <- setRefClass(
 
           for (ii in seq_len(n_causes)) {
 
-            # cause_i <- causes[ii]
-            #
-            # y <- event_counts[
-            #   deltaij == cause_i,
-            #   .(gid, node_ix, N)
-            # ][
-            #   train_long,
-            #   on = .(gid, node_ix)
-            # ][["N"]]
-            #
-            # y[is.na(y)] <- 0.0
-
             cause_i <- causes[ii]
 
-            y <- as.numeric(y_mat[, ii])
+            y <- make_y_for_cause(cause_i)
 
             out[[ii]] <- tryCatch(
               suppressWarnings(
@@ -1515,13 +1483,6 @@ Learner_hal <- setRefClass(
 
         train_d[, node_ix := match(node, node_support)]
 
-        ## Event counts by cause. This is the cause-dependent part.
-        event_counts <- train_d[
-          deltaij %in% causes,
-          .N,
-          by = .(gid, node_ix, deltaij)
-        ]
-
         ## Cause-independent exposure / terminal-count skeleton.
         terminal_base <- train_d[, .(
           tij        = sum(tij),
@@ -1619,42 +1580,41 @@ Learner_hal <- setRefClass(
         fit_meta <- x_pp[c("colnames", "meta")]
         pf_all <- rep(1, ncol(X_hal))
         ######
-        cause_names <- as.character(causes)
+        make_y_for_cause <- function(cause_i) {
+          terminal_y <- train_d[, .(
+            deltaij = sum(as.numeric(deltaij == cause_i))
+          ), by = .(gid, node, node_ix)]
 
-        train_index <- train_long[, .(gid, node_ix)]
+          terminal_y <- terminal_y[
+            terminal_base[, .(gid, node, node_ix)],
+            on = .(gid, node, node_ix)
+          ][["deltaij"]]
 
-        if (nrow(event_counts) > 0L) {
-          event_wide <- data.table::dcast(
-            event_counts,
-            gid + node_ix ~ deltaij,
-            value.var = "N",
-            fill = 0L
+          terminal_y[is.na(terminal_y)] <- 0.0
+
+          ans_y <- expand_terminal_grouped_cpp(
+            gid     = terminal_base$gid,
+            node_ix = terminal_base$node_ix,
+            tij     = terminal_base$tij,
+            deltaij = terminal_y,
+            N       = terminal_base$N_terminal,
+            widths  = widths
           )
-        } else {
-          event_wide <- unique(train_index)
-        }
 
-        missing_causes <- setdiff(cause_names, names(event_wide))
+          y <- as.numeric(ans_y[["deltaij"]])
 
-        if (length(missing_causes) > 0L) {
-          event_wide[, (missing_causes) := 0L]
-        }
-
-        event_wide <- event_wide[
-          train_index,
-          on = .(gid, node_ix)
-        ]
-
-        for (cc in cause_names) {
-          ii_na <- which(is.na(event_wide[[cc]]))
-
-          if (length(ii_na) > 0L) {
-            data.table::set(event_wide, ii_na, cc, 0L)
+          if (length(y) != nrow(train_long)) {
+            stop(
+              paste0(
+                "Cause-specific response length mismatch in private_fit_all_causes for cause ",
+                as.character(cause_i),
+                "."
+              )
+            )
           }
+
+          y
         }
-
-        y_mat <- as.matrix(event_wide[, ..cause_names])
-
 
         ######
 
@@ -1669,7 +1629,7 @@ Learner_hal <- setRefClass(
           for (ii in seq_len(n_causes)) {
             cause_i <- causes[ii]
 
-            y <- as.numeric(y_mat[, ii])
+            y <- make_y_for_cause(cause_i)
 
 
             cv_fit <- tryCatch(
@@ -1730,7 +1690,7 @@ Learner_hal <- setRefClass(
 
             cause_i <- causes[ii]
 
-            y <- as.numeric(y_mat[, ii])
+            y <- make_y_for_cause(cause_i)
 
             out[[ii]] <- tryCatch({
 
@@ -2143,13 +2103,6 @@ Learner_gam <- setRefClass(
 
         train_d[, node_ix := match(node, node_support)]
 
-        ## Event counts by cause. This is the only cause-dependent part.
-        event_counts <- train_d[
-          deltaij %in% causes,
-          .N,
-          by = .(gid, node_ix, deltaij)
-        ]
-
         ## Cause-independent exposure / terminal-count skeleton.
         terminal_base <- train_d[, .(
           tij        = sum(tij),
@@ -2221,47 +2174,47 @@ Learner_gam <- setRefClass(
 
         out <- vector("list", n_causes)
         names(out) <- as.character(causes)
-        cause_names <- as.character(causes)
+        make_y_for_cause <- function(cause_i) {
+          terminal_y <- train_d[, .(
+            deltaij = sum(as.numeric(deltaij == cause_i))
+          ), by = .(gid, node, node_ix)]
 
-        train_index <- train_long[, .(gid, node_ix)]
+          terminal_y <- terminal_y[
+            terminal_base[, .(gid, node, node_ix)],
+            on = .(gid, node, node_ix)
+          ][["deltaij"]]
 
-        if (nrow(event_counts) > 0L) {
-          event_wide <- data.table::dcast(
-            event_counts,
-            gid + node_ix ~ deltaij,
-            value.var = "N",
-            fill = 0L
+          terminal_y[is.na(terminal_y)] <- 0.0
+
+          ans_y <- expand_terminal_grouped_cpp(
+            gid     = terminal_base$gid,
+            node_ix = terminal_base$node_ix,
+            tij     = terminal_base$tij,
+            deltaij = terminal_y,
+            N       = terminal_base$N_terminal,
+            widths  = widths
           )
-        } else {
-          event_wide <- unique(train_index)
-        }
 
-        missing_causes <- setdiff(cause_names, names(event_wide))
+          y <- as.numeric(ans_y[["deltaij"]])
 
-        if (length(missing_causes) > 0L) {
-          event_wide[, (missing_causes) := 0L]
-        }
-
-        event_wide <- event_wide[
-          train_index,
-          on = .(gid, node_ix)
-        ]
-
-        for (cc in cause_names) {
-          ii_na <- which(is.na(event_wide[[cc]]))
-
-          if (length(ii_na) > 0L) {
-            data.table::set(event_wide, ii_na, cc, 0L)
+          if (length(y) != nrow(train_long)) {
+            stop(
+              paste0(
+                "Cause-specific response length mismatch in private_fit_all_causes for cause ",
+                as.character(cause_i),
+                "."
+              )
+            )
           }
-        }
 
-        y_mat <- as.matrix(event_wide[, ..cause_names])
+          y
+        }
 
         for (ii in seq_len(n_causes)) {
 
           cause_i <- causes[ii]
 
-          y <- as.numeric(y_mat[, ii])
+          y <- make_y_for_cause(cause_i)
 
           train_long[, deltaij := y]
 
