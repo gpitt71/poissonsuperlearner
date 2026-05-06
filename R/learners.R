@@ -6,7 +6,8 @@
 #' **User-facing API:** users are expected to **initialize** the learner (i.e.,
 #' call `Learner_glmnet(...)`) and pass the resulting object to
 #' [Superlearner()] or [fit_learner()]. The remaining methods documented below
-#' (e.g., `private_fit()`, `private_predictor()`) are part of the internal learner
+#' (e.g., `private_fit()`, `private_fit_all_causes()`, and
+#' `private_predictor()`) are part of the internal learner
 #' interface and are **not meant to be called directly by users**.
 #'
 #' **Wrapper role:** this class is a user-friendly wrapper around the existing
@@ -46,8 +47,9 @@
 #' @section Methods (internal learner interface):
 #' \describe{
 #'   \item{`initialize(...)`}{Construct and configure the learner. This is the only method users should call.}
-#'   \item{`private_fit(data, ...)`}{Internal. Fits a Poisson model with offset `log(tij)` on long-format data.}
-#'   \item{`private_predictor(model, newdata, ...)`}{Internal. Predicts hazards on the response scale for long-format `newdata`.}
+#'   \item{`private_fit(data, cause, grid_nodes, ...)`}{Internal. Fits a Poisson model with offset `log(tij)` on long-format data for one cause.}
+#'   \item{`private_fit_all_causes(data, causes, grid_nodes, ...)`}{Internal. Fits the same learner for all requested causes using a shared long-data preprocessing skeleton where possible.}
+#'   \item{`private_predictor(model, newdata, grid_nodes, ...)`}{Internal. Predicts hazards on the response scale for long-format `newdata`.}
 #' }
 #'
 #' @examples
@@ -683,7 +685,7 @@ Learner_glmnet <- setRefClass(
 #' used by [Superlearner()] and [fit_learner()].
 #'
 #' **User-facing API:** users should **only initialize** the learner and pass it
-#' to [Superlearner()] / [fit_learner()]. The methods `private_fit()` and
+#' to [Superlearner()] / [fit_learner()]. The methods `private_fit()`, `private_fit_all_causes()`,
 #' `private_predictor()` (and any basis-construction helpers) are part of the
 #' internal learner interface and are **not meant to be called directly by users**.
 #'
@@ -762,8 +764,9 @@ Learner_glmnet <- setRefClass(
 #' @section Methods (internal learner interface):
 #' \describe{
 #'   \item{`initialize(...)`}{Construct and configure the learner. This is the only method users should call.}
-#'   \item{`private_fit(data, ...)`}{Internal. Builds bases and fits the penalized Poisson model with offset `log(tij)`.}
-#'   \item{`private_predictor(model, newdata, ...)`}{Internal. Evaluates the fitted approximation and returns hazards on the response scale.}
+#'   \item{`private_fit(data, cause, grid_nodes, ...)`}{Internal. Builds bases and fits the penalized Poisson model with offset `log(tij)` for one cause.}
+#'   \item{`private_fit_all_causes(data, causes, grid_nodes, ...)`}{Internal. Fits the same HAL specification for all requested causes using a shared basis/skeleton where possible.}
+#'   \item{`private_predictor(model, newdata, grid_nodes, ...)`}{Internal. Evaluates the fitted approximation and returns hazards on the response scale.}
 #' }
 #'
 #' @examples
@@ -1906,7 +1909,7 @@ Learner_hal <- setRefClass(
 #' used by [Superlearner()] and [fit_learner()].
 #'
 #' **User-facing API:** users should **only initialize** the learner and pass it
-#' to [Superlearner()] / [fit_learner()]. The methods `private_fit()` and
+#' to [Superlearner()] / [fit_learner()]. The methods `private_fit()`, `private_fit_all_causes()`, and
 #' `private_predictor()` are part of the internal learner interface and are
 #' **not meant to be called directly by users**.
 #'
@@ -1946,8 +1949,9 @@ Learner_hal <- setRefClass(
 #' @section Methods (internal learner interface):
 #' \describe{
 #'   \item{`initialize(...)`}{Construct and configure the learner. This is the only method users should call.}
-#'   \item{`private_fit(data, ...)`}{Internal. Fits a Poisson GAM with offset `log(tij)` on long-format data.}
-#'   \item{`private_predictor(model, newdata, ...)`}{Internal. Predicts hazards on the response scale.}
+#'   \item{`private_fit(data, cause, grid_nodes, ...)`}{Internal. Fits a Poisson GAM with offset `log(tij)` on long-format data for one cause.}
+#'   \item{`private_fit_all_causes(data, causes, grid_nodes, ...)`}{Internal. Fits the same GAM specification for all requested causes using shared preprocessing where possible.}
+#'   \item{`private_predictor(model, newdata, grid_nodes, ...)`}{Internal. Predicts hazards on the response scale.}
 #' }
 #'
 #' @examples

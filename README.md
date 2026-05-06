@@ -43,9 +43,7 @@ d <- simulateStenoT1(
 l_glm <- Learner_glmnet(
   covariates = c("sex", "diabetes_duration"),
   cross_validation = FALSE,
-  lambda = 0,
-  intercept = TRUE,
-  penalise_nodes = FALSE
+  lambda = 0
 )
 
 # Fit piecewise-constant hazard model
@@ -88,18 +86,14 @@ d <- simulateStenoT1(
 l_glm <- Learner_glmnet(
   covariates = c("sex", "diabetes_duration"),
   cross_validation = FALSE,
-  lambda = 0,
-  intercept = TRUE,
-  penalise_nodes = FALSE
+  lambda = 0
 )
 
 # Base learner 2: Lasso-penalized Poisson regression
 l_lasso <- Learner_glmnet(
   covariates = c("value_Smoking", "value_LDL"),
   cross_validation = TRUE,
-  alpha = 1,
-  intercept = TRUE,
-  penalise_nodes = FALSE
+  alpha = 1
 )
 
 learners_list <- list(

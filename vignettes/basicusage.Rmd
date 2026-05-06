@@ -73,15 +73,13 @@ and one lasso-type learner.
 lglmnet0 <- Learner_glmnet(
   covariates = c("sex", "diabetes_duration"),
   cross_validation = FALSE,
-  lambda = 0,
-  intercept = TRUE
+  lambda = 0
 )
 
 lglmnet1 <- Learner_glmnet(
   covariates = c("value_Smoking", "value_LDL"),
   cross_validation = TRUE,
-  alpha = 1,
-  intercept = TRUE
+  alpha = 1
 )
 
 learners_list <- list(
@@ -101,21 +99,18 @@ defined by initializing Reference Class objects and then passing them to
 ```{r, eval = FALSE}
 l_glmnet <- Learner_glmnet(
   covariates = c("sex", "diabetes_duration", "value_LDL"),
-  add_nodes = TRUE,
   cross_validation = TRUE,
   alpha = 1
 )
 
 l_gam <- Learner_gam(
   covariates = c("s(age)", "s(value_LDL)", "sex"),
-  add_nodes = TRUE,
   method = "fREML",
   discrete = TRUE
 )
 
 l_hal <- Learner_hal(
   covariates = c("age", "diabetes_duration", "value_LDL"),
-  add_nodes = TRUE,
   cross_validation = TRUE,
   num_knots = c(10L, 5L),
   max_degree = 2L
@@ -124,11 +119,12 @@ l_hal <- Learner_hal(
 
 Some learner arguments are specific to the piecewise-constant hazard workflow
 implemented in `poissonsuperlearner`. In particular, `covariates` defines the
-terms used in the long-format hazard model, and `add_nodes = TRUE` adds the
-interval-specific node effects that represent the baseline hazard across the
-time grid. For the HAL learner, `num_knots`, `max_degree`, and `maxit_prefit`
-also control the package-specific basis construction and screening step used
-before the final penalized fit.
+terms used in the long-format hazard model. The current learners add the
+interval-specific node effects that represent the baseline hazard internally
+from the chosen time grid, so there is no separate `add_nodes` argument to set.
+For the HAL learner, `num_knots`, `max_degree`, and `maxit_prefit` also control
+the package-specific basis construction and screening step used before the
+final penalized fit.
 
 A useful feature of the package is that, except for HAL, the learners mainly
 wrap existing fitting routines. `Learner_glmnet()` forwards additional
@@ -154,17 +150,17 @@ controls available through `...`.
 
 `Superlearner()` fits all learners, obtains cross-validated predictions for the
 meta-learning step, and then fits one cause-specific meta-learner per cause.
-For comparison, `fit_learner()` fits a single learner directly. 
+For comparison, `fit_learner()` fits a single learner directly.
 
-`Superlearner()` and `fit_learner()` can be supplied either with an explicit 
-grid of time nodes `(nodes)` or with the number of nodes selected 
-from the observed quantiles (`number_of_nodes`) used to construct that grid; 
-`nfolds` specifies the number of folds used for internal cross-validation; 
-if an `id` variable is provided it identifies 
-which rows belong to the same individual, whereas 
-if `id` is omitted each row is treated as a separate observation; 
-the `status` variable must be coded as `0` for censoring and positive integers 
-for the competing event types; and `time_event` is the event or 
+`Superlearner()` and `fit_learner()` can be supplied either with an explicit
+grid of time nodes `(nodes)` or with the number of nodes selected
+from the observed quantiles (`number_of_nodes`) used to construct that grid;
+`nfold` specifies the number of folds used for internal cross-validation;
+if an `id` variable is provided it identifies
+which rows belong to the same individual, whereas
+if `id` is omitted each row is treated as a separate observation;
+the `status` variable must be coded as `0` for censoring and positive integers
+for the competing event types; and `event_time` names the event or
 follow-up time variable on which the model is built.
 
 
@@ -180,6 +176,57 @@ sl_model <- Superlearner(
   nfold = 3
 )
 
+```
+
+The same learner library is used for both causes above. For competing risks,
+`learners` can alternatively be a list with one learner library per cause. Here
+cause 1 (CVD) and cause 2 (death without prior CVD) get different learner
+specifications. The example is not evaluated to keep the vignette fast.
+
+```{r, eval = FALSE}
+cvd_library <- list(
+  cvd_clinical = Learner_glmnet(
+    covariates = c("age", "diabetes_duration", "value_LDL"),
+    cross_validation = FALSE,
+    lambda = 0
+  ),
+  cvd_lasso = Learner_glmnet(
+    covariates = c("age", "value_LDL", "value_HbA1c"),
+    cross_validation = TRUE,
+    alpha = 1
+  )
+)
+
+death_library <- list(
+  death_clinical = Learner_glmnet(
+    covariates = c("age", "sex", "value_eGFR"),
+    cross_validation = FALSE,
+    lambda = 0
+  ),
+  death_gam = Learner_gam(
+    covariates = c("s(age)", "sex", "s(value_eGFR)"),
+    method = "fREML",
+    discrete = TRUE
+  )
+)
+
+cause_specific_libraries <- list(
+  cvd = cvd_library,
+  death_without_cvd = death_library
+)
+
+sl_model_by_cause <- Superlearner(
+  d,
+  id = "id",
+  status = "event",
+  event_time = "time",
+  learners = cause_specific_libraries,
+  number_of_nodes = 5,
+  nfold = 3
+)
+```
+
+```{r}
 l0_model <- fit_learner(
   d,
   id = "id",

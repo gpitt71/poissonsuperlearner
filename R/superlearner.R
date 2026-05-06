@@ -24,11 +24,13 @@
 #'   with `0` for censoring and `1, 2, ..., K` for event types. If there is no
 #'   `0` in `status`, the data are treated as uncensored.
 #' @param event_time `character(1)`. Name of the event or censoring time column.
-#' @param learners `list`. List of initialized learner reference-class objects,
-#'   for example [Learner_glmnet()], [Learner_hal()], or [Learner_gam()]. If
-#'   unnamed, learners are named `"learner_1"`, `"learner_2"`, and so on. Each
-#'   learner must implement `$private_fit(dt_long)` and
-#'   `$private_predictor(model, newdata)`.
+#' @param learners `list`. Either a single learner library used for all causes
+#'   or, for competing risks, a list with one learner library per cause. A learner
+#'   library is a list of initialized learner reference-class objects, for example
+#'   [Learner_glmnet()], [Learner_hal()], or [Learner_gam()]. If unnamed, causes
+#'   and learners are named automatically. Each learner must implement the
+#'   internal methods `$private_fit(data, cause, grid_nodes)` and
+#'   `$private_predictor(model, newdata, grid_nodes)`.
 #' @param number_of_nodes `numeric(1)` or `NULL`. If not `NULL`, constructs a
 #'   quantile-based node grid with `number_of_nodes + 1` cut points. Ignored when
 #'   `nodes` is supplied.
@@ -44,15 +46,16 @@
 #'   with the following components:
 #'
 #'   `learners`:
-#'   the retained base learner objects.
+#'   a cause-specific list of the retained base learner objects.
 #'
 #'   `metalearner`:
-#'   the meta-learner object used for stacking. If no stacking is performed because
-#'   only one learner remains, `metalearner` is `NULL`.
+#'   a description of the meta-learner used for stacking. If no cause requires
+#'   stacking because only one learner remains for every cause, `metalearner` is
+#'   `NULL`.
 #'
 #'   `superlearner`:
 #'   a `list` of length `data_info$n_crisks`, one entry per cause. For cause `k`,
-#'   `superlearner[[k]]` is a `list` with two elements:
+#'   `superlearner[[k]]` is a cause-specific `list` with two elements:
 #'   \itemize{
 #'     \item `learners_fit`: the fitted base learner object or objects for cause `k`.
 #'     If more than one learner is retained, this is a `list` with one fitted
@@ -63,8 +66,9 @@
 #'   }
 #'
 #'   `cross_validation_deviance`:
-#'   a `data.table` with columns `learner` and `deviance`, giving the mean
-#'   cross-validated Poisson deviance for each retained base learner. This
+#'   a `data.table` with columns `cause_index`, `cause`, `learner_index`,
+#'   `learner`, and `deviance`, giving the cross-validated Poisson deviance for
+#'   each retained base learner in each cause-specific library. This
 #'   component is present when cross-validated model comparison is available.
 #'
 #'   `data_info`:
@@ -78,19 +82,19 @@
 #'     \item `nfold`: number of folds used for stacking.
 #'     \item `maximum_followup`: maximum observed follow-up time.
 #'     \item `n_crisks`: number of event types detected.
-#'     \item `learners_labels`: character vector of retained learner labels.
+#'     \item `learners_labels`: list of retained learner labels, one character
+#'     vector per cause.
 #'     \item `variable_transformation`: the transformation specification passed in
 #'     `variable_transformation`, or `NULL`.
 #'   }
 #'
 #' @details
 #' If all learners fail on the full data, the function stops with an error.
-#' If only one learner remains after the full-data screening step or after the
-#' cross-validation screening step, no meta-learner is fit. In that case,
-#' `metalearner` is `NULL`, each `superlearner[[k]]$meta_learner_fit` is `NULL`,
-#' and prediction is based directly on the stored fitted base learner.Numeric
-#' learner positions always refer to the learners actually retained in the
-#' fitted object.
+#' If a cause has only one learner after full-data or cross-validation screening,
+#' no meta-learner is fit for that cause and prediction for that cause is based
+#' directly on the stored fitted base learner. If every cause has only one
+#' retained learner, `metalearner` is `NULL`. Numeric learner positions always
+#' refer to the learners actually retained in the fitted object.
 #'
 #' @examples
 #' data <- simulateStenoT1(50, competing_risks = TRUE)

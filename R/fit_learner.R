@@ -7,8 +7,10 @@
 #'
 #' @param data `data.frame`. Subject-level input data (one row per subject).
 #' @param learner Reference-class learner object (e.g. from [Learner_glmnet()],
-#'   [Learner_hal()] or [Learner_gam()]). Must implement a `$private_fit(dt_long)`
-#'   method that fits the learner on long Poisson data for one cause.
+#'   [Learner_hal()] or [Learner_gam()]). Must implement
+#'   `$private_fit_all_causes(data, causes, grid_nodes)` for fitting all
+#'   cause-specific models and `$private_predictor(model, newdata, grid_nodes)`
+#'   for prediction.
 #' @param id `character(1)`. Name of the subject identifier column. If not found
 #'   in `data`, an `id` column is created automatically.
 #' @param stratified_k_fold `logical(1)`. Reserved argument for future fold strategy.
@@ -37,15 +39,16 @@
 #'   covariates, tuning parameters).}
 #'
 #' \item{learner_fit}{A `list` of fitted model objects, **one per cause**.
-#'   Its length equals `data_info$n_crisks`. The list is created by splitting the
-#'   internally pre-processed long data by cause indicator `k` and calling
-#'   `model$private_fit()` on each split.
+#'   Its length equals `data_info$n_crisks`. The list is created from the
+#'   internally pre-processed long data by calling
+#'   `model$private_fit_all_causes()` once for all detected causes.
 #'
 #'   \itemize{
 #'     \item Names typically correspond to the cause labels `"1"`, `"2"`, ..., `"K"`.
 #'     \item Each element is **learner-dependent**: e.g. for `Learner_glmnet` it
-#'       may be a `"glmnet"` (often wrapped, e.g. `"fishnet"`) fit; for other
-#'       learners it will be whatever `$private_fit()` returns.
+#'       may be a `"glmnet"` or `"cv.glmnet"` fit; for other
+#'       learners it will be whatever the corresponding element returned by
+#'       `$private_fit_all_causes()` contains.
 #'     \item Each fitted object is trained on long Poisson data representing the
 #'       piecewise-constant hazard for that cause across the node intervals.
 #'   }}

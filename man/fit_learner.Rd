@@ -21,8 +21,10 @@ fit_learner(
 \item{data}{\code{data.frame}. Subject-level input data (one row per subject).}
 
 \item{learner}{Reference-class learner object (e.g. from \code{\link[=Learner_glmnet]{Learner_glmnet()}},
-\code{\link[=Learner_hal]{Learner_hal()}} or \code{\link[=Learner_gam]{Learner_gam()}}). Must implement a \verb{$private_fit(dt_long)}
-method that fits the learner on long Poisson data for one cause.}
+\code{\link[=Learner_hal]{Learner_hal()}} or \code{\link[=Learner_gam]{Learner_gam()}}). Must implement
+\verb{$private_fit_all_causes(data, causes, grid_nodes)} for fitting all
+cause-specific models and \verb{$private_predictor(model, newdata, grid_nodes)}
+for prediction.}
 
 \item{id}{\code{character(1)}. Name of the subject identifier column. If not found
 in \code{data}, an \code{id} column is created automatically.}
@@ -60,15 +62,15 @@ for later prediction. This contains the learner specification (e.g.,
 covariates, tuning parameters).}
 
 \item{learner_fit}{A \code{list} of fitted model objects, \strong{one per cause}.
-Its length equals \code{data_info$n_crisks}. The list is created by splitting the
-internally pre-processed long data by cause indicator \code{k} and calling
-\code{model$private_fit()} on each split.
+Its length equals \code{data_info$n_crisks}. The list is created from the internally pre-processed long data by calling
+\code{model$private_fit_all_causes()} once for all detected causes.
 
 \itemize{
 \item Names typically correspond to the cause labels \code{"1"}, \code{"2"}, ..., \code{"K"}.
 \item Each element is \strong{learner-dependent}: e.g. for \code{Learner_glmnet} it
-may be a \code{"glmnet"} (often wrapped, e.g. \code{"fishnet"}) fit; for other
-learners it will be whatever \verb{$private_fit()} returns.
+may be a \code{"glmnet"} or \code{"cv.glmnet"} fit; for other learners it will be
+whatever the corresponding element returned by
+\verb{$private_fit_all_causes()} contains.
 \item Each fitted object is trained on long Poisson data representing the
 piecewise-constant hazard for that cause across the node intervals.
 }}

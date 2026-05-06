@@ -13,7 +13,7 @@ used by \code{\link[=Superlearner]{Superlearner()}} and \code{\link[=fit_learner
 \strong{User-facing API:} users are expected to \strong{initialize} the learner (i.e.,
 call \code{Learner_glmnet(...)}) and pass the resulting object to
 \code{\link[=Superlearner]{Superlearner()}} or \code{\link[=fit_learner]{fit_learner()}}. The remaining methods documented below
-(e.g., \code{private_fit()}, \code{private_predictor()}) are part of the internal learner
+(e.g., \code{private_fit()}, \code{private_fit_all_causes()}, and \code{private_predictor()}) are part of the internal learner
 interface and are \strong{not meant to be called directly by users}.
 
 \strong{Wrapper role:} this class is a user-friendly wrapper around the existing
@@ -59,8 +59,9 @@ encodes nodes).
 
 \describe{
 \item{\code{initialize(...)}}{Construct and configure the learner. This is the only method users should call.}
-\item{\code{private_fit(data, ...)}}{Internal. Fits a Poisson model with offset \code{log(tij)} on long-format data.}
-\item{\code{private_predictor(model, newdata, ...)}}{Internal. Predicts hazards on the response scale for long-format \code{newdata}.}
+\item{\code{private_fit(data, cause, grid_nodes, ...)}}{Internal. Fits a Poisson model with offset \code{log(tij)} on long-format data for one cause.}
+\item{\code{private_fit_all_causes(data, causes, grid_nodes, ...)}}{Internal. Fits the same learner for all requested causes using a shared long-data preprocessing skeleton where possible.}
+\item{\code{private_predictor(model, newdata, grid_nodes, ...)}}{Internal. Predicts hazards on the response scale for long-format \code{newdata}.}
 }
 }
 

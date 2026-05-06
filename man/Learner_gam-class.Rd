@@ -18,7 +18,7 @@ used by \code{\link[=Superlearner]{Superlearner()}} and \code{\link[=fit_learner
 }
 \details{
 \strong{User-facing API:} users should \strong{only initialize} the learner and pass it
-to \code{\link[=Superlearner]{Superlearner()}} / \code{\link[=fit_learner]{fit_learner()}}. The methods \code{private_fit()} and
+to \code{\link[=Superlearner]{Superlearner()}} / \code{\link[=fit_learner]{fit_learner()}}. The methods \code{private_fit()}, \code{private_fit_all_causes()}, and
 \code{private_predictor()} are part of the internal learner interface and are
 \strong{not meant to be called directly by users}.
 
@@ -59,8 +59,9 @@ The additive predictor \eqn{\eta(x)}{eta(x)} is constructed from \code{covariate
 
 \describe{
 \item{\code{initialize(...)}}{Construct and configure the learner. This is the only method users should call.}
-\item{\code{private_fit(data, ...)}}{Internal. Fits a Poisson GAM with offset \code{log(tij)} on long-format data.}
-\item{\code{private_predictor(model, newdata, ...)}}{Internal. Predicts hazards on the response scale.}
+\item{\code{private_fit(data, cause, grid_nodes, ...)}}{Internal. Fits a Poisson GAM with offset \code{log(tij)} on long-format data for one cause.}
+\item{\code{private_fit_all_causes(data, causes, grid_nodes, ...)}}{Internal. Fits the same GAM specification for all requested causes using shared preprocessing where possible.}
+\item{\code{private_predictor(model, newdata, grid_nodes, ...)}}{Internal. Predicts hazards on the response scale.}
 }
 }
 
