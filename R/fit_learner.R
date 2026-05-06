@@ -81,13 +81,6 @@
 #'                   number_of_nodes = 4)
 #'
 #' @export
-#' Fit a single base learner
-#'
-#' Pre-processes subject-level time-to-event data into the compressed long
-#' Poisson representation used by the current learner interface, then fits one
-#' initialized learner object separately for each competing cause.
-#'
-#' @export
 fit_learner <- function(data,
                         learner,
                         id = "id",

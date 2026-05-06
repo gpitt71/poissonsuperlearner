@@ -209,8 +209,6 @@ learners.
 
 ```{r}
 print(sl_model, cause = 1)
-print(sl_model, cause = 1, model = "glm")
-print(l0_model, cause = 1)
 ```
 
 `summary()` provides a more informative overview. For a fitted super learner, it
