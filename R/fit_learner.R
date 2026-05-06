@@ -160,6 +160,7 @@ fit_learner <- function(data,
     )
   } else if (is.null(nodes)) {
     grid_nodes <- sort(unique(data[[event_time]]))
+    grid_nodes <- grid_nodes[-length(grid_nodes)]
   } else {
     grid_nodes <- sort(nodes)
   }
@@ -170,6 +171,7 @@ fit_learner <- function(data,
 
   grid_nodes <- sort(unique(grid_nodes))
   grid_nodes <- grid_nodes[grid_nodes <= maximum_followup]
+
 
 
   ## ------------------------------------------------------------

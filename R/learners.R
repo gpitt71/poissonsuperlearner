@@ -795,48 +795,57 @@ Learner_hal <- setRefClass(
                           num_knots = c(10L, 5L),
                           ...) {
 
-      max_degree <- as.integer(max_degree)
+      max_degree_use <- as.integer(max_degree)
 
-      if (length(max_degree) != 1L || is.na(max_degree) || max_degree < 1L) {
+      if (
+        length(max_degree_use) != 1L ||
+        is.na(max_degree_use) ||
+        max_degree_use < 1L
+      ) {
         stop("max_degree must be a single positive integer.")
       }
 
-      if (is.null(num_knots) || length(num_knots) == 0L || anyNA(num_knots)) {
+      if (
+        is.null(num_knots) ||
+        length(num_knots) == 0L ||
+        anyNA(num_knots)
+      ) {
         stop("num_knots must be a non-empty vector without missing values.")
       }
 
-      if (length(num_knots) == max_degree) {
-        ## all fine
-        num_knots <- as.numeric(num_knots)
+      num_knots_use <- as.numeric(num_knots)
 
-      } else if (length(num_knots) > max_degree) {
+      if (length(num_knots_use) == max_degree_use) {
+        ## all fine
+
+      } else if (length(num_knots_use) > max_degree_use) {
         warning(
           sprintf(
             "length(num_knots) = %d is larger than max_degree = %d; truncating num_knots to length max_degree.",
-            length(num_knots), max_degree
+            length(num_knots_use), max_degree_use
           ),
           call. = FALSE
         )
 
-        num_knots <- as.numeric(num_knots[seq_len(max_degree)])
+        num_knots_use <- num_knots_use[seq_len(max_degree_use)]
 
       } else {
         warning(
           sprintf(
             "length(num_knots) = %d is smaller than max_degree = %d; recycling num_knots to length max_degree.",
-            length(num_knots), max_degree
+            length(num_knots_use), max_degree_use
           ),
           call. = FALSE
         )
 
-        num_knots <- as.numeric(rep(num_knots, length.out = max_degree))
+        num_knots_use <- rep(num_knots_use, length.out = max_degree_use)
       }
 
       .self$covariates <- covariates
       .self$cross_validation <- cross_validation
       .self$intercept <- intercept
-      .self$max_degree <- max_degree
-      .self$num_knots <- num_knots
+      .self$max_degree <- max_degree_use
+      .self$num_knots <- num_knots_use
 
       .self$maxit_prefit <- maxit_prefit
 

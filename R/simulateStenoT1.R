@@ -16,6 +16,9 @@
 #'   model (`time.event.1`).
 #' @param value_diabetis `numeric(1)`. Log-hazard coefficient for diabetes duration
 #'   in the CVD model (`time.event.1`).
+#' @param seed `integer(1)` or `NULL`. Optional random seed passed to
+#'   `set.seed()` before simulating the data. If `NULL`, the current RNG state is
+#'   used.
 #' @param keep `character` or `NULL`. Optional subset of columns to retain. If
 #'   supplied, only those columns are returned.
 #' @param scenario `character(1)`. One of `"alpha"` or `"beta"`. Scenario `"beta"`
@@ -80,11 +83,16 @@ simulateStenoT1 <- function(
     coefficient_age = 0.05,
     coefficient_LDL = 0.10,
     value_diabetis = 0.02,
+    seed = NULL,
     keep = NULL,
     scenario = c("alpha", "beta"),
     competing_risks = FALSE
 ) {
   scenario <- match.arg(scenario)
+
+  if (!is.null(seed)) {
+    set.seed(seed)
+  }
 
   # ------------------------------------------------------------------
   # Shared model parts (covariates + structural equations)

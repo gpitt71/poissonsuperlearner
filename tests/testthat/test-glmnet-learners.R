@@ -27,7 +27,7 @@ testthat::test_that("data_pre_processing preserves time at risk and covariates",
 
   d <- riskRegression::sampleData(
     n = 100,
-    formula = ~ f(X1, 2) + f(X2, 0) + f(X3, 0) + f(X6, 0) + f(X7, 0) +
+    formula = ~ f(X1, 2) + f(X2, 0) + f(X3, 0) + f(X1, 0) + f(X7, 0) +
       f(X8, 0) + f(X9, 0) + f(X10, 0)
   )
   d <- data.table::as.data.table(d)
@@ -105,10 +105,10 @@ testthat::test_that("Poisson piecewise-constant fit reproduces Cox coefficient (
   testthat::skip_if_not_installed("survival")
   testthat::skip_if_not_installed("glmnet")
   testthat::skip_if_not_installed("data.table")
-
-  set.seed(42)
-
-  d <- riskRegression::sampleData(n = 50, formula = ~ f(X1, 2))
+  {
+    set.seed(42)
+    d <- riskRegression::sampleData(n = 50, formula = ~ f(X1, 2))
+  }
   d <- data.table::as.data.table(d)
 
   if (!("id" %in% names(d))) d[, id := .I]
@@ -130,40 +130,32 @@ testthat::test_that("Poisson piecewise-constant fit reproduces Cox coefficient (
     beta_cox <- unname(beta_cox_vec[ix[1]])
   }
 
-  learner <- poissonsuperlearner::Learner_glmnet(
+  learner <- poissonsuperlearner::Learner_gam(
     covariates = "X1",
-    cross_validation = FALSE,
-    intercept = FALSE,
-    add_nodes = TRUE,
-    penalise_nodes = FALSE,
-    lambda = 0,
-    alpha = 1
+    cross_validation = T
   )
+
 
   olcheck <- poissonsuperlearner::Superlearner(
     data = d,
-    learners = list(learner),
+    learners = list(list(learner)),
     id = "id",
     status = "status",
-    event_time = "time",
-    nodes = NULL,
-    number_of_nodes = NULL
-  )
+    event_time = "time")
 
   fit_ps <- poissonsuperlearner::fit_learner(
     data = d,
     learner = learner,
     id = "id",
     status = "status",
-    event_time = "time",
-    nodes = NULL,
-    number_of_nodes = NULL
+    event_time = "time"
   )
 
   testthat::expect_true(inherits(fit_ps, "base_learner"))
   testthat::expect_true(length(fit_ps$learner_fit) >= 1)
 
   glmnet_fit <- fit_ps$learner_fit[[1]]
+
   beta_pois_mat <- as.matrix(stats::coef(glmnet_fit))
 
   # robust rowname lookup

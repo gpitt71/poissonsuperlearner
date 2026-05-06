@@ -9,6 +9,7 @@ simulateStenoT1(
   coefficient_age = 0.05,
   coefficient_LDL = 0.1,
   value_diabetis = 0.02,
+  seed = NULL,
   keep = NULL,
   scenario = c("alpha", "beta"),
   competing_risks = FALSE
@@ -26,14 +27,18 @@ model (\code{time.event.1}).}
 \item{value_diabetis}{\code{numeric(1)}. Log-hazard coefficient for diabetes duration
 in the CVD model (\code{time.event.1}).}
 
+\item{seed}{\code{integer(1)} or \code{NULL}. Optional random seed passed to
+\code{set.seed()} before simulating the data. If \code{NULL}, the current RNG state is
+used.}
+
 \item{keep}{\code{character} or \code{NULL}. Optional subset of columns to retain. If
 supplied, only those columns are returned.}
 
 \item{scenario}{\code{character(1)}. One of \code{"alpha"} or \code{"beta"}. Scenario \code{"beta"}
 modifies the CVD hazard by adding nonlinear hinge-squared terms in age and LDL.}
 
-\item{competing_risks}{\code{logical(1)}. If \code{TRUE} and \code{scenario = "alpha"}, simulates
-two event causes (CVD and death without CVD). Otherwise simulates CVD vs censoring.}
+\item{competing_risks}{\code{logical(1)}. If \code{TRUE}, simulates two event causes
+(CVD and death without CVD). Otherwise simulates CVD vs censoring.}
 }
 \value{
 A \code{data.table} with at least the following columns:
@@ -90,8 +95,9 @@ age-dependent log2 eGFR components (higher values indicate better kidney functio
 }
 
 Event time variables are generated from latent Weibull PH models:
-\code{time.event.1} (CVD), \code{time.event.0} (censoring), and in scenario \code{"alpha"} also
-\code{time.event.2} (death without prior CVD). These latent variables are used to
+\code{time.event.1} (CVD), \code{time.event.0} (censoring), and, if
+\code{competing_risks = TRUE}, \code{time.event.2} (death without prior CVD).
+These latent variables are used to
 construct the observed outcome variables returned by the function (see below).
 }
 \examples{
