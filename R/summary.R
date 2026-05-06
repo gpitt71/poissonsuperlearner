@@ -13,8 +13,8 @@
 #'   Other allowed values are:
 #'   \describe{
 #'     \item{`0` or `"sl"`}{Use the super learner prediction.}
-#'     \item{learner label}{Use one stored base learner by its label in
-#'       `object$data_info$learners_labels`.}
+#'     \item{learner label}{Use one stored base learner by its cause-specific
+#'       label in `object$data_info$learners_labels`.}
 #'     \item{`"learner_j"`}{Use the `j`-th stored learner.}
 #'     \item{integer `j >= 1`}{Use the `j`-th stored learner.}
 #'   }
@@ -70,8 +70,13 @@ summary.poisson_superlearner <- function(object,
     return(invisible(object))
   }
 
-  model_sel <- resolve_prediction_model(object, model)
-  labels <- psl_get_labels(object)
+  display_cause <- if (is.null(cause)) 1L else cause
+  labels <- psl_get_labels(object, cause = display_cause)
+  model_sel <- resolve_prediction_model(
+    object,
+    model,
+    cause = display_cause
+  )
 
   ## If the user asks for a stored base learner, or if there is no meta-learner
   ## (single-learner special case), dispatch directly to the underlying fit.
@@ -91,8 +96,6 @@ summary.poisson_superlearner <- function(object,
   }
 
   ## Default: summarize the stacked superlearner
-  zmap <- stats::setNames(labels, paste0("Z", seq_along(labels)))
-
   cat("Call:\n")
   if (!is.null(object$metalearner)) {
     ml <- object$metalearner
@@ -111,8 +114,23 @@ summary.poisson_superlearner <- function(object,
   cat("\nFitted object:\n")
   cat("  Class: poisson_superlearner\n")
   cat("  Number of competing risks:", object$data_info$n_crisks, "\n")
-  cat("  Number of learners:", length(object$learners), "\n")
-  cat("  Learners:", paste(labels, collapse = ", "), "\n")
+
+  learners_per_cause <- vapply(
+    seq_len(object$data_info$n_crisks),
+    function(k) length(psl_get_labels(object, cause = k)),
+    integer(1L)
+  )
+
+  cat(
+    "  Number of learners per cause:",
+    paste(learners_per_cause, collapse = ", "),
+    "\n"
+  )
+  cat(
+    sprintf("  Learners for cause %d:", display_cause),
+    paste(labels, collapse = ", "),
+    "\n"
+  )
   cat("  Number of folds:", object$data_info$nfold, "\n")
   cat("  Maximum follow-up:", object$data_info$maximum_followup, "\n")
   cat("  Number of nodes:", length(object$data_info$nodes), "\n")
@@ -152,8 +170,11 @@ summary.poisson_superlearner <- function(object,
       next
     }
 
+    labels_k <- psl_get_labels(object, cause = k)
+    zmap_k <- stats::setNames(labels_k, paste0("Z", seq_along(labels_k)))
+
     nms <- names(coefs)
-    names(coefs) <- psl_rename_z_in_text(nms, zmap)
+    names(coefs) <- psl_rename_z_in_text(nms, zmap_k)
 
     cat("  k = ", k, ":\n", sep = "")
     print(coefs)

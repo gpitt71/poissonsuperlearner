@@ -17,8 +17,8 @@ Causes are indexed \verb{1, 2, ..., object$data_info$n_crisks}.}
 Other allowed values are:
 \describe{
 \item{\code{0} or \code{"sl"}}{Use the super learner prediction.}
-\item{learner label}{Use one stored base learner by its label in
-\code{object$data_info$learners_labels}.}
+\item{learner label}{Use one stored base learner by its cause-specific
+label in \code{object$data_info$learners_labels}.}
 \item{\code{"learner_j"}}{Use the \code{j}-th stored learner.}
 \item{integer \code{j >= 1}}{Use the \code{j}-th stored learner.}
 }}

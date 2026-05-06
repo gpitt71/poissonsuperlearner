@@ -61,8 +61,8 @@ print.base_learner <- function(x, cause=1, ...) {
 #'   Other allowed values are:
 #'   \describe{
 #'     \item{`0` or `"sl"`}{Use the super learner prediction.}
-#'     \item{learner label}{Use one stored base learner by its label in
-#'       `object$data_info$learners_labels`.}
+#'     \item{learner label}{Use one stored base learner by its cause-specific
+#'       label in `object$data_info$learners_labels`.}
 #'     \item{`"learner_j"`}{Use the `j`-th stored learner.}
 #'     \item{integer `j >= 1`}{Use the `j`-th stored learner.}
 #'   }

@@ -407,10 +407,10 @@ get_psl_fit_meta <- function(model) {
   attr(model, "psl_meta", exact = TRUE)
 }
 
-resolve_prediction_model <- function(object, model = "sl") {
+resolve_prediction_model <- function(object, model = "sl", cause = NULL) {
 
-  n_learners <- length(object$learners)
-  labels <- object$data_info$learners_labels
+  labels <- psl_get_labels(object, cause = cause)
+  n_learners <- length(labels)
 
   if (is.null(model) || length(model) != 1L) {
     stop("'model' must be a scalar.")
@@ -496,21 +496,55 @@ resolve_prediction_model <- function(object, model = "sl") {
 }
 
 
-psl_get_labels <- function(object) {
+psl_get_labels <- function(object, cause = NULL) {
   labs <- NULL
 
   if (!is.null(object$data_info) && !is.null(object$data_info$learners_labels)) {
     labs <- object$data_info$learners_labels
   }
 
-  if (is.null(labs) || length(labs) == 0L) {
-    if (!is.null(object$learners) && length(object$learners) > 0L) {
-      labs <- names(object$learners)
+  if (is.list(labs) && !is.data.frame(labs)) {
+    if (!is.null(cause)) {
+      cause <- as.integer(cause)
+      if (cause >= 1L && cause <= length(labs)) {
+        labs <- labs[[cause]]
+      } else {
+        labs <- NULL
+      }
+    } else if (length(labs) > 0L) {
+      labs <- labs[[1L]]
+    } else {
+      labs <- NULL
     }
   }
 
   if (is.null(labs) || length(labs) == 0L) {
-    labs <- paste0("learner_", seq_along(object$learners))
+    learners <- object$learners
+
+    if (is.list(learners) && !is.null(cause) && length(learners) >= cause) {
+      learners <- learners[[as.integer(cause)]]
+    }
+
+    if (!is.null(learners) && length(learners) > 0L) {
+      labs <- names(learners)
+    }
+  }
+
+  if (is.null(labs) || length(labs) == 0L || anyNA(labs) || any(!nzchar(labs))) {
+    n_learners <- 0L
+
+    learners <- object$learners
+    if (is.list(learners) && !is.null(cause) && length(learners) >= cause) {
+      learners <- learners[[as.integer(cause)]]
+    }
+
+    if (!is.null(learners)) {
+      n_learners <- length(learners)
+    } else if (!is.null(labs)) {
+      n_learners <- length(labs)
+    }
+
+    labs <- paste0("learner_", seq_len(n_learners))
   }
 
   as.character(labs)
@@ -537,9 +571,15 @@ psl_get_stored_fit <- function(object, cause, model = "sl") {
     )
   }
 
-  sel <- resolve_prediction_model(object, model)
-  labels <- psl_get_labels(object)
+  sel <- resolve_prediction_model(object, model, cause = cause)
+  labels <- psl_get_labels(object, cause = cause)
   sl_k <- object$superlearner[[cause]]
+  learners_k <- if (is.list(object$learners) && length(object$learners) >= cause) {
+    object$learners[[cause]]
+  } else {
+    object$learners
+  }
+  n_learners <- length(learners_k)
 
   if (sel$type == "sl") {
     if (!is.null(object$metalearner) && !is.null(sl_k$meta_learner_fit)) {
@@ -551,7 +591,7 @@ psl_get_stored_fit <- function(object, cause, model = "sl") {
       ))
     }
 
-    if (length(object$learners) == 1L) {
+    if (n_learners == 1L) {
       return(list(
         fit = sl_k$learners_fit,
         type = "learner",
@@ -565,7 +605,7 @@ psl_get_stored_fit <- function(object, cause, model = "sl") {
 
   j <- sel$index
 
-  fit_j <- if (length(object$learners) == 1L) {
+  fit_j <- if (n_learners == 1L) {
     sl_k$learners_fit
   } else {
     sl_k$learners_fit[[j]]
