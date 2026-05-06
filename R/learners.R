@@ -274,6 +274,7 @@ Learner_glmnet <- setRefClass(
           cv_fit
 
         } else {
+
           suppressWarnings(
             do.call(glmnet::glmnet, c(
               .self$fit_arguments,
