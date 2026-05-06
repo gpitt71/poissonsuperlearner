@@ -137,10 +137,12 @@ Superlearner <- function(data,
   }
 
 
-  maximum_followup <- max(data[[event_time]])
-  n <- length(unique(data[[id]]))
 
-  if (!(0 %in% data[[status]])) {
+
+  maximum_followup <- max(data[[event_time]])
+  status_values <- unique(data[[status]])
+
+  if (!(0 %in% status_values)) {
     warning(
       paste0(
         "There is no value of ",
@@ -148,11 +150,9 @@ Superlearner <- function(data,
         " equal to zero. We will consider the data uncensored."
       )
     )
-    n_crisks <- length(unique(data[[status]]))
-    uncensored_01 <- TRUE
+    n_crisks <- length(status_values)
   } else {
-    n_crisks <- length(unique(data[[status]])) - 1L
-    uncensored_01 <- FALSE
+    n_crisks <- length(status_values) - 1L
   }
 
   if (!is.null(number_of_nodes)) {
@@ -172,7 +172,8 @@ Superlearner <- function(data,
     grid_nodes <- c(0, grid_nodes)
   }
 
-  grid_nodes <- grid_nodes[grid_nodes <= max(data[[event_time]])]
+  grid_nodes <- grid_nodes[grid_nodes <= maximum_followup]
+  grid_nodes <- sort(unique(grid_nodes))
 
 
   ## ------------------------------------------------------------
@@ -296,16 +297,18 @@ Superlearner <- function(data,
     cause_labels <- paste0("cause_", seq_along(library_per_risk))
   }
 
+  failed_by_cause <- lapply(
+    full_train_list,
+    function(fits_j) {
+      vapply(fits_j, is_failed_fit, logical(1L))
+    }
+  )
+
   failed_reason_table <- data.table::rbindlist(
     lapply(seq_along(full_train_list), function(jj) {
 
       fits_j <- full_train_list[[jj]]
-
-      failed_j <- vapply(
-        fits_j,
-        is_failed_fit,
-        logical(1L)
-      )
+      failed_j <- failed_by_cause[[jj]]
 
       if (!any(failed_j)) {
         return(NULL)
@@ -335,12 +338,7 @@ Superlearner <- function(data,
     fill = TRUE
   )
 
-  keep_by_cause <- lapply(
-    full_train_list,
-    function(fits_j) {
-      !vapply(fits_j, is_failed_fit, logical(1L))
-    }
-  )
+  keep_by_cause <- lapply(failed_by_cause, `!`)
 
   n_retained_by_cause <- vapply(
     keep_by_cause,
@@ -356,14 +354,12 @@ Superlearner <- function(data,
 
     if (nrow(failed_reason_table) > 0L) {
       reason_txt <- paste(
-        apply(failed_reason_table, 1L, function(x) {
-          sprintf(
-            "%s, learner '%s': %s",
-            x[["cause"]],
-            x[["learner"]],
-            x[["reason"]]
-          )
-        }),
+        sprintf(
+          "%s, learner '%s': %s",
+          failed_reason_table[["cause"]],
+          failed_reason_table[["learner"]],
+          failed_reason_table[["reason"]]
+        ),
         collapse = "\n"
       )
     }
@@ -568,23 +564,20 @@ Superlearner <- function(data,
 
       n_expanded <- nrow(val_level)
 
-      train_list_jj <- lapply(
-        library_per_risk[[jj]],
-        function(ll) {
-          ll$private_fit(
-            train_data,
-            cause = jj,
-            grid_nodes = grid_nodes
-          )
-        }
-      )
+
 
       preds <- vector("list", n_learners)
 
       for (mm in seq_len(n_learners)) {
 
+        fit_mm <- library_per_risk[[jj]][[mm]]$private_fit(
+          train_data,
+          cause = jj,
+          grid_nodes = grid_nodes
+        )
+
         z <- library_per_risk[[jj]][[mm]]$private_predictor(
-          model = train_list_jj[[mm]],
+          model = fit_mm,
           newdata = valid_data,
           grid_nodes = grid_nodes
         )
@@ -603,12 +596,56 @@ Superlearner <- function(data,
         has_non_na[mm] <- has_non_na[mm] || any(!is.na(z))
 
         preds[[mm]] <- z
+
+        rm(fit_mm)
       }
+      # train_list_jj <- lapply(
+      #   library_per_risk[[jj]],
+      #   function(ll) {
+      #     ll$private_fit(
+      #       train_data,
+      #       cause = jj,
+      #       grid_nodes = grid_nodes
+      #     )
+      #   }
+      # )
+      #
+      # preds <- vector("list", n_learners)
+      #
+      # for (mm in seq_len(n_learners)) {
+      #
+      #   z <- library_per_risk[[jj]][[mm]]$private_predictor(
+      #     model = train_list_jj[[mm]],
+      #     newdata = valid_data,
+      #     grid_nodes = grid_nodes
+      #   )
+      #
+      #   if (length(z) != n_expanded) {
+      #     stop(
+      #       sprintf(
+      #         "Prediction length mismatch for cause %s, fold %s, learner %s: got %s, expected %s.",
+      #         jj, ix, mm, length(z), n_expanded
+      #       )
+      #     )
+      #   }
+      #
+      #   z <- as.numeric(z)
+      #
+      #   has_non_na[mm] <- has_non_na[mm] || any(!is.na(z))
+      #
+      #   preds[[mm]] <- z
+      # }
 
       ## Assign all learner prediction columns in one data.table operation.
       val_level[, (z_cols) := preds]
-
       val_level[, fold := ix]
+
+      keep_fold_cols <- c("tij", "deltaij", "fold", z_cols)
+      drop_fold_cols <- setdiff(names(val_level), keep_fold_cols)
+
+      if (length(drop_fold_cols)) {
+        val_level[, (drop_fold_cols) := NULL]
+      }
 
       fold_parts[[ix]] <- val_level
 
@@ -617,7 +654,6 @@ Superlearner <- function(data,
         train_data,
         valid_data,
         val_level,
-        train_list_jj,
         preds
       )
     }
@@ -749,31 +785,6 @@ Superlearner <- function(data,
 
     cross_validation_deviance[[jj]] <- cv_dev
 
-    ## -------------------------------------------------------------------
-    ## Keep only relevant columns and transform to the logarithmic scale
-    ## -------------------------------------------------------------------
-
-    keep_cols <- c("tij", "deltaij", z_cols)
-    drop_cols <- setdiff(names(level_one_data), keep_cols)
-
-    if (length(drop_cols)) {
-      level_one_data[, (drop_cols) := NULL]
-    }
-
-    level_one_data <- level_one_data[complete.cases(level_one_data)]
-
-    eps <- 1e-15
-
-    level_one_data[
-      ,
-      (z_cols) := lapply(
-        .SD,
-        function(x) log(pmax(as.numeric(x), eps))
-      ),
-      .SDcols = z_cols
-    ]
-
-
     ## ------------------------------------------------------------
     ## If CV pruning leaves one learner for this cause, skip meta-learning
     ## ------------------------------------------------------------
@@ -784,21 +795,29 @@ Superlearner <- function(data,
       next
     }
 
+    eps <- 1e-15
 
-    ## ------------------------------------------------------------
-    ## Meta-learning
-    ## ------------------------------------------------------------
+    ok <- !is.na(level_one_data[["tij"]]) &
+      !is.na(level_one_data[["deltaij"]])
 
-    x_meta <- as.matrix(level_one_data[, ..z_cols])
+    for (zc in z_cols) {
+      ok <- ok & !is.na(level_one_data[[zc]])
+    }
+
+    x_meta <- as.matrix(level_one_data[ok, ..z_cols])
     storage.mode(x_meta) <- "double"
+
+    x_meta[x_meta < eps] <- eps
+    x_meta <- log(x_meta)
 
     meta_learner_fits[[jj]] <- glmnet::glmnet(
       x = x_meta,
-      y = as.numeric(level_one_data[["deltaij"]]),
-      offset = log(level_one_data[["tij"]]),
+      y = as.numeric(level_one_data[["deltaij"]][ok]),
+      offset = log(level_one_data[["tij"]][ok]),
       family = "poisson",
       intercept = FALSE,
-      lambda = 0
+      lambda = 0,
+      standardize = FALSE
     )
 
     rm(level_one_data, x_meta)

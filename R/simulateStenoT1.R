@@ -20,8 +20,8 @@
 #'   supplied, only those columns are returned.
 #' @param scenario `character(1)`. One of `"alpha"` or `"beta"`. Scenario `"beta"`
 #'   modifies the CVD hazard by adding nonlinear hinge-squared terms in age and LDL.
-#' @param competing_risks `logical(1)`. If `TRUE` and `scenario = "alpha"`, simulates
-#'   two event causes (CVD and death without CVD). Otherwise simulates CVD vs censoring.
+#' @param competing_risks `logical(1)`. If `TRUE`, simulates two event causes
+#'   (CVD and death without CVD). Otherwise simulates CVD vs censoring.
 #'
 #' @details
 #' The following baseline covariates are generated (column name, type, interpretation):
@@ -41,8 +41,9 @@
 #' }
 #'
 #' Event time variables are generated from latent Weibull PH models:
-#' `time.event.1` (CVD), `time.event.0` (censoring), and in scenario `"alpha"` also
-#' `time.event.2` (death without prior CVD). These latent variables are used to
+#' `time.event.1` (CVD), `time.event.0` (censoring), and, if
+#' `competing_risks = TRUE`, `time.event.2` (death without prior CVD).
+#' These latent variables are used to
 #' construct the observed outcome variables returned by the function (see below).
 #'
 #' @return A `data.table` with at least the following columns:
@@ -178,7 +179,7 @@ simulateStenoT1 <- function(
   # ------------------------------------------------------------------
   # Outcome model (scenario-specific)
   # ------------------------------------------------------------------
-  # latent event times: .1 is CVD, .2 is death without CVD (alpha only), .0 is censoring
+  # latent event times: .1 is CVD, .2 is death without CVD, .0 is censoring
   lava::distribution(sim_model, ~time.event.1) <- lava::coxWeibull.lvm(
     scale = 0.00344127508109558,
     shape = 1.1383691898171
@@ -188,7 +189,7 @@ simulateStenoT1 <- function(
     shape = 2.2578792372401
   )
 
-  if (scenario == "alpha") {
+  if (isTRUE(competing_risks)) {
     lava::distribution(sim_model, ~time.event.2) <- lava::coxWeibull.lvm(
       scale = 8.8338885667654e-05,
       shape = 1.49710154034773
@@ -208,7 +209,7 @@ simulateStenoT1 <- function(
   )
 
   if (scenario == "alpha") {
-    # event 1 hazard (linear)
+    # event 1 hazard: linear CVD model
     lava::regression(
       sim_model,
       time.event.1 ~ value_Motion + value_Smoking + log2_eGFR_old + log2_eGFR_young +
@@ -219,30 +220,19 @@ simulateStenoT1 <- function(
       0.0458766977417934, 0.0760940706393913, 0.0143694959616522, coefficient_LDL,
       0.00607734573133048, value_diabetis, coefficient_age, -0.224377188536924
     )
-
-    # event 2 hazard (death)
-    lava::regression(
-      sim_model,
-      time.event.2 ~ value_Motion + value_Smoking + log2_eGFR_old + log2_eGFR_young +
-        value_AlbuminuriaMicro + value_AlbuminuriaMacro + value_HBA1C + value_LDL +
-        value_SBP + diabetes_duration + age + sex
-    ) <- c(
-      -0.410553409305998, 0.833815403131808, 0.3289175620287, 0.313118375461698,
-      0.225523885897843, 0.604004891420425, 0.0102472549995989, 0.09,
-      0.00156423178426314, 0.06, 0.09, -0.276186036048047
-    )
   }
 
   if (scenario == "beta") {
-    # Nonlinear terms for event 1 hazard
+    # nonlinear terms for event 1 hazard
     lava::transform(sim_model, age_hinge55_sq ~ age) <- function(x) {
       a <- x[["age"]]
       (pmax(a - 55, 0)^2) / 100
     }
     lava::transform(sim_model, LDL_hinge3_sq ~ value_LDL) <- function(x) {
       ldl <- x[["value_LDL"]]
-      (pmax(ldl - 3.0, 0)^2)
+      pmax(ldl - 3.0, 0)^2
     }
+
     nl_age_strength <- 1
     nl_ldl_strength <- 1.5
 
@@ -260,6 +250,20 @@ simulateStenoT1 <- function(
     )
   }
 
+  if (isTRUE(competing_risks)) {
+    # event 2 hazard: death without prior CVD
+    # Shared across scenarios; beta only changes the CVD hazard.
+    lava::regression(
+      sim_model,
+      time.event.2 ~ value_Motion + value_Smoking + log2_eGFR_old + log2_eGFR_young +
+        value_AlbuminuriaMicro + value_AlbuminuriaMacro + value_HBA1C + value_LDL +
+        value_SBP + diabetes_duration + age + sex
+    ) <- c(
+      -0.410553409305998, 0.833815403131808, 0.3289175620287, 0.313118375461698,
+      0.225523885897843, 0.604004891420425, 0.0102472549995989, 0.09,
+      0.00156423178426314, 0.06, 0.09, -0.276186036048047
+    )
+  }
   # ------------------------------------------------------------------
   # Simulate and post-process
   # ------------------------------------------------------------------
@@ -278,20 +282,27 @@ simulateStenoT1 <- function(
   }
 
   # observed time/event
-  if (scenario == "alpha" && isTRUE(competing_risks)) {
+  if (isTRUE(competing_risks)) {
     d[, time_cvd := pmin(time.event.0, time.event.1, time.event.2)]
-    d[, status_cvd := data.table::fifelse(time.event.1 < time.event.0 & time.event.1 <= time.event.2, 1,
-                                          data.table::fifelse(time.event.2 < time.event.0 & time.event.2 < time.event.1, 2, 0)
+
+    d[, status_cvd := data.table::fcase(
+      time.event.0 <= time.event.1 & time.event.0 <= time.event.2, 0L,
+      time.event.1 <= time.event.2, 1L,
+      default = 2L
     )]
   } else {
     d[, time_cvd := pmin(time.event.0, time.event.1)]
-    d[, status_cvd := as.numeric(time.event.1 < time.event.0)]
+    d[, status_cvd := as.integer(time.event.1 < time.event.0)]
   }
 
   # uncensored event time/status
-  if (scenario == "alpha") {
+  if (isTRUE(competing_risks)) {
     d[, uncensored_time_cvd := pmin(time.event.1, time.event.2)]
-    d[, uncensored_status_cvd := as.numeric(time.event.2 < time.event.1) + 1L]
+    d[, uncensored_status_cvd := data.table::fifelse(
+      time.event.1 <= time.event.2,
+      1L,
+      2L
+    )]
   } else {
     d[, uncensored_time_cvd := time.event.1]
     d[, uncensored_status_cvd := 1L]
@@ -303,11 +314,17 @@ simulateStenoT1 <- function(
   d[, uncensored_time := uncensored_time_cvd]
   d[, uncensored_event := uncensored_status_cvd]
 
-  # beta script drops time.event.*
-  if (scenario == "beta") {
-    d[, time.event.0 := NULL]
-    d[, time.event.1 := NULL]
-  }
+  # rename latent event-time columns for output consistency
+  latent_time_cols <- intersect(
+    c("time.event.0", "time.event.1", "time.event.2"),
+    names(d)
+  )
+
+  data.table::setnames(
+    d,
+    old = latent_time_cols,
+    new = gsub("\\.", "_", latent_time_cols)
+  )
 
   # id + ordering
   data.table::setorder(d, time, -event)

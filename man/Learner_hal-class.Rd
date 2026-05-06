@@ -77,7 +77,6 @@ If \code{max_degree >= 2}, the learner additionally includes interaction bases s
 \item{\code{covariates}}{Covariate columns used to build covariate indicator bases.}
 \item{\code{num_knots}}{Controls the number of cutpoints per covariate used for indicator bases.}
 \item{\code{max_degree}}{Maximum interaction order included in the basis expansion.}
-\item{\code{add_nodes}}{If \code{TRUE}, includes interval ("node") structure for the baseline hazard.}
 \item{\code{intercept}}{Whether the backend penalized regression includes an intercept term.}
 \item{\code{cross_validation}}{If \code{TRUE}, selects the penalty level using \code{glmnet::cv.glmnet}.}
 \item{\code{fit_arguments}}{Additional arguments forwarded to the \code{glmnet} backend (e.g. \code{nfolds}).}
@@ -90,7 +89,6 @@ If \code{max_degree >= 2}, the learner additionally includes interaction bases s
 \item{\code{covariates} (\code{character})}{Names of covariate columns used in the basis.}
 \item{\code{cross_validation} (\code{logical})}{Whether to use \code{cv.glmnet} to select the penalty.}
 \item{\code{intercept} (\code{logical})}{Backend intercept flag.}
-\item{\code{add_nodes} (\code{logical})}{Whether node (time-interval) effects are included.}
 \item{\code{max_degree} (\code{integer})}{Maximum interaction order.}
 \item{\code{num_knots} (\code{numeric})}{Knots used for basis construction.}
 \item{\code{lambda_opt} (\code{numeric})}{Selected penalty level when using cross-validation.}

@@ -302,8 +302,7 @@ create_formula <- function(covariates=NA_character_,
 }
 
 
-create_formula_glmnet <- function(covariates=NA_character_,
-                           add_nodes=TRUE){
+create_formula_glmnet <- function(covariates=NA_character_){
 
 
   xs<- NULL
@@ -312,13 +311,8 @@ create_formula_glmnet <- function(covariates=NA_character_,
     xs <- paste(covariates, collapse = "+")
   }
 
-  # if (!is.na( treatment)) {
-  #   xs <- paste(xs, "+", treatment)
-  # }
+  xs <- paste(xs, "+ node")
 
-  if (add_nodes) {
-    xs <- paste(xs, "+ node")
-  }
 
   out <- paste("deltaij ~", xs, "+offset(log(tij))", sep =
                  "")
@@ -331,9 +325,7 @@ create_formula_glmnet <- function(covariates=NA_character_,
 }
 
 create_formula_gam <- function(covariates=NA_character_,
-                           competing_risks=FALSE,
-                           intercept=FALSE,
-                           add_nodes=TRUE){
+                           competing_risks=FALSE){
 
 
 
@@ -341,21 +333,8 @@ create_formula_gam <- function(covariates=NA_character_,
     xs <- paste(covariates, collapse = "+")
   }
 
-  # if (!is.na( treatment)) {
-  #   xs <- paste(xs, "+", treatment)
-  # }
+  xs <- paste(xs, "+ node")
 
-  # if (competing_risks) {
-  #   xs <- paste(xs, "+ k")
-  # }
-
-  if (add_nodes) {
-    xs <- paste(xs, "+ node")
-  }
-
-  # if(!intercept){
-  #   xs <- paste(xs, "-1")
-  # }
 
   out <- paste("deltaij ~", xs, sep =
                  "")
@@ -369,8 +348,7 @@ create_formula_gam <- function(covariates=NA_character_,
 
 create_formula_hal <- function(covariates=NA_character_,
                            competing_risks=FALSE,
-                           intercept=FALSE,
-                           add_nodes=TRUE){
+                           intercept=FALSE){
 
 
 
@@ -386,9 +364,8 @@ create_formula_hal <- function(covariates=NA_character_,
   #   xs <- paste(xs, "+ k")
   # }
 
-  if (add_nodes) {
-    xs <- paste(c(xs, "node"), collapse = "*")
-  }
+  xs <- paste(c(xs, "node"), collapse = "*")
+
 
   if(!intercept){
     xs <- paste(xs, "-1")

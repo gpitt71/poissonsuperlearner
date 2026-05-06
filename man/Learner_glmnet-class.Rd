@@ -48,7 +48,6 @@ encodes nodes).
 \item{\code{covariates} (\code{character})}{Names of covariate columns used in the model.}
 \item{\code{cross_validation} (\code{logical})}{If \code{TRUE}, chooses \code{lambda} by \code{glmnet::cv.glmnet}.}
 \item{\code{intercept} (\code{logical})}{Whether to include an intercept in the backend fit.}
-\item{\code{add_nodes} (\code{logical})}{If \code{TRUE}, include interval ("node") effects encoding the baseline hazard.}
 \item{\code{lambda} (\code{numeric})}{If \code{cross_validation=FALSE}, the \code{lambda} used in the final fit.}
 \item{\code{formula} (\code{character})}{Formula string used to create the design matrix in long format.}
 \item{\code{learner} (\code{function})}{Backend fitter (\code{glmnet::glmnet} or \code{glmnet::cv.glmnet}).}

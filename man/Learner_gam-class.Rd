@@ -49,7 +49,6 @@ The additive predictor \eqn{\eta(x)}{eta(x)} is constructed from \code{covariate
 \item{\code{covariates} (\code{character})}{Terms used to build the additive predictor (may include \code{s()} terms).}
 \item{\code{cross_validation} (\code{logical})}{Workflow flag; see Details.}
 \item{\code{intercept} (\code{logical})}{Whether to include an intercept.}
-\item{\code{add_nodes} (\code{logical})}{If \code{TRUE}, include interval ("node") effects encoding the baseline hazard.}
 \item{\code{formula} (\code{character})}{Formula string passed to \code{mgcv::bam}.}
 \item{\code{learner} (\code{function})}{Backend fitter (\code{mgcv::bam}).}
 \item{\code{fit_arguments} (\code{list})}{Additional arguments forwarded to \code{mgcv::bam}.}
