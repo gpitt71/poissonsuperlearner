@@ -790,32 +790,56 @@ Learner_hal <- setRefClass(
     initialize = function(covariates = NA_character_,
                           intercept = TRUE,
                           cross_validation = TRUE,
-                          max_degree = 2,
+                          max_degree = 2L,
                           maxit_prefit = NA_real_,
                           num_knots = c(10L, 5L),
                           ...) {
+
+      max_degree <- as.integer(max_degree)
+
+      if (length(max_degree) != 1L || is.na(max_degree) || max_degree < 1L) {
+        stop("max_degree must be a single positive integer.")
+      }
+
+      if (is.null(num_knots) || length(num_knots) == 0L || anyNA(num_knots)) {
+        stop("num_knots must be a non-empty vector without missing values.")
+      }
+
+      if (length(num_knots) == max_degree) {
+        ## all fine
+        num_knots <- as.numeric(num_knots)
+
+      } else if (length(num_knots) > max_degree) {
+        warning(
+          sprintf(
+            "length(num_knots) = %d is larger than max_degree = %d; truncating num_knots to length max_degree.",
+            length(num_knots), max_degree
+          ),
+          call. = FALSE
+        )
+
+        num_knots <- as.numeric(num_knots[seq_len(max_degree)])
+
+      } else {
+        warning(
+          sprintf(
+            "length(num_knots) = %d is smaller than max_degree = %d; recycling num_knots to length max_degree.",
+            length(num_knots), max_degree
+          ),
+          call. = FALSE
+        )
+
+        num_knots <- as.numeric(rep(num_knots, length.out = max_degree))
+      }
+
       .self$covariates <- covariates
-
       .self$cross_validation <- cross_validation
-
       .self$intercept <- intercept
-
       .self$max_degree <- max_degree
-
       .self$num_knots <- num_knots
-
-      # normalize user input
-      # tmp <- lambda_grid
-      # if (is.null(lambda_grid))
-      #   tmp <- NA_real_
-      # if (length(lambda_grid) == 0L)
-      #   tmp <- NA_real_
-      #
-      # .self$lambda_grid <- tmp
 
       .self$maxit_prefit <- maxit_prefit
 
-      # create formula for competing risks. It is correct in the fit method if survival.
       .self$formula <- create_formula_hal(
         covariates = .self$covariates,
         intercept = FALSE
@@ -829,13 +853,10 @@ Learner_hal <- setRefClass(
 
       .self$fit_arguments <- list(...)
 
-      .self$fit_arguments[['family']] <- "poisson"
-
-      .self$fit_arguments[['intercept']] <- .self$intercept
+      .self$fit_arguments[["family"]] <- "poisson"
+      .self$fit_arguments[["intercept"]] <- .self$intercept
 
       .self$basic_covariates <- .self$basic_covariates_constructor(covariates)
-
-
     },
 
 
