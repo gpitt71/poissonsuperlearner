@@ -41,6 +41,8 @@
 #' @param variable_transformation Optional transformation specification passed to
 #'   `apply_transformations()` on the internally created long-format data.
 #' @param nfold `numeric(1)`. Number of folds for cross-validation stacking.
+#' @param verbose logical(1). If TRUE, display progress bars during full-data
+#'   fitting and cross-validation fitting. Defaults to FALSE.
 #' @param ... Additional arguments currently ignored.
 #'
 #' @return An object of class `poisson_superlearner`, stored as a named `list`
@@ -139,7 +141,10 @@ Superlearner <- function(data,
                          nodes = NULL,
                          variable_transformation = NULL,
                          nfold = 3,
+                         verbose = FALSE,
                          ...) {
+
+  verbose <- isTRUE(verbose)
 
   if (!(id %in% names(data))) {
     data[["id"]] <- 1:NROW(data)
@@ -283,19 +288,48 @@ Superlearner <- function(data,
   full_train_list <- vector("list", n_crisks)
   names(full_train_list) <- names(library_per_risk)
 
-  for (jj in seq_len(n_crisks)) {
-    full_train_list[[jj]] <- lapply(
-      library_per_risk[[jj]],
-      function(learner) {
-        learner$private_fit(
-          dt,
-          cause = jj,
-          grid_nodes = grid_nodes
-        )
-      }
+  pb_full <- NULL
+
+  if (verbose) {
+    n_full_fits <- sum(lengths(library_per_risk))
+    full_fit_counter <- 0L
+    message("Fitting learners on the full data")
+    pb_full <- utils::txtProgressBar(
+      min = 0L,
+      max = n_full_fits,
+      initial = 0L,
+      style = 3
     )
+    on.exit(
+      if (!is.null(pb_full)) {
+        close(pb_full)
+      },
+      add = TRUE
+    )
+  }
+
+  for (jj in seq_len(n_crisks)) {
+    full_train_list[[jj]] <- vector("list", length(library_per_risk[[jj]]))
 
     names(full_train_list[[jj]]) <- names(library_per_risk[[jj]])
+
+    for (mm in seq_along(library_per_risk[[jj]])) {
+      full_train_list[[jj]][[mm]] <- library_per_risk[[jj]][[mm]]$private_fit(
+        dt,
+        cause = jj,
+        grid_nodes = grid_nodes
+      )
+
+      if (verbose) {
+        full_fit_counter <- full_fit_counter + 1L
+        utils::setTxtProgressBar(pb_full, full_fit_counter)
+      }
+    }
+  }
+
+  if (verbose) {
+    close(pb_full)
+    pb_full <- NULL
   }
 
   ## ------------------------------------------------------------
@@ -506,6 +540,40 @@ Superlearner <- function(data,
   meta_learner_fits <- vector("list", n_crisks)
   cross_validation_deviance <- vector("list", n_crisks)
 
+  pb_cv <- NULL
+
+  if (verbose) {
+    n_cv_fits <- nfold * sum(vapply(
+      library_per_risk,
+      function(x) {
+        if (length(x) > 1L) {
+          length(x)
+        } else {
+          0L
+        }
+      },
+      integer(1L)
+    ))
+
+    cv_fit_counter <- 0L
+
+    if (n_cv_fits > 0L) {
+      message("Fitting cross-validated learners")
+      pb_cv <- utils::txtProgressBar(
+        min = 0L,
+        max = n_cv_fits,
+        initial = 0L,
+        style = 3
+      )
+      on.exit(
+        if (!is.null(pb_cv)) {
+          close(pb_cv)
+        },
+        add = TRUE
+      )
+    }
+  }
+
 
   ## ------------------------------------------------------------
   ## Precompute fold row indices once.
@@ -609,6 +677,11 @@ Superlearner <- function(data,
         preds[[mm]] <- z
 
         rm(fit_mm)
+
+        if (verbose && n_cv_fits > 0L) {
+          cv_fit_counter <- cv_fit_counter + 1L
+          utils::setTxtProgressBar(pb_cv, cv_fit_counter)
+        }
       }
 
 
@@ -801,6 +874,11 @@ Superlearner <- function(data,
     ## Optional, useful if this loop is memory-heavy.
     ## Avoid doing this inside each fold.
     gc()
+  }
+
+  if (verbose && n_cv_fits > 0L) {
+    close(pb_cv)
+    pb_cv <- NULL
   }
 
   ## ------------------------------------------------------------

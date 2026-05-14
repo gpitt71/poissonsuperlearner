@@ -1,5 +1,16 @@
-# New utils
-
+#' Fill missing or empty names in a list-like object
+#'
+#' Developer note: internal helper used to normalize learner and cause-library
+#' names before storing them in fitted objects.
+#'
+#' Assumes `x` can carry names and that `prefix` is a scalar character prefix.
+#' Missing, `NA`, or empty names are replaced by `prefix` plus the element index,
+#' and all names are made unique with `make.unique()`.
+#'
+#' @param x List-like object whose names should be completed.
+#' @param prefix Character prefix used for generated names.
+#' @returns `x` with completed, unique names.
+#' @noRd
 fill_missing_names <- function(x, prefix) {
   nm <- names(x)
 
@@ -15,10 +26,23 @@ fill_missing_names <- function(x, prefix) {
   x
 }
 
-
-
 # Data preprocessing ----
 
+#' Create a cause-specific long-format response vector
+#'
+#' Developer note: internal helper for piecewise-constant hazard preprocessing.
+#'
+#' Assumes `nodes` are sorted time cut points, `time_to_event` is a single event
+#' or censoring time, `delta` is the observed status, and `event_type` is the
+#' cause being expanded. The returned vector has zero entries before the terminal
+#' interval and a terminal indicator for the requested event type.
+#'
+#' @param nodes Numeric vector of grid nodes.
+#' @param time_to_event Numeric scalar event or censoring time.
+#' @param delta Observed event status for one subject.
+#' @param event_type Cause index currently being encoded.
+#' @returns Numeric vector of interval responses for one subject and cause.
+#' @noRd
 create_response_variable_c_risks <- function(nodes, time_to_event, delta, event_type){
 
 
@@ -32,6 +56,23 @@ create_response_variable_c_risks <- function(nodes, time_to_event, delta, event_
   return(out)
 }
 
+#' Create interval exposures for one subject
+#'
+#' Developer note: internal helper used while expanding subject-level data to
+#' long Poisson data.
+#'
+#' Assumes `nodes` are sorted cut points on the follow-up scale and
+#' `time_to_event` is a single observed time. The `delta` argument is retained
+#' for the historical call signature but is not used. The function truncates the
+#' final interval at the observed time and returns interval starts with their
+#' exposure widths. It can fail if `nodes` do not contain values compatible with
+#' the observed time.
+#'
+#' @param nodes Numeric vector of grid nodes.
+#' @param delta Unused event indicator/status argument.
+#' @param time_to_event Numeric scalar event or censoring time.
+#' @returns Two-column matrix with `grid_nodes` and `tij` interval lengths.
+#' @noRd
 create_offset_variable <- function(nodes, delta, time_to_event){
 
   # if(time_to_event==0){
@@ -61,6 +102,28 @@ create_offset_variable <- function(nodes, delta, time_to_event){
   # }
 }
 
+#' Expand subject-level data into long Poisson data
+#'
+#' Developer note: internal preprocessing step shared by base learners and the
+#' Super Learner. It mutates `data` by reference after coercing it with
+#' `data.table::setDT()`.
+#'
+#' Assumes `data` contains the supplied identifier, status, and event-time
+#' columns, and that `nodes` are sorted cut points covering the needed follow-up
+#' range. The output contains one row per subject, cause, and at-risk interval,
+#' with interval exposures, cause-specific responses, and factor-coded nodes.
+#' Failures generally arise from missing columns, incompatible node values, or
+#' invalid event/status encodings.
+#'
+#' @param data Input subject-level `data.frame` or `data.table`.
+#' @param id Name of the subject identifier column.
+#' @param status Name of the event-status column.
+#' @param event_time Name of the event/censoring time column.
+#' @param nodes Numeric vector of grid nodes.
+#' @param predictions Historical flag, currently unused.
+#' @param uncensored_01 Logical/numeric flag adjusting competing-risk counting.
+#' @returns A `data.table` in long Poisson format.
+#' @noRd
 data_pre_processing <- function(data,
                                 id,
                                 status,
@@ -142,6 +205,26 @@ data_pre_processing <- function(data,
 }
 
 
+#' Expand validation rows to a prediction skeleton
+#'
+#' Developer note: internal helper for rebuilding all intervals up to each
+#' validation subject's terminal interval.
+#'
+#' Assumes `valid_data` is a `data.table`, `grid_nodes` are sorted numeric nodes,
+#' and `valid_data[[node_col]]` matches values in `grid_nodes` exactly. The
+#' function copies the requested columns, adds prediction row identifiers, and
+#' creates interval-level `node`, `tij`, and `deltaij` columns. It stops if a
+#' terminal node cannot be matched to `grid_nodes`.
+#'
+#' @param valid_data Validation data in terminal long-data form.
+#' @param grid_nodes Sorted numeric grid nodes.
+#' @param cause Cause index used to mark terminal events.
+#' @param node_col Name of the terminal node column.
+#' @param tij_col Name of the terminal exposure column.
+#' @param event_col Name of the terminal event/status column.
+#' @param keep_cols Additional columns to retain.
+#' @returns A copied `data.table` expanded to all intervals up to terminal time.
+#' @noRd
 make_validation_skeleton <- function(valid_data,
                                      grid_nodes,
                                      cause,
@@ -195,8 +278,24 @@ make_validation_skeleton <- function(valid_data,
 
   out[]
 }
-## Matrix transformation ----
+# Matrix transformation ----
 
+#' Apply derived-column transformations to long data
+#'
+#' Developer note: internal helper used before fitting or prediction when the
+#' caller supplies `variable_transformation`.
+#'
+#' Accepts a formula, character string, or list of formulas/strings of the form
+#' `lhs ~ rhs`. Multiple left- and right-hand side expressions may be separated
+#' by `+` and must have the same length. The function mutates `dt` by reference
+#' and returns it invisibly. It stops for unsupported transformation types,
+#' malformed strings, unequal LHS/RHS lengths, parse errors, or evaluation
+#' errors in the data.table environment.
+#'
+#' @param dt `data.table` to modify by reference.
+#' @param variable_transformation Transformation specification or `NULL`.
+#' @returns Invisibly returns the modified `dt`.
+#' @noRd
 apply_transformations <- function(dt, variable_transformation) {
   stopifnot(data.table::is.data.table(dt))
 
@@ -254,54 +353,21 @@ apply_transformations <- function(dt, variable_transformation) {
   invisible(dt)
 }
 
-sl_cut <- function(x, breaks, include.lowest = TRUE, right = TRUE) {
-
-  labels <- paste0(head(breaks, -1), "-", tail(breaks, -1) - if (right) 1 else 0)
-  # Return labeled factor
-  cut(x, breaks = breaks, labels = labels, include.lowest = include.lowest, right = right)
-}
-
-
 # Other utils ----
-create_formula <- function(covariates=NA_character_,
-                           competing_risks=FALSE,
-                           intercept=FALSE,
-                           add_nodes=TRUE){
 
 
- xs<- NULL
-
-  if (!any(is.na( covariates))) {
-  xs <- paste(covariates, collapse = "+")
-  }
-
-  # if (!is.na( treatment)) {
-  #   xs <- paste(xs, "+", treatment)
-  # }
-
-  # if (competing_risks) {
-  #   xs <- paste(xs, "+ k")
-  # }
-
-  if (add_nodes) {
-    xs <- paste(xs, "+ node")
-  }
-
-  if(!intercept){
-    xs <- paste(xs, "-1")
-  }
-
-  out <- paste("deltaij ~", xs, "+offset(log(tij))", sep =
-                 "")
-
-  return(out)
-
-
-
-
-}
-
-
+#' Build a glmnet Poisson formula
+#'
+#' Developer note: internal formula constructor for the `Learner_glmnet`
+#' design matrix path.
+#'
+#' Assumes covariate names are syntactically valid formula terms. The node term
+#' is always added and the exposure offset is included. Invalid names or missing
+#' required columns fail downstream during model-matrix construction.
+#'
+#' @param covariates Character vector of covariate names or `NA_character_`.
+#' @returns Character scalar formula for `deltaij`.
+#' @noRd
 create_formula_glmnet <- function(covariates=NA_character_){
 
 
@@ -324,6 +390,18 @@ create_formula_glmnet <- function(covariates=NA_character_){
 
 }
 
+#' Build a GAM formula
+#'
+#' Developer note: internal formula constructor for `Learner_gam`.
+#'
+#' Assumes covariate names are valid formula terms. The node term is always
+#' added, and no exposure offset is included here because the backend handles it
+#' separately. The `competing_risks` argument is retained for compatibility.
+#'
+#' @param covariates Character vector of covariate names or `NA_character_`.
+#' @param competing_risks Historical flag, currently unused.
+#' @returns Character scalar formula for `deltaij`.
+#' @noRd
 create_formula_gam <- function(covariates=NA_character_,
                            competing_risks=FALSE){
 
@@ -346,6 +424,20 @@ create_formula_gam <- function(covariates=NA_character_,
 
 }
 
+#' Build a HAL interaction formula
+#'
+#' Developer note: internal formula constructor for HAL-style basis generation.
+#'
+#' Assumes covariate names are valid formula terms. Covariates and `node` are
+#' joined with `*` so interaction terms can be expanded by downstream tooling.
+#' The `competing_risks` argument is retained for compatibility. Invalid names
+#' fail later during formula parsing or basis construction.
+#'
+#' @param covariates Character vector of covariate names or `NA_character_`.
+#' @param competing_risks Historical flag, currently unused.
+#' @param intercept Logical; whether to keep an intercept.
+#' @returns Character scalar formula with exposure offset.
+#' @noRd
 create_formula_hal <- function(covariates=NA_character_,
                            competing_risks=FALSE,
                            intercept=FALSE){
@@ -382,8 +474,19 @@ create_formula_hal <- function(covariates=NA_character_,
 }
 
 
-## Make fit cheaper
+# Make fit cheaper
 
+#' Create a lightweight failed-fit sentinel
+#'
+#' Developer note: internal helper used to avoid retaining heavy failed model
+#' objects in learner libraries.
+#'
+#' The returned object records a failure reason and has classes used by
+#' `is_failed_fit()`. It has no side effects.
+#'
+#' @param reason Character description of the failure.
+#' @returns A `psl_failed_fit` sentinel object.
+#' @noRd
 make_failed_fit <- function(reason = NA_character_) {
   structure(
     list(reason = reason),
@@ -391,10 +494,30 @@ make_failed_fit <- function(reason = NA_character_) {
   )
 }
 
+#' Test whether an object is a failed-fit sentinel
+#'
+#' Developer note: internal predicate paired with `make_failed_fit()`.
+#'
+#' @param model Object to test.
+#' @returns Logical scalar.
+#' @noRd
 is_failed_fit <- function(model) {
   inherits(model, "psl_failed_fit")
 }
 
+#' Attach package fit metadata to a model object
+#'
+#' Developer note: internal helper for retaining lightweight bookkeeping on
+#' fitted learner objects.
+#'
+#' Returns `NULL` and failed-fit sentinels unchanged. Otherwise it sets the
+#' `psl_meta` attribute on `model`, which may copy the object depending on R's
+#' usual object semantics.
+#'
+#' @param model Fitted model object, `NULL`, or failed-fit sentinel.
+#' @param meta Metadata object to store as an attribute.
+#' @returns `model` with `psl_meta` attached, or the unchanged input.
+#' @noRd
 attach_psl_fit_meta <- function(model, meta = NULL) {
   if (is.null(model) || is_failed_fit(model)) {
     return(model)
@@ -403,826 +526,34 @@ attach_psl_fit_meta <- function(model, meta = NULL) {
   model
 }
 
+#' Read package fit metadata from a model object
+#'
+#' Developer note: internal accessor for metadata stored by
+#' `attach_psl_fit_meta()`.
+#'
+#' @param model Fitted model object.
+#' @returns The exact `psl_meta` attribute, or `NULL` if absent.
+#' @noRd
 get_psl_fit_meta <- function(model) {
   attr(model, "psl_meta", exact = TRUE)
 }
 
-resolve_prediction_model <- function(object, model = "sl") {
-
-  n_learners <- length(object$learners)
-  labels <- object$data_info$learners_labels
-
-  if (is.null(model) || length(model) != 1L) {
-    stop("'model' must be a scalar.")
-  }
-
-  if (is.numeric(model)) {
-    if (is.na(model) || model != as.integer(model)) {
-      stop("Numeric 'model' must be one of 0, 1, 2, ...")
-    }
-
-    model <- as.integer(model)
-
-    if (model == 0L) {
-      return(list(type = "sl", index = 0L, label = "sl"))
-    }
-
-    if (model >= 1L && model <= n_learners) {
-      return(list(
-        type = "learner",
-        index = model,
-        label = labels[model]
-      ))
-    }
-
-    stop(
-      sprintf(
-        "Numeric 'model' must be 0 for the superlearner or an integer in 1:%d.",
-        n_learners
-      )
-    )
-  }
-
-  if (!is.character(model) || is.na(model)) {
-    stop("'model' must be a character scalar or a numeric scalar.")
-  }
-
-  model_chr <- trimws(model)
-  model_chr_lc <- tolower(model_chr)
-
-  if (model_chr_lc %in% c("sl", "superlearner", "super_learner")) {
-    return(list(type = "sl", index = 0L, label = "sl"))
-  }
-
-  if (model_chr %in% labels) {
-    j <- match(model_chr, labels)
-    return(list(
-      type = "learner",
-      index = j,
-      label = labels[j]
-    ))
-  }
-
-  if (grepl("^learner_[0-9]+$", model_chr_lc)) {
-    j <- as.integer(sub("^learner_", "", model_chr_lc))
-
-    if (j >= 1L && j <= n_learners) {
-      return(list(
-        type = "learner",
-        index = j,
-        label = labels[j]
-      ))
-    }
-
-    stop(
-      sprintf(
-        "'%s' is out of range. Available learners are learner_1, ..., learner_%d.",
-        model_chr,
-        n_learners
-      )
-    )
-  }
-
-  stop(
-    sprintf(
-      paste(
-        "Unknown 'model' selector '%s'.",
-        "Use 'sl', 0, a learner label, 'learner_j', or an integer in 1:%d."
-      ),
-      model_chr,
-      n_learners
-    )
-  )
-}
-
-
-psl_get_labels <- function(object) {
-  labs <- NULL
-
-  if (!is.null(object$data_info) && !is.null(object$data_info$learners_labels)) {
-    labs <- object$data_info$learners_labels
-  }
-
-  if (is.null(labs) || length(labs) == 0L) {
-    if (!is.null(object$learners) && length(object$learners) > 0L) {
-      labs <- names(object$learners)
-    }
-  }
-
-  if (is.null(labs) || length(labs) == 0L) {
-    labs <- paste0("learner_", seq_along(object$learners))
-  }
-
-  as.character(labs)
-}
-
-psl_get_stored_fit <- function(object, cause, model = "sl") {
-
-  if (is.null(object$superlearner) || length(object$superlearner) == 0L) {
-    stop("No fitted superlearner object available.")
-  }
-
-  if (length(cause) != 1L || is.na(cause) || cause != as.integer(cause)) {
-    stop("'cause' must be a single positive integer.")
-  }
-
-  cause <- as.integer(cause)
-
-  if (cause < 1L || cause > object$data_info$n_crisks) {
-    stop(
-      sprintf(
-        "'cause' must be between 1 and %d.",
-        object$data_info$n_crisks
-      )
-    )
-  }
-
-  sel <- resolve_prediction_model(object, model)
-  labels <- psl_get_labels(object)
-  sl_k <- object$superlearner[[cause]]
-
-  if (sel$type == "sl") {
-    if (!is.null(object$metalearner) && !is.null(sl_k$meta_learner_fit)) {
-      return(list(
-        fit = sl_k$meta_learner_fit,
-        type = "sl",
-        index = 0L,
-        label = "sl"
-      ))
-    }
-
-    if (length(object$learners) == 1L) {
-      return(list(
-        fit = sl_k$learners_fit,
-        type = "learner",
-        index = 1L,
-        label = labels[1L]
-      ))
-    }
-
-    stop("No fitted meta-learner available for model = 'sl'.")
-  }
-
-  j <- sel$index
-
-  fit_j <- if (length(object$learners) == 1L) {
-    sl_k$learners_fit
-  } else {
-    sl_k$learners_fit[[j]]
-  }
-
-  list(
-    fit = fit_j,
-    type = "learner",
-    index = j,
-    label = labels[j]
-  )
-}
-
-psl_extract_meta_coefs <- function(fit, ...) {
-  if (is.null(fit)) return(NULL)
-
-  if (inherits(fit, "cv.glmnet")) {
-    cc <- stats::coef(fit, s = "lambda.min", ...)
-    cc <- as.matrix(cc)
-    return(cc[, 1])
-  }
-
-  if (inherits(fit, "glmnet")) {
-    lam <- fit$lambda
-    lam_use <- if (length(lam) >= 1L) lam[[1L]] else NULL
-    cc <- if (!is.null(lam_use)) {
-      stats::coef(fit, s = lam_use, ...)
-    } else {
-      stats::coef(fit, ...)
-    }
-    cc <- as.matrix(cc)
-    return(cc[, 1])
-  }
-
-  stats::coef(fit, ...)
-}
-
-psl_rename_z_in_text <- function(x, zmap) {
-  if (is.null(x)) return(x)
-  x <- as.character(x)
-  for (z in names(zmap)) {
-    x <- gsub(paste0("\\b", z, "\\b"), zmap[[z]], x, perl = TRUE)
-  }
-  x
-}
-
-
-# Cross-validation helpers ----
-
-
-psl_init_oof_buffer <- function(dt_k, z_covariates) {
-  structure(
-    list(
-      Z = matrix(
-        NA_real_,
-        nrow = nrow(dt_k),
-        ncol = length(z_covariates),
-        dimnames = list(NULL, z_covariates)
-      )
-    ),
-    class = "psl_oof_buffer"
-  )
-}
-
-psl_write_oof_buffer <- function(oof_buffer, oof_chunk) {
-  if (is.null(oof_chunk) || length(oof_chunk$row_ix) == 0L) {
-    return(oof_buffer)
-  }
-
-  oof_buffer$Z[oof_chunk$row_ix, ] <- oof_chunk$Z
-  oof_buffer
-}
-
-psl_compact_oof_to_dt <- function(dt, dt_z, z_covariates) {
-  if (is.data.table(dt_z)) {
-    return(
-      merge(
-        dt_z[, !c("tij", "deltaij"), with = FALSE],
-        dt,
-        by = c("id", "folder", "node")
-      )
-    )
-  }
-
-  if (!(is.list(dt_z) && !is.null(dt_z$Z))) {
-    stop("'dt_z' must be either a data.table or a compact OOF buffer with element 'Z'.")
-  }
-
-  tmp <- copy(dt)
-
-  if ("row_ix" %in% names(tmp)) {
-    tmp[, row_ix := NULL]
-  }
-
-  z_dt <- as.data.table(dt_z$Z)
-  setnames(z_dt, z_covariates)
-
-  tmp[, (z_covariates) := z_dt]
-
-  # Preserve the old meta-learning interface, where a competing_risk column
-  # was present after merging dt_z back into dt.
-  tmp[, competing_risk := as.integer(as.character(k))]
-
-  tmp
-}
-psl_oof_loghaz_dt <- function(oof_buffer, z_covariates) {
-  out <- data.table::as.data.table(oof_buffer$Z)
-  data.table::setnames(out, z_covariates)
-  out
-}
-create_pseudo_observations <- function(training_data,
-                                       validation_data,
-                                       competing_risk,
-                                       learners,
-                                       z_covariates,
-                                       ix) {
-  if (nrow(validation_data) == 0L) {
-    return(list(
-      row_ix = integer(0),
-      Z = matrix(
-        NA_real_,
-        nrow = 0L,
-        ncol = length(z_covariates),
-        dimnames = list(NULL, z_covariates)
-      )
-    ))
-  }
-
-  train_list <- lapply(learners, function(f) f$private_fit(training_data))
-
-  val_list <- mapply(
-    function(f, model, newdata) {
-      f$private_predictor(model = model, newdata = newdata)
-    },
-    learners,
-    train_list,
-    MoreArgs = list(newdata = validation_data),
-    SIMPLIFY = FALSE
-  )
-
-  val_mat <- do.call(cbind, lapply(val_list, as.numeric))
-
-  if (is.null(dim(val_mat))) {
-    val_mat <- matrix(val_mat, ncol = length(z_covariates))
-  }
-
-  val_mat <- log(val_mat)
-  storage.mode(val_mat) <- "double"
-  colnames(val_mat) <- z_covariates
-
-  list(
-    row_ix = validation_data[["row_ix"]],
-    Z = val_mat
-  )
-}
-# create_pseudo_observations <- function(training_data,
-#                                        validation_data,
-#                                        competing_risk,
-#                                        learners,
-#                                        z_covariates,
-#                                        ix){
-#   "
-#   This function creates the pseudo-observations.
-#
-#   "
-#
-#   train_list <- lapply(learners, function(f) f$private_fit(training_data))
-#
-#
-#   # Predict on the validation set your pseudo-observations ----
-#   val_list <- mapply(
-#     function(f, model, newdata)
-#       f$private_predictor(model = model, newdata = newdata),
-#     learners,
-#     train_list,
-#     MoreArgs = list(newdata = validation_data)
-#   )
-#
-#
-#
-#   # val_list<- as.matrix(val_list)
-#
-#
-#   val_list<- apply(as.matrix(val_list),
-#                  MARGIN = 2,
-#                  log)
-#
-#
-#   # Name the columns
-#
-#   colnames(val_list) <- z_covariates
-#
-#
-#   dt_z <-  data.table(val_list)[, c("id", "folder","node",paste0("deltaij"), "tij") := validation_data[,.(id,folder,node,deltaij,tij)]] #
-#
-#   dt_z[,competing_risk:= competing_risk]
-#
-#   return(dt_z)
-#
-#
-#
-# }
-#
-
-select_covariate_path <- function(dt, z_covariates, min_depth) {
-  # add covariates column
-  dt[, covariate := z_covariates]
-
-  # order by deviance
-  ordered_cov <- dt[order(deviance), covariate]
-
-  # build list from min_depth up to full length
-  lapply(min_depth:length(ordered_cov), function(k) ordered_cov[1:k])
-}
-
-
-
-merge_deltas <- function(lst) {
-  if (length(lst) == 0L) return(data.table(id = integer(), node = integer()))
-
-  # Keep only id, node, and delta_* columns from each table
-  cleaned <- lapply(lst, function(DT) {
-    DT <- as.data.table(copy(DT))
-    dcols <- grep("^delta_", names(DT), value = TRUE)
-    if (length(dcols) == 0L) stop("Each element must contain at least one delta_* column.")
-    DT <- DT[, c("id", "node", dcols), with = FALSE]
-    setkey(DT, id, node)
-    DT
-  })
-
-  # Full outer merge across the list on id+node
-  out <- Reduce(function(x, y) merge(x, y, by = c("id", "node"), all = TRUE), cleaned)
-
-  # Order columns: id, node, then delta_* in natural order (by numeric suffix if present)
-  deltas <- grep("^delta_", names(out), value = TRUE)
-  ord <- order(suppressWarnings(as.integer(sub(".*?(\\d+)$", "\\1", deltas))), deltas)
-  setcolorder(out, c("id", "node", deltas[ord]))
-
-  out[]
-}
-
-
-## Meta learning ----
-
-meta_learners_candidates <- function(meta_learner_algorithms,
-                                     z_covariates){
-
-  out <- list()
-
-  ## this should be removed from the production version of the package!!!
-  if("glm_ml_1"%in% meta_learner_algorithms){
-
-    one_time_learner=list(glm_ml_1 =  Learner_glmnet(
-      covariates = z_covariates,
-      cross_validation = FALSE,
-      intercept = FALSE,
-      add_nodes = FALSE,
-      penalise_nodes = TRUE,
-      lambda=0
-    ))
-
-    out <- c(out,one_time_learner)
-
-  }
-
-  if("glmnet_ml_1"%in% meta_learner_algorithms){
-
-    one_time_learner=list(glmnet_ml_1 =  Learner_glmnet(
-      covariates = z_covariates,
-      cross_validation = TRUE,
-      intercept = FALSE,
-      add_nodes = FALSE,
-      penalise_nodes = TRUE
-    ))
-
-out <- c(out,one_time_learner)
-
-  }
-
-  if("glm_ml_2"%in% meta_learner_algorithms){
-
-    one_time_learner=list(glm_ml_2 =  Learner_glmnet(
-      covariates = c(z_covariates, paste0(z_covariates,":node")),
-      cross_validation = FALSE,
-      intercept = FALSE,
-      add_nodes = TRUE,
-      penalise_nodes = TRUE,
-      lambda=0
-    ))
-
-    out <- c(out,one_time_learner)
-
-  }
-
-  if("glmnet_ml_2"%in% meta_learner_algorithms){
-
-    one_time_learner=list(glmnet_ml_2 =  Learner_glmnet(
-      covariates = c(z_covariates, paste0(z_covariates,":node")),
-      cross_validation = TRUE,
-      intercept = FALSE,
-      add_nodes = TRUE,
-      penalise_nodes = TRUE
-    ))
-
-    out <- c(out,one_time_learner)
-
-  }
-
-  if("glm_ml_3"%in% meta_learner_algorithms){
-
-    one_time_learner=list(glm_ml_3 =  Learner_glmnet(
-      covariates = z_covariates,
-      cross_validation = FALSE,
-      intercept = FALSE,
-      add_nodes = TRUE,
-      penalise_nodes = TRUE,
-      lambda=0
-    ))
-
-    out <- c(out,one_time_learner)
-
-  }
-
-  if("glmnet_ml_3"%in% meta_learner_algorithms){
-
-    one_time_learner=list(glmnet_ml_3 =  Learner_glmnet(
-      covariates =  c(z_covariates, paste0(z_covariates,":node")),
-      cross_validation = TRUE,
-      intercept = FALSE,
-      add_nodes = TRUE,
-      penalise_nodes = FALSE
-    ))
-
-    out <- c(out,one_time_learner)
-
-  }
-
-  if("glm_ml_4"%in% meta_learner_algorithms){
-
-    one_time_learner=list(glm_ml_4 =  Learner_glmnet(
-      covariates =c(z_covariates, paste0(z_covariates,":node")),
-      cross_validation = FALSE,
-      intercept = FALSE,
-      lambda=0,
-      add_nodes = FALSE,
-      penalise_nodes = TRUE
-    ))
-
-    out <- c(out,one_time_learner)
-
-  }
-
-  if("glmnet_ml_4"%in% meta_learner_algorithms){
-
-    one_time_learner=list(glmnet_ml_4 =  Learner_glmnet(
-      covariates = z_covariates,
-      cross_validation = TRUE,
-      intercept = FALSE,
-      add_nodes = TRUE,
-      penalise_nodes = TRUE
-    ))
-
-    out <- c(out,one_time_learner)
-
-  }
-
-  if("glmnet_ml_5"%in% meta_learner_algorithms){
-
-    one_time_learner=list(glmnet_ml_5 =  Learner_glmnet(
-      covariates = z_covariates,
-      cross_validation = TRUE,
-      intercept = FALSE,
-      add_nodes = TRUE,
-      penalise_nodes = FALSE
-    ))
-
-    out <- c(out,one_time_learner)
-
-  }
-
-  if("glmnet_ml_6"%in% meta_learner_algorithms){
-
-    one_time_learner=list(glmnet_ml_6 =  Learner_glmnet(
-      covariates =c(z_covariates, paste0(z_covariates,":node")),
-      cross_validation = TRUE,
-      intercept = FALSE,
-      add_nodes = FALSE,
-      penalise_nodes = TRUE
-    ))
-
-    out <- c(out,one_time_learner)
-
-  }
-
-  #########################################################
-
-
-  if("glmnet" %in% meta_learner_algorithms){
-
-
-    glmnet_meta_learners <- list(
-
-      # Z1 + Z2
-      glmnet_ml_1 =  Learner_glmnet(
-        covariates = z_covariates,
-        cross_validation = TRUE,
-        intercept = FALSE,
-        add_nodes = FALSE,
-        penalise_nodes = TRUE
-      )#,
-
-
-      #next paper ----
-      ## Z1*Z2*node
-      # glmnet_ml_2 =  Learner_glmnet(
-      #   covariates = c(z_covariates, paste0(z_covariates,":node")),
-      #   cross_validation = TRUE,
-      #   intercept = FALSE,
-      #   add_nodes = TRUE,
-      #   penalise_nodes = TRUE
-      # ),
-      ## Z1*Z2*node - not penalised
-      # glmnet_ml_3 =  Learner_glmnet(
-      #   covariates =  c(z_covariates, paste0(z_covariates,":node")),
-      #   cross_validation = TRUE,
-      #   intercept = FALSE,
-      #   add_nodes = TRUE,
-      #   penalise_nodes = FALSE
-      # ),
-      ## Z1+Z2+node
-      # glmnet_ml_4 =  Learner_glmnet(
-      #   covariates = z_covariates,
-      #   cross_validation = TRUE,
-      #   intercept = FALSE,
-      #   add_nodes = TRUE,
-      #   penalise_nodes = TRUE
-      # ),
-      ## Z1+Z2+node - not penalised
-      # glmnet_ml_5 =  Learner_glmnet(
-      #   covariates = z_covariates,
-      #   cross_validation = TRUE,
-      #   intercept = FALSE,
-      #   add_nodes = TRUE,
-      #   penalise_nodes = FALSE
-      # ),
-      ## Z1+Z2+Z1:node+Z2:node
-      # glmnet_ml_6 =  Learner_glmnet(
-      #   covariates =c(z_covariates, paste0(z_covariates,":node")),
-      #   cross_validation = TRUE,
-      #   intercept = FALSE,
-      #   add_nodes = FALSE,
-      #   penalise_nodes = TRUE
-      # )
-      #
-
-      )
-
-    out <- c(out,glmnet_meta_learners)
-
-
-  }
-
-
-  if("glm" %in% meta_learner_algorithms){
-
-
-    glm_meta_learners <- list(
-
-      # Z1 + Z2
-      glm_ml_1 =  Learner_glmnet(
-        covariates = z_covariates,
-        cross_validation = FALSE,
-        intercept = FALSE,
-        add_nodes = FALSE,
-        penalise_nodes = TRUE,
-        lambda=0
-      )#,
-      ## Z1*Z2*node
-      # glm_ml_2 =  Learner_glmnet(
-      #   covariates = c(z_covariates, paste0(z_covariates,":node")),
-      #   cross_validation = FALSE,
-      #   intercept = FALSE,
-      #   add_nodes = TRUE,
-      #   penalise_nodes = TRUE,
-      #   lambda=0
-      # ),
-      ## Z1+Z2+node
-      # glm_ml_3 =  Learner_glmnet(
-      #   covariates = z_covariates,
-      #   cross_validation = FALSE,
-      #   intercept = FALSE,
-      #   add_nodes = TRUE,
-      #   penalise_nodes = TRUE,
-      #   lambda=0
-      # ),
-      ## Z1+Z2+Z1:node+Z2:node
-      # glm_ml_4 =  Learner_glmnet(
-      #   covariates =c(z_covariates, paste0(z_covariates,":node")),
-      #   cross_validation = FALSE,
-      #   intercept = FALSE,
-      #   lambda=0,
-      #   add_nodes = FALSE,
-      #   penalise_nodes = TRUE
-      # )
-
-      )
-
-    out <- c(out,glm_meta_learners)
-
-
-  }
-
-  names(out) <- paste(names(out),paste0(z_covariates, collapse = ""),sep = "_")
-
-  return(out)
-
-}
-
-
-# fit_meta_learner <- function(dt,
-#                              dt_z,
-#                              meta_learner,
-#                              z_covariates) {
-#
-#   tmp <- merge(
-#     dt_z[, !c("tij", "deltaij"), with = FALSE],
-#     dt,
-#     by = c("id", "folder", "node")
-#   )
-#
-#   meta_learner_fit <- meta_learner$private_fit(tmp)
-#
-#   return(meta_learner_fit)
-# }
-
-fit_meta_learner <- function(dt,
-                             dt_z,
-                             meta_learner,
-                             z_covariates) {
-  tmp <- psl_compact_oof_to_dt(
-    dt = dt,
-    dt_z = dt_z,
-    z_covariates = z_covariates
-  )
-
-  meta_learner_fit <- meta_learner$private_fit(tmp)
-
-  return(meta_learner_fit)
-}
-
-# super-learner hyper parameters cross-validation ----
-meta_learner_cross_validation <- function(dt,
-                                          dt_z,
-                                          cr_ix,
-                                          nfold,
-                                          meta_learner) {
-  out <- NULL
-
-  z_covariates <- grep("^Z[0-9]+$", names(dt_z), value = TRUE)
-  if (length(z_covariates) == 0L && is.list(dt_z) && !is.null(dt_z$Z)) {
-    z_covariates <- colnames(dt_z$Z)
-  }
-
-  dt_meta <- psl_compact_oof_to_dt(
-    dt = dt,
-    dt_z = dt_z,
-    z_covariates = z_covariates
-  )
-
-  for (v_fold_id in seq_len(nfold)) {
-    meta_learner_fit <- meta_learner$private_fit(dt_meta[folder != v_fold_id, ])
-
-    oos_data <- copy(dt_meta[folder == v_fold_id, ])
-    oos_data[, tij := 1]
-
-    fitted_hazard <- data.table(
-      oos_data[["id"]],
-      oos_data[["node"]],
-      oos_data[["deltaij"]],
-      v_fold_id,
-      as.vector(meta_learner$private_predictor(meta_learner_fit, oos_data))
-    )
-
-    setnames(
-      fitted_hazard,
-      c("id", "node", paste0("delta_", cr_ix), "folder", paste0("pwch_", cr_ix))
-    )
-
-    out <- rbind(out, fitted_hazard)
-  }
-
-  return(out)
-}
-
-# meta_learner_cross_validation <- function(dt,
-#                              dt_z,
-#                              cr_ix,
-#                              nfold,
-#                              meta_learner){
-#
-#
-#
-#   # model output ---
-#   out<-NULL
-#
-#   dt_z <- merge(dt_z,dt,by=c("id","folder","node"))
-#
-#
-#   for(v_fold_id in 1:nfold){
-#
-#   meta_learner_fit <- meta_learner$private_fit(dt_z[folder!=v_fold_id,])
-#
-#   oos_data <- copy(dt_z[folder == v_fold_id, ])
-#
-#   # forced tij to be one
-#   oos_data[,tij:=1]
-#
-#
-#   fitted_hazard = data.table(
-#     oos_data[['id']],
-#     oos_data[['node']],
-#     oos_data[['deltaij']],
-#     v_fold_id,
-#     as.vector(meta_learner$private_predictor(meta_learner_fit, oos_data))
-#   )
-#
-#   setnames(fitted_hazard,c("id","node",paste0("delta_",cr_ix),"folder",paste0("pwch_", cr_ix)))
-#
-#   out <- rbind(out,fitted_hazard)
-#
-#   }
-#
-#   return(out)
-#
-#
-# }
-#
-
-
-learners_hat <- function(crisk_cause,superlearner,newdata,learners){
-
-  learners_predictions <- mapply(
-    function(f, model, newdata)
-      f$private_predictor(model = model, newdata = newdata),
-    learners,
-    superlearner$learners_fit,
-    MoreArgs = list(newdata = newdata)
-  )
-
-  return(learners_predictions)
-
-
-
-}
-
 # Hal helpers ----
 
+#' Build main-effect HAL primitive bases for one variable
+#'
+#' Developer note: internal HAL helper that delegates index construction to C++
+#' routines and records metadata needed for later basis expansion.
+#'
+#' Numeric variables produce threshold indicators. Factor variables drop the
+#' first level as a reference and produce non-reference level indicators.
+#' Unsupported variable types stop with an error.
+#'
+#' @param x Variable vector.
+#' @param v Character variable name used in generated basis labels.
+#' @param K Integer/numeric limit passed to the numeric C++ basis constructor.
+#' @returns List with index sets, names, primitive metadata, and variable metadata.
+#' @noRd
 mk_main <- function(x, v, K) {
   if (is.numeric(x)) {
     out <- mk_main_numeric_cpp(x, as.integer(K))
@@ -1290,7 +621,21 @@ mk_main <- function(x, v, K) {
   }
 }
 
-##
+#' Append sparse HAL basis columns to a construction state
+#'
+#' Developer note: internal HAL helper for accumulating sparse matrix chunks.
+#'
+#' Assumes `state` has fields `p`, `chunk_used`, `I_chunks`, `J_chunks`,
+#' `name_chunks`, and `colmeta_chunks`. The C++ helper removes empty/duplicate
+#' columns and reports which names and metadata to keep. Returns `state`
+#' unchanged when no columns are added.
+#'
+#' @param state Mutable construction-state list.
+#' @param idxs_list List of row-index vectors for candidate columns.
+#' @param nm_vec Character vector of candidate column names.
+#' @param col_meta_list List of column metadata objects.
+#' @returns Updated construction-state list.
+#' @noRd
 add_cols <- function(state, idxs_list, nm_vec, col_meta_list) {
   out <- add_cols_cpp(idxs_list, p_start = state$p)
   ncol_added <- out$ncol
@@ -1309,6 +654,3 @@ add_cols <- function(state, idxs_list, nm_vec, col_meta_list) {
   state$p <- state$p + ncol_added
   state
 }
-
-
-

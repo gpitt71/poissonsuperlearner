@@ -14,6 +14,7 @@ Superlearner(
   nodes = NULL,
   variable_transformation = NULL,
   nfold = 3,
+  verbose = FALSE,
   ...
 )
 }
@@ -50,6 +51,9 @@ quantile-based node grid with \code{number_of_nodes + 1} cut points. Ignored whe
 \code{apply_transformations()} on the internally created long-format data.}
 
 \item{nfold}{\code{numeric(1)}. Number of folds for cross-validation stacking.}
+
+\item{verbose}{logical(1). If TRUE, display progress bars during full-data
+fitting and cross-validation fitting. Defaults to FALSE.}
 
 \item{...}{Additional arguments currently ignored.}
 }
