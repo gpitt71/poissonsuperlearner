@@ -24,9 +24,12 @@
 #'   with `0` for censoring and `1, 2, ..., K` for event types. If there is no
 #'   `0` in `status`, the data are treated as uncensored.
 #' @param event_time `character(1)`. Name of the event or censoring time column.
-#' @param learners `list`. List of initialized learner reference-class objects,
-#'   for example [Learner_glmnet()], [Learner_hal()], or [Learner_gam()]. If
-#'   unnamed, learners are named `"learner_1"`, `"learner_2"`, and so on. Each
+#' @param learners `list`. Either a single learner library used for every cause,
+#'   or a list of cause-specific learner libraries. A learner library is a named
+#'   or unnamed list of initialized learner reference-class objects, for example
+#'   [Learner_glmnet()], [Learner_hal()], or [Learner_gam()]. Missing learner
+#'   names are filled as `"learner_1"`, `"learner_2"`, and so on; missing
+#'   cause-library names are filled as `"cause_1"`, `"cause_2"`, and so on. Each
 #'   learner must implement `$private_fit(dt_long)` and
 #'   `$private_predictor(model, newdata)`.
 #' @param number_of_nodes `numeric(1)` or `NULL`. If not `NULL`, constructs a
@@ -44,11 +47,14 @@
 #'   with the following components:
 #'
 #'   `learners`:
-#'   the retained base learner objects.
+#'   a cause-specific list of retained base learner libraries. Thus
+#'   `learners[[k]][[j]]` is the `j`-th retained learner object for cause `k`.
 #'
 #'   `metalearner`:
-#'   the meta-learner object used for stacking. If no stacking is performed because
-#'   only one learner remains, `metalearner` is `NULL`.
+#'   a list describing the internal meta-learner used for stacking
+#'   (`engine = "glmnet::glmnet"`, Poisson family, no intercept, `lambda = 0`,
+#'   `add_nodes = FALSE`, log-hazard scale). If no stacking is performed because
+#'   only one learner remains for every cause, `metalearner` is `NULL`.
 #'
 #'   `superlearner`:
 #'   a `list` of length `data_info$n_crisks`, one entry per cause. For cause `k`,
@@ -63,9 +69,10 @@
 #'   }
 #'
 #'   `cross_validation_deviance`:
-#'   a `data.table` with columns `learner` and `deviance`, giving the mean
-#'   cross-validated Poisson deviance for each retained base learner. This
-#'   component is present when cross-validated model comparison is available.
+#'   a `data.table` with columns `cause_index`, `cause`, `learner_index`,
+#'   `learner`, and `deviance`, giving the cross-validated Poisson deviance for
+#'   each retained base learner within each cause. This component is absent when
+#'   all causes are fitted directly with a single retained learner.
 #'
 #'   `data_info`:
 #'   a `list` of bookkeeping information used for prediction and interpretation,
@@ -78,7 +85,8 @@
 #'     \item `nfold`: number of folds used for stacking.
 #'     \item `maximum_followup`: maximum observed follow-up time.
 #'     \item `n_crisks`: number of event types detected.
-#'     \item `learners_labels`: character vector of retained learner labels.
+#'     \item `learners_labels`: list of character vectors with retained learner
+#'       labels for each cause.
 #'     \item `variable_transformation`: the transformation specification passed in
 #'     `variable_transformation`, or `NULL`.
 #'   }
@@ -88,9 +96,11 @@
 #' If only one learner remains after the full-data screening step or after the
 #' cross-validation screening step, no meta-learner is fit. In that case,
 #' `metalearner` is `NULL`, each `superlearner[[k]]$meta_learner_fit` is `NULL`,
-#' and prediction is based directly on the stored fitted base learner.Numeric
-#' learner positions always refer to the learners actually retained in the
-#' fitted object.
+#' and prediction is based directly on the stored fitted base learner. If some,
+#' but not all, causes retain only one learner after screening, those causes are
+#' predicted directly while other causes may still use a fitted meta-learner.
+#' Numeric learner positions always refer to the learners actually retained for
+#' the corresponding cause in the fitted object.
 #'
 #' @examples
 #' data <- simulateStenoT1(50, competing_risks = TRUE)

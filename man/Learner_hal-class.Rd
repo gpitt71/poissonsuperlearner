@@ -79,7 +79,10 @@ If \code{max_degree >= 2}, the learner additionally includes interaction bases s
 \item{\code{max_degree}}{Maximum interaction order included in the basis expansion.}
 \item{\code{intercept}}{Whether the backend penalized regression includes an intercept term.}
 \item{\code{cross_validation}}{If \code{TRUE}, selects the penalty level using \code{glmnet::cv.glmnet}.}
-\item{\code{fit_arguments}}{Additional arguments forwarded to the \code{glmnet} backend (e.g. \code{nfolds}).}
+\item{\code{maxit_prefit}}{Optional \code{maxit} value used for the initial HAL
+backend fit. Leave as \code{NA} to use the backend default.}
+\item{\code{fit_arguments}}{Additional arguments forwarded to the \code{glmnet} backend
+(e.g. \code{nfolds}).}
 }
 }
 
@@ -92,6 +95,8 @@ If \code{max_degree >= 2}, the learner additionally includes interaction bases s
 \item{\code{max_degree} (\code{integer})}{Maximum interaction order.}
 \item{\code{num_knots} (\code{numeric})}{Knots used for basis construction.}
 \item{\code{lambda_opt} (\code{numeric})}{Selected penalty level when using cross-validation.}
+\item{\code{maxit_prefit} (\code{numeric})}{Optional \code{maxit} value used for the initial
+HAL backend fit.}
 \item{\code{fit_arguments} (\code{list})}{Extra backend arguments forwarded to \code{glmnet}.}
 }
 }

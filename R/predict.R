@@ -6,9 +6,10 @@
 #'
 #' Internally, `newdata` is expanded to a Cartesian product with the requested
 #' `times`, converted to long Poisson format on `object$data_info$nodes`, and hazards
-#' are predicted either from the stacked super learner (`model = "sl"`) or from one
-#' selected fitted base learner. Survival and absolute risk are then computed from
-#' the predicted hazards.
+#' are predicted either from the stacked super learner (`model = "sl"`), the
+#' discrete super learner (`model = "discrete_sl"`), or selected fitted base
+#' learners. Survival and absolute risk are then computed from the predicted
+#' hazards.
 #'
 #' @param object `poisson_superlearner`. A fitted ensemble from [Superlearner()].
 #' @param newdata `data.frame`/`data.table`. New covariate data (one row per subject).
@@ -21,16 +22,25 @@
 #'   returned with `NA` predictions.
 #' @param cause `numeric(1)`. Cause index (1, 2, ...) used for the `absolute_risk`
 #'   calculation.
-#' @param model Scalar model selector. Default is `"sl"` for the stacked super learner.
-#'   Other allowed values are:
+#' @param model Model selector. Default is `"sl"` for the stacked super learner.
+#'   Allowed values are:
 #'   \describe{
-#'     \item{`0` or `"sl"`}{Use the super learner prediction.}
+#'     \item{`0`, `"sl"`, `"superlearner"`, or `"super_learner"`}{Use the
+#'       stacked super learner prediction. For causes with only one retained
+#'       learner or no fitted meta-learner, this falls back to the retained base
+#'       learner for that cause.}
+#'     \item{`"discrete_sl"` and aliases}{For each cause, use the retained base
+#'       learner with the smallest cross-validated deviance.}
 #'     \item{learner label}{Use one stored base learner by its label in
-#'       `object$data_info$learners_labels`.}
-#'     \item{`"learner_j"`}{Use the `j`-th stored learner.}
+#'       `object$data_info$learners_labels[[k]]`.}
+#'     \item{`"learner_j"` or character integer `"j"`}{Use the `j`-th stored
+#'       learner.}
 #'     \item{integer `j >= 1`}{Use the `j`-th stored learner.}
+#'     \item{vector of labels or positive integer indices}{Use cause-specific
+#'       base learners; length must equal `object$data_info$n_crisks`.}
 #'   }
-#'   Numeric positions refer to the learners actually stored in the fitted object.
+#'   Numeric positions refer to the learners actually retained for each cause in
+#'   the fitted object.
 #' @param ... Additional arguments (currently ignored).
 #'
 #' @details

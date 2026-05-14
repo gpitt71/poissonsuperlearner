@@ -13,14 +13,23 @@
 coefficients for. If \code{NULL}, coefficients are returned for all causes.
 Causes are indexed \verb{1, 2, ..., object$data_info$n_crisks}.}
 
-\item{model}{Scalar model selector. Default is \code{"sl"} for the stacked super learner.
-Other allowed values are:
+\item{model}{Model selector. Default is \code{"sl"} for the stacked super learner.
+Allowed values are:
 \describe{
-\item{\code{0} or \code{"sl"}}{Use the super learner prediction.}
-\item{learner label}{Use one stored base learner by its label in
-\code{object$data_info$learners_labels}.}
-\item{\code{"learner_j"}}{Use the \code{j}-th stored learner.}
-\item{integer \code{j >= 1}}{Use the \code{j}-th stored learner.}
+\item{\code{0}, \code{"sl"}, \code{"superlearner"}, or \code{"super_learner"}}{Extract
+coefficients from the stacked meta-learner. For causes with no fitted
+meta-learner, this falls back to the retained base learner.}
+\item{\code{"discrete_sl"} and aliases}{Extract coefficients from the
+cause-specific base learners with the smallest cross-validated
+deviance.}
+\item{learner label}{Extract coefficients from one stored base learner by
+its label in \code{object$data_info$learners_labels[[k]]}.}
+\item{\code{"learner_j"} or character integer \code{"j"}}{Extract coefficients from
+the \code{j}-th stored learner.}
+\item{integer \code{j >= 1}}{Extract coefficients from the \code{j}-th stored
+learner.}
+\item{vector of labels or positive integer indices}{Use cause-specific
+base learners; length must equal \code{object$data_info$n_crisks}.}
 }}
 
 \item{...}{Passed to the underlying \code{coef()} method of the fitted meta-learner
@@ -28,10 +37,13 @@ Other allowed values are:
 }
 \value{
 If \code{cause} is a single integer, returns the coefficient object produced by
-\code{coef()} for the cause-specific fitted meta-learner.
+\code{coef()} for the selected cause-specific fitted model: the meta-learner when
+\code{model = "sl"} and a meta-learner is available, or the selected base learner
+when \code{model} selects a base learner or no meta-learner is available.
 
 If \code{cause = NULL}, returns a \code{list} of length \code{object$data_info$n_crisks},
-where element \verb{[[k]]} contains meta-learner coefficients for cause \code{k}.
+where element \verb{[[k]]} contains coefficients for the selected model for cause
+\code{k}.
 
 If no fitted ensemble is present (\code{object$superlearner} is \code{NULL}), signals a message
 and returns \code{invisible(object)}.

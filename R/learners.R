@@ -12,8 +12,8 @@
 #' **Wrapper role:** this class is a user-friendly wrapper around the existing
 #' `glmnet` implementation. The package-specific contribution is to provide a
 #' piecewise-constant hazard workflow: create the long-format Poisson data with
-#' offsets for time at risk, add the interval ("node") structure for the baseline
-#' hazard when requested, and forward standard `glmnet` arguments supplied at
+#' offsets for time at risk, include interval ("node") indicators for the
+#' baseline hazard, and forward standard `glmnet` arguments supplied at
 #' initialization to the backend fitter.
 #'
 #' @section Model:
@@ -28,15 +28,15 @@
 #'   lambda_k(x) = exp(beta^T x + gamma_k).
 #' }
 #' Penalization is applied to the regression coefficients through the `glmnet`
-#' elastic-net penalty. If you want node (baseline) terms to be unpenalized, use
-#' `penalty.factor` via `...` (and set it consistently with how your design matrix
-#' encodes nodes).
+#' elastic-net penalty. Node (baseline) terms are given zero penalty by default;
+#' if this backend call fails, the learner retries with a fully penalized design.
 #'
 #' @section Fields:
 #' \describe{
 #'   \item{`covariates` (`character`)}{Names of covariate columns used in the model.}
 #'   \item{`cross_validation` (`logical`)}{If `TRUE`, chooses `lambda` by `glmnet::cv.glmnet`.}
-#'   \item{`intercept` (`logical`)}{Whether to include an intercept in the backend fit.}
+#'   \item{`intercept` (`logical`)}{Backend intercept flag; currently fixed to `TRUE`
+#'     by the constructor.}
 #'   \item{`lambda` (`numeric`)}{If `cross_validation=FALSE`, the `lambda` used in the final fit.}
 #'   \item{`formula` (`character`)}{Formula string used to create the design matrix in long format.}
 #'   \item{`learner` (`function`)}{Backend fitter (`glmnet::glmnet` or `glmnet::cv.glmnet`).}
@@ -746,7 +746,10 @@ Learner_glmnet <- setRefClass(
 #'   \item{`max_degree`}{Maximum interaction order included in the basis expansion.}
 #'   \item{`intercept`}{Whether the backend penalized regression includes an intercept term.}
 #'   \item{`cross_validation`}{If `TRUE`, selects the penalty level using `glmnet::cv.glmnet`.}
-#'   \item{`fit_arguments`}{Additional arguments forwarded to the `glmnet` backend (e.g. `nfolds`).}
+#'   \item{`maxit_prefit`}{Optional `maxit` value used for the initial HAL
+#'     backend fit. Leave as `NA` to use the backend default.}
+#'   \item{`fit_arguments`}{Additional arguments forwarded to the `glmnet` backend
+#'     (e.g. `nfolds`).}
 #' }
 #'
 #' @section Fields:
@@ -757,6 +760,8 @@ Learner_glmnet <- setRefClass(
 #'   \item{`max_degree` (`integer`)}{Maximum interaction order.}
 #'   \item{`num_knots` (`numeric`)}{Knots used for basis construction.}
 #'   \item{`lambda_opt` (`numeric`)}{Selected penalty level when using cross-validation.}
+#'   \item{`maxit_prefit` (`numeric`)}{Optional `maxit` value used for the initial
+#'     HAL backend fit.}
 #'   \item{`fit_arguments` (`list`)}{Extra backend arguments forwarded to `glmnet`.}
 #' }
 #'

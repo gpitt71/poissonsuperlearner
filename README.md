@@ -2,7 +2,7 @@
 
 # Poisson SuperLearner
 
-The package provides an implementation of piece-wise constant hazard models for time-to-event analysis of survival and competing risks data. The piecewise constant hazard models can be combined in an ensemble, the Poisson Superlearner, via cross-validated risk minimization for flexible hazard estimation. It enables estimation of survival functions and risk predictions.
+The package provides an implementation of piecewise-constant hazard models for time-to-event analysis of survival and competing risks data. The piecewise-constant hazard models can be combined in an ensemble, the Poisson Superlearner, via cross-validated risk minimization for flexible hazard estimation. It enables estimation of survival functions and absolute risk predictions.
 
 The package provides:
 
@@ -43,9 +43,7 @@ d <- simulateStenoT1(
 l_glm <- Learner_glmnet(
   covariates = c("sex", "diabetes_duration"),
   cross_validation = FALSE,
-  lambda = 0,
-  intercept = TRUE,
-  penalise_nodes = FALSE
+  lambda = 0
 )
 
 # Fit piecewise-constant hazard model
@@ -88,18 +86,14 @@ d <- simulateStenoT1(
 l_glm <- Learner_glmnet(
   covariates = c("sex", "diabetes_duration"),
   cross_validation = FALSE,
-  lambda = 0,
-  intercept = TRUE,
-  penalise_nodes = FALSE
+  lambda = 0
 )
 
 # Base learner 2: Lasso-penalized Poisson regression
 l_lasso <- Learner_glmnet(
   covariates = c("value_Smoking", "value_LDL"),
   cross_validation = TRUE,
-  alpha = 1,
-  intercept = TRUE,
-  penalise_nodes = FALSE
+  alpha = 1
 )
 
 learners_list <- list(
@@ -128,14 +122,22 @@ predictRisk(sl_fit, newdata = d[1, ], times = 5)
 3. A meta-learner combines the base hazard predictions.
 4. Final hazards are aggregated and converted to absolute risk.
 
+For competing risks, `learners` may also be a list of cause-specific learner
+libraries, one library per cause. Predictions can be requested from the stacked
+ensemble (`model = "sl"`), the discrete super learner (`model = "discrete_sl"`),
+or named/indexed base learners.
+
 ---
 
 ## Main Functions
 
-* `Learner_glmnet()` – define a Poisson hazard learner.
-* `fit_learner()` – fit a single piecewise-constant hazard model.
-* `Superlearner()` – fit an ensemble of hazard learners.
-* `predictRisk()` – obtain absolute risk predictions.
+* `Learner_glmnet()` - define a Poisson hazard learner.
+* `Learner_gam()` - define a Poisson GAM hazard learner.
+* `Learner_hal()` - define a HAL-style Poisson hazard learner.
+* `fit_learner()` - fit a single piecewise-constant hazard model.
+* `Superlearner()` - fit an ensemble of hazard learners.
+* `predict()` - obtain hazards, survival, and absolute risk predictions.
+* `predictRisk()` - obtain risk matrices compatible with `riskRegression`.
 
 ---
 

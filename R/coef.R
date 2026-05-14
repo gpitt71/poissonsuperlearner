@@ -72,14 +72,23 @@ coef.base_learner <- function(object, cause = NULL, ...) {
 #' @param cause `numeric(1)` or `NULL`. Which cause to extract meta-learner
 #'   coefficients for. If `NULL`, coefficients are returned for all causes.
 #'   Causes are indexed `1, 2, ..., object$data_info$n_crisks`.
-#' @param model Scalar model selector. Default is `"sl"` for the stacked super learner.
-#'   Other allowed values are:
+#' @param model Model selector. Default is `"sl"` for the stacked super learner.
+#'   Allowed values are:
 #'   \describe{
-#'     \item{`0` or `"sl"`}{Use the super learner prediction.}
-#'     \item{learner label}{Use one stored base learner by its label in
-#'       `object$data_info$learners_labels`.}
-#'     \item{`"learner_j"`}{Use the `j`-th stored learner.}
-#'     \item{integer `j >= 1`}{Use the `j`-th stored learner.}
+#'     \item{`0`, `"sl"`, `"superlearner"`, or `"super_learner"`}{Extract
+#'       coefficients from the stacked meta-learner. For causes with no fitted
+#'       meta-learner, this falls back to the retained base learner.}
+#'     \item{`"discrete_sl"` and aliases}{Extract coefficients from the
+#'       cause-specific base learners with the smallest cross-validated
+#'       deviance.}
+#'     \item{learner label}{Extract coefficients from one stored base learner by
+#'       its label in `object$data_info$learners_labels[[k]]`.}
+#'     \item{`"learner_j"` or character integer `"j"`}{Extract coefficients from
+#'       the `j`-th stored learner.}
+#'     \item{integer `j >= 1`}{Extract coefficients from the `j`-th stored
+#'       learner.}
+#'     \item{vector of labels or positive integer indices}{Use cause-specific
+#'       base learners; length must equal `object$data_info$n_crisks`.}
 #'   }
 #' @param ... Passed to the underlying `coef()` method of the fitted meta-learner
 #'   (learner-dependent; e.g., `s` for `glmnet`).
@@ -102,10 +111,13 @@ coef.base_learner <- function(object, cause = NULL, ...) {
 #'
 #' @return
 #' If `cause` is a single integer, returns the coefficient object produced by
-#' `coef()` for the cause-specific fitted meta-learner.
+#' `coef()` for the selected cause-specific fitted model: the meta-learner when
+#' `model = "sl"` and a meta-learner is available, or the selected base learner
+#' when `model` selects a base learner or no meta-learner is available.
 #'
 #' If `cause = NULL`, returns a `list` of length `object$data_info$n_crisks`,
-#' where element `[[k]]` contains meta-learner coefficients for cause `k`.
+#' where element `[[k]]` contains coefficients for the selected model for cause
+#' `k`.
 #'
 #' If no fitted ensemble is present (`object$superlearner` is `NULL`), signals a message
 #' and returns `invisible(object)`.

@@ -9,14 +9,21 @@
 #' @param cause `numeric(1)` or `NULL`. Which cause’s meta-learner fit to print.
 #'   If `NULL`, prints one line per cause (classes only) instead of printing the full
 #'   fitted objects.
-#' @param model Scalar model selector. Default is `"sl"` for the stacked super learner.
-#'   Other allowed values are:
+#' @param model Model selector. Default is `"sl"` for the stacked super learner.
+#'   Allowed values are:
 #'   \describe{
-#'     \item{`0` or `"sl"`}{Use the super learner prediction.}
-#'     \item{learner label}{Use one stored base learner by its label in
-#'       `object$data_info$learners_labels`.}
-#'     \item{`"learner_j"`}{Use the `j`-th stored learner.}
-#'     \item{integer `j >= 1`}{Use the `j`-th stored learner.}
+#'     \item{`0`, `"sl"`, `"superlearner"`, or `"super_learner"`}{Summarize the
+#'       stacked meta-learner. For causes with no fitted meta-learner, this
+#'       falls back to the retained base learner.}
+#'     \item{`"discrete_sl"` and aliases}{Summarize the cause-specific base
+#'       learners with the smallest cross-validated deviance.}
+#'     \item{learner label}{Summarize one stored base learner by its label in
+#'       `object$data_info$learners_labels[[k]]`.}
+#'     \item{`"learner_j"` or character integer `"j"`}{Summarize the `j`-th
+#'       stored learner.}
+#'     \item{integer `j >= 1`}{Summarize the `j`-th stored learner.}
+#'     \item{vector of labels or positive integer indices}{Use cause-specific
+#'       base learners; length must equal `object$data_info$n_crisks`.}
 #'   }
 #' @param ... Passed to the underlying `coef()` method for the fitted meta-learner
 #'   (learner-dependent; e.g. `s` for `glmnet`).

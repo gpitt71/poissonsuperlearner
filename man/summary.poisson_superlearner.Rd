@@ -13,14 +13,21 @@
 If \code{NULL}, prints one line per cause (classes only) instead of printing the full
 fitted objects.}
 
-\item{model}{Scalar model selector. Default is \code{"sl"} for the stacked super learner.
-Other allowed values are:
+\item{model}{Model selector. Default is \code{"sl"} for the stacked super learner.
+Allowed values are:
 \describe{
-\item{\code{0} or \code{"sl"}}{Use the super learner prediction.}
-\item{learner label}{Use one stored base learner by its label in
-\code{object$data_info$learners_labels}.}
-\item{\code{"learner_j"}}{Use the \code{j}-th stored learner.}
-\item{integer \code{j >= 1}}{Use the \code{j}-th stored learner.}
+\item{\code{0}, \code{"sl"}, \code{"superlearner"}, or \code{"super_learner"}}{Summarize the
+stacked meta-learner. For causes with no fitted meta-learner, this
+falls back to the retained base learner.}
+\item{\code{"discrete_sl"} and aliases}{Summarize the cause-specific base
+learners with the smallest cross-validated deviance.}
+\item{learner label}{Summarize one stored base learner by its label in
+\code{object$data_info$learners_labels[[k]]}.}
+\item{\code{"learner_j"} or character integer \code{"j"}}{Summarize the \code{j}-th
+stored learner.}
+\item{integer \code{j >= 1}}{Summarize the \code{j}-th stored learner.}
+\item{vector of labels or positive integer indices}{Use cause-specific
+base learners; length must equal \code{object$data_info$n_crisks}.}
 }}
 
 \item{...}{Passed to the underlying \code{coef()} method for the fitted meta-learner

@@ -22,16 +22,25 @@ returned with \code{NA} predictions.}
 \item{cause}{\code{numeric(1)}. Cause index (1, 2, ...) used for the \code{absolute_risk}
 calculation.}
 
-\item{model}{Scalar model selector. Default is \code{"sl"} for the stacked super learner.
-Other allowed values are:
+\item{model}{Model selector. Default is \code{"sl"} for the stacked super learner.
+Allowed values are:
 \describe{
-\item{\code{0} or \code{"sl"}}{Use the super learner prediction.}
+\item{\code{0}, \code{"sl"}, \code{"superlearner"}, or \code{"super_learner"}}{Use the
+stacked super learner prediction. For causes with only one retained
+learner or no fitted meta-learner, this falls back to the retained base
+learner for that cause.}
+\item{\code{"discrete_sl"} and aliases}{For each cause, use the retained base
+learner with the smallest cross-validated deviance.}
 \item{learner label}{Use one stored base learner by its label in
-\code{object$data_info$learners_labels}.}
-\item{\code{"learner_j"}}{Use the \code{j}-th stored learner.}
+\code{object$data_info$learners_labels[[k]]}.}
+\item{\code{"learner_j"} or character integer \code{"j"}}{Use the \code{j}-th stored
+learner.}
 \item{integer \code{j >= 1}}{Use the \code{j}-th stored learner.}
+\item{vector of labels or positive integer indices}{Use cause-specific
+base learners; length must equal \code{object$data_info$n_crisks}.}
 }
-Numeric positions refer to the learners actually stored in the fitted object.}
+Numeric positions refer to the learners actually retained for each cause in
+the fitted object.}
 
 \item{...}{Additional arguments (currently ignored).}
 }
@@ -53,9 +62,10 @@ prediction horizons \code{times}, for each row in \code{newdata}.
 \details{
 Internally, \code{newdata} is expanded to a Cartesian product with the requested
 \code{times}, converted to long Poisson format on \code{object$data_info$nodes}, and hazards
-are predicted either from the stacked super learner (\code{model = "sl"}) or from one
-selected fitted base learner. Survival and absolute risk are then computed from
-the predicted hazards.
+are predicted either from the stacked super learner (\code{model = "sl"}), the
+discrete super learner (\code{model = "discrete_sl"}), or selected fitted base
+learners. Survival and absolute risk are then computed from the predicted
+hazards.
 
 \strong{Special case \code{times = 0}:} when \code{0} is included in \code{times}, the returned rows
 have \code{survival_function = 1}, \code{absolute_risk = 0}, and all \code{pwch_k = 0} at time 0.

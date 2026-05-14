@@ -15,8 +15,9 @@
 
 \item{cause}{\code{numeric(1)}. Cause index.}
 
-\item{model}{Scalar model selector. Default is \code{"sl"}. Allowed values are the
-same as in \code{\link[=predict.poisson_superlearner]{predict.poisson_superlearner()}}.}
+\item{model}{Model selector. Default is \code{"sl"}. Allowed values are the same
+as in \code{\link[=predict.poisson_superlearner]{predict.poisson_superlearner()}}, including \code{"discrete_sl"} and
+cause-specific vectors of base-learner labels or indices.}
 
 \item{...}{Unused.}
 }

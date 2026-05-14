@@ -9,18 +9,25 @@
 \arguments{
 \item{x}{\code{poisson_superlearner} object returned by \code{\link[=Superlearner]{Superlearner()}}.}
 
-\item{cause}{\code{numeric(1)} or \code{NULL}. Which cause’s meta-learner fit to print.
+\item{cause}{\code{numeric(1)} or \code{NULL}. Which cause's meta-learner fit to print.
 If \code{NULL}, prints one line per cause (classes only) instead of printing the full
 fitted objects.}
 
-\item{model}{Scalar model selector. Default is \code{"sl"} for the stacked super learner.
-Other allowed values are:
+\item{model}{Model selector. Default is \code{"sl"} for the stacked super learner.
+Allowed values are:
 \describe{
-\item{\code{0} or \code{"sl"}}{Use the super learner prediction.}
-\item{learner label}{Use one stored base learner by its label in
-\code{object$data_info$learners_labels}.}
-\item{\code{"learner_j"}}{Use the \code{j}-th stored learner.}
-\item{integer \code{j >= 1}}{Use the \code{j}-th stored learner.}
+\item{\code{0}, \code{"sl"}, \code{"superlearner"}, or \code{"super_learner"}}{Print the
+stacked meta-learner. For causes with no fitted meta-learner, this
+falls back to the retained base learner.}
+\item{\code{"discrete_sl"} and aliases}{Print the cause-specific base learner
+with the smallest cross-validated deviance.}
+\item{learner label}{Print one stored base learner by its label in
+\code{x$data_info$learners_labels[[k]]}.}
+\item{\code{"learner_j"} or character integer \code{"j"}}{Print the \code{j}-th stored
+learner.}
+\item{integer \code{j >= 1}}{Print the \code{j}-th stored learner.}
+\item{vector of labels or positive integer indices}{Use cause-specific
+base learners; length must equal \code{x$data_info$n_crisks}.}
 }}
 
 \item{...}{Passed to the underlying fitted meta-learner \code{print()} method when
