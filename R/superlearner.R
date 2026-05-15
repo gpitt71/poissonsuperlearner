@@ -215,7 +215,7 @@ Superlearner <- function(data,
 
   if (is_learner_library(learners)) {
 
-    if (n_crisks > 1L) {
+    if (verbose && n_crisks > 1L) {
       message(
         "A single learner library was supplied; the same learner library will be used for all competing causes."
       )

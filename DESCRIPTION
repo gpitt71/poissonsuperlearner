@@ -1,6 +1,6 @@
 Package: poissonsuperlearner
 Title: Poisson Super Learner
-Version: 0.1.1
+Version: 0.2.0
 Authors@R: 
     c(person(given="Gabriele", family="Pittarello", email ="gabriele.pittarello@sund.ku.dk", role = c("aut", "cre")),
     person(given="Helene", family="Rytgaard", email ="hely@sund.ku.dk", role = c("aut")),
