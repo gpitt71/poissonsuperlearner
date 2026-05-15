@@ -138,6 +138,7 @@ coef.base_learner <- function(object, cause = NULL, ...) {
 #' coef(fit)
 #'
 #' @export
+#' @export
 coef.poisson_superlearner <- function(object, cause = NULL, model = "sl", ...) {
 
   if (is.null(object$superlearner) || length(object$superlearner) == 0L) {

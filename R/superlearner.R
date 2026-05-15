@@ -409,6 +409,14 @@ Superlearner <- function(data,
       )
     }
 
+  ## ------------------------------------------------------------
+  ## Stop only if a cause has no usable learner
+  ## ------------------------------------------------------------
+
+  n_learners_by_cause <- lengths(learners_by_cause)
+  empty_causes <- which(n_learners_by_cause == 0L)
+
+  if (length(empty_causes) > 0L) {
     stop(
       paste(
         paste0(
@@ -514,6 +522,7 @@ Superlearner <- function(data,
       learners = library_per_risk,
       metalearner = NULL,
       superlearner = one_learner_out,
+
       data_info = list(
         id = id,
         status = status,
@@ -531,6 +540,7 @@ Superlearner <- function(data,
 
     return(out)
   }
+
 
   ## ------------------------------------------------------------
   ## Step 2: V-fold CV (only on retained learners)
@@ -881,6 +891,7 @@ Superlearner <- function(data,
     pb_cv <- NULL
   }
 
+
   ## ------------------------------------------------------------
   ## Step 3: build final output
   ## ------------------------------------------------------------
@@ -934,7 +945,72 @@ Superlearner <- function(data,
       learners_fit = learners_fit_j,
       meta_learner_fit = meta_learner_fits[[jj]]
     )
-  })
+
+    meta_learner_fits[[k]] <- fit_meta_learner(
+      dt = dt_by_cause[[k]],
+      dt_z = oof_buffers[[k]],
+      meta_learner = meta_learner_by_cause[[k]],
+      z_covariates = z_k
+    )
+  }
+
+
+  ## ------------------------------------------------------------
+  ## Store cause-specific learner fits and meta-learner fits
+  ## ------------------------------------------------------------
+
+  superlearner_out <- vector("list", n_crisks)
+
+  for (k in seq_len(n_crisks)) {
+
+    if (n_learners_by_cause[k] == 1L) {
+      superlearner_out[[k]] <- list(
+        learners_fit = full_train_list[[k]][[1L]],
+        meta_learner_fit = NULL
+      )
+    } else {
+      superlearner_out[[k]] <- list(
+        learners_fit = full_train_list[[k]],
+        meta_learner_fit = meta_learner_fits[[k]]
+      )
+    }
+  }
+
+
+  ## ------------------------------------------------------------
+  ## Backward-compatible aliases
+  ## ------------------------------------------------------------
+
+  same_retained_library <- is_flat_library &&
+    length(unique(vapply(
+      learners_labels_by_cause,
+      paste,
+      character(1),
+      collapse = "\r"
+    ))) == 1L
+
+  learners_alias <- if (same_retained_library) learners_by_cause[[1L]] else NULL
+  learners_labels_alias <- if (same_retained_library) learners_labels_by_cause[[1L]] else NULL
+
+  ## Only meaningful if all causes that need meta-learning use the same Z layout.
+  same_meta_layout <- any(needs_meta_by_cause) &&
+    length(unique(vapply(
+      z_covariates_by_cause[needs_meta_by_cause],
+      paste,
+      character(1),
+      collapse = "\r"
+    ))) == 1L
+
+  metalearner_alias <- if (same_meta_layout) {
+    meta_learner_by_cause[[which(needs_meta_by_cause)[1L]]]
+  } else {
+    NULL
+  }
+
+
+  ## ------------------------------------------------------------
+  ## Final object
+  ## ------------------------------------------------------------
 
   names(superlearner_out) <- names(library_per_risk)
 

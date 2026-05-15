@@ -591,7 +591,6 @@ summary.poisson_superlearner <- function(object,
     cat("  <not available>\n")
   }
 
-  cat("\nMeta-learner coefficients:\n")
 
   meta_out <- vector("list", length(causes_to_show))
   names(meta_out) <- paste0("cause_", causes_to_show)
@@ -635,8 +634,6 @@ summary.poisson_superlearner <- function(object,
     meta_coefficients = meta_out
   ))
 }
-
-
 #' Summarize a fitted base learner object
 #'
 #' Dispatches to the underlying fitted model’s `summary()` method for the selected
