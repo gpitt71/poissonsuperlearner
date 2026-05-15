@@ -143,7 +143,6 @@ Superlearner <- function(data,
                          nfold = 3,
                          verbose = FALSE,
                          ...) {
-
   verbose <- isTRUE(verbose)
 
   if (!(id %in% names(data))) {
@@ -214,7 +213,6 @@ Superlearner <- function(data,
   }
 
   if (is_learner_library(learners)) {
-
     if (n_crisks > 1L) {
       message(
         "A single learner library was supplied; the same learner library will be used for all competing causes."
@@ -223,20 +221,18 @@ Superlearner <- function(data,
 
     library_per_risk <- replicate(n_crisks, learners, simplify = FALSE)
 
-  } else if (
-    length(learners) == n_crisks &&
-    all(vapply(learners, is_learner_library, logical(1L)))
-  ) {
-
+  } else if (length(learners) == n_crisks &&
+             all(vapply(learners, is_learner_library, logical(1L)))) {
     library_per_risk <- learners
 
   } else {
-
     stop(
       paste0(
         "'learners' must be either:\n",
         "  (i) a single list of learners, which will be used for all competing causes, or\n",
-        "  (ii) a list of ", n_crisks, " learner libraries, one for each competing cause."
+        "  (ii) a list of ",
+        n_crisks,
+        " learner libraries, one for each competing cause."
       ),
       call. = FALSE
     )
@@ -249,11 +245,7 @@ Superlearner <- function(data,
 
   library_per_risk <- fill_missing_names(library_per_risk, prefix = "cause_")
 
-  library_per_risk <- lapply(
-    library_per_risk,
-    fill_missing_names,
-    prefix = "learner_"
-  )
+  library_per_risk <- lapply(library_per_risk, fill_missing_names, prefix = "learner_")
 
 
   grid_dt <- data.table(node = grid_nodes)
@@ -300,12 +292,9 @@ Superlearner <- function(data,
       initial = 0L,
       style = 3
     )
-    on.exit(
-      if (!is.null(pb_full)) {
-        close(pb_full)
-      },
-      add = TRUE
-    )
+    on.exit(if (!is.null(pb_full)) {
+      close(pb_full)
+    }, add = TRUE)
   }
 
   for (jj in seq_len(n_crisks)) {
@@ -314,11 +303,7 @@ Superlearner <- function(data,
     names(full_train_list[[jj]]) <- names(library_per_risk[[jj]])
 
     for (mm in seq_along(library_per_risk[[jj]])) {
-      full_train_list[[jj]][[mm]] <- library_per_risk[[jj]][[mm]]$private_fit(
-        dt,
-        cause = jj,
-        grid_nodes = grid_nodes
-      )
+      full_train_list[[jj]][[mm]] <- library_per_risk[[jj]][[mm]]$private_fit(dt, cause = jj, grid_nodes = grid_nodes)
 
       if (verbose) {
         full_fit_counter <- full_fit_counter + 1L
@@ -338,61 +323,47 @@ Superlearner <- function(data,
 
   cause_labels <- names(library_per_risk)
 
-  if (is.null(cause_labels) || anyNA(cause_labels) || any(!nzchar(cause_labels))) {
+  if (is.null(cause_labels) ||
+      anyNA(cause_labels) || any(!nzchar(cause_labels))) {
     cause_labels <- paste0("cause_", seq_along(library_per_risk))
   }
 
-  failed_by_cause <- lapply(
-    full_train_list,
-    function(fits_j) {
-      vapply(fits_j, is_failed_fit, logical(1L))
+  failed_by_cause <- lapply(full_train_list, function(fits_j) {
+    vapply(fits_j, is_failed_fit, logical(1L))
+  })
+
+  failed_reason_table <- data.table::rbindlist(lapply(seq_along(full_train_list), function(jj) {
+    fits_j <- full_train_list[[jj]]
+    failed_j <- failed_by_cause[[jj]]
+
+    if (!any(failed_j)) {
+      return(NULL)
     }
-  )
 
-  failed_reason_table <- data.table::rbindlist(
-    lapply(seq_along(full_train_list), function(jj) {
+    data.table::data.table(
+      cause_index = jj,
+      cause = cause_labels[jj],
+      learner_index = which(failed_j),
+      learner = names(fits_j)[failed_j],
+      reason = vapply(fits_j[failed_j], function(fit) {
+        reason <- fit$reason
 
-      fits_j <- full_train_list[[jj]]
-      failed_j <- failed_by_cause[[jj]]
+        if (is.null(reason) || length(reason) == 0L) {
+          return(NA_character_)
+        }
 
-      if (!any(failed_j)) {
-        return(NULL)
-      }
-
-      data.table::data.table(
-        cause_index = jj,
-        cause = cause_labels[jj],
-        learner_index = which(failed_j),
-        learner = names(fits_j)[failed_j],
-        reason = vapply(
-          fits_j[failed_j],
-          function(fit) {
-            reason <- fit$reason
-
-            if (is.null(reason) || length(reason) == 0L) {
-              return(NA_character_)
-            }
-
-            as.character(reason)[1L]
-          },
-          character(1L)
-        )
-      )
-    }),
-    use.names = TRUE,
-    fill = TRUE
-  )
+        as.character(reason)[1L]
+      }, character(1L))
+    )
+  }),
+  use.names = TRUE,
+  fill = TRUE)
 
   keep_by_cause <- lapply(failed_by_cause, `!`)
 
-  n_retained_by_cause <- vapply(
-    keep_by_cause,
-    sum,
-    integer(1L)
-  )
+  n_retained_by_cause <- vapply(keep_by_cause, sum, integer(1L))
 
   if (any(n_retained_by_cause == 0L)) {
-
     failed_causes <- cause_labels[n_retained_by_cause == 0L]
 
     reason_txt <- NULL
@@ -409,33 +380,24 @@ Superlearner <- function(data,
       )
     }
 
-    stop(
-      paste(
-        paste0(
-          "All learners failed on the full data for at least one cause: ",
-          paste(failed_causes, collapse = ", "),
-          "."
-        ),
-        reason_txt,
-        sep = "\n"
+    stop(paste(
+      paste0(
+        "All learners failed on the full data for at least one cause: ",
+        paste(failed_causes, collapse = ", "),
+        "."
       ),
-      call. = FALSE
-    )
+      reason_txt,
+      sep = "\n"
+    ), call. = FALSE)
   }
 
   if (nrow(failed_reason_table) > 0L) {
-
-    warning_txt <- paste(
-      apply(failed_reason_table, 1L, function(x) {
-        sprintf(
-          "%s, learner '%s' failed on the full data and was removed: %s",
-          x[["cause"]],
-          x[["learner"]],
-          x[["reason"]]
-        )
-      }),
-      collapse = "\n"
-    )
+    warning_txt <- paste(apply(failed_reason_table, 1L, function(x) {
+      sprintf("%s, learner '%s' failed on the full data and was removed: %s",
+              x[["cause"]],
+              x[["learner"]],
+              x[["reason"]])
+    }), collapse = "\n")
 
     warning(warning_txt, call. = FALSE)
 
@@ -456,13 +418,10 @@ Superlearner <- function(data,
   n_learners_by_cause <- lengths(library_per_risk)
 
   if (all(n_learners_by_cause == 1L)) {
-
     learners_labels_per_risk <- lapply(library_per_risk, names)
 
-    n_dropped_full <- if (
-      exists("failed_reason_table") &&
-      is.data.frame(failed_reason_table)
-    ) {
+    n_dropped_full <- if (exists("failed_reason_table") &&
+                          is.data.frame(failed_reason_table)) {
       nrow(failed_reason_table)
     } else {
       0L
@@ -470,11 +429,9 @@ Superlearner <- function(data,
 
     reason_txt <- NULL
 
-    if (
-      exists("failed_reason_table") &&
-      is.data.frame(failed_reason_table) &&
-      nrow(failed_reason_table) > 0L
-    ) {
+    if (exists("failed_reason_table") &&
+        is.data.frame(failed_reason_table) &&
+        nrow(failed_reason_table) > 0L) {
       reason_txt <- paste(
         sprintf(
           "%s, learner '%s': %s",
@@ -504,10 +461,8 @@ Superlearner <- function(data,
     names(one_learner_out) <- names(library_per_risk)
 
     for (cause_ix in seq_len(n_crisks)) {
-      one_learner_out[[cause_ix]] <- list(
-        learners_fit = full_train_list[[cause_ix]][[1L]],
-        meta_learner_fit = NULL
-      )
+      one_learner_out[[cause_ix]] <- list(learners_fit = full_train_list[[cause_ix]][[1L]],
+                                          meta_learner_fit = NULL)
     }
 
     out <- list(
@@ -543,17 +498,13 @@ Superlearner <- function(data,
   pb_cv <- NULL
 
   if (verbose) {
-    n_cv_fits <- nfold * sum(vapply(
-      library_per_risk,
-      function(x) {
-        if (length(x) > 1L) {
-          length(x)
-        } else {
-          0L
-        }
-      },
-      integer(1L)
-    ))
+    n_cv_fits <- nfold * sum(vapply(library_per_risk, function(x) {
+      if (length(x) > 1L) {
+        length(x)
+      } else {
+        0L
+      }
+    }, integer(1L)))
 
     cv_fit_counter <- 0L
 
@@ -565,12 +516,9 @@ Superlearner <- function(data,
         initial = 0L,
         style = 3
       )
-      on.exit(
-        if (!is.null(pb_cv)) {
-          close(pb_cv)
-        },
-        add = TRUE
-      )
+      on.exit(if (!is.null(pb_cv)) {
+        close(pb_cv)
+      }, add = TRUE)
     }
   }
 
@@ -589,14 +537,11 @@ Superlearner <- function(data,
 
 
   for (jj in seq_len(n_crisks)) {
-
     risk_label_j <- names(library_per_risk)[jj]
 
-    if (
-      is.null(risk_label_j) ||
-      is.na(risk_label_j) ||
-      !nzchar(risk_label_j)
-    ) {
+    if (is.null(risk_label_j) ||
+        is.na(risk_label_j) ||
+        !nzchar(risk_label_j)) {
       risk_label_j <- as.character(jj)
     }
 
@@ -617,7 +562,6 @@ Superlearner <- function(data,
 
 
     for (ix in seq_len(nfold)) {
-
       valid_idx <- fold_rows[[ix]]
 
       valid_data <- dt[valid_idx]
@@ -648,24 +592,21 @@ Superlearner <- function(data,
       preds <- vector("list", n_learners)
 
       for (mm in seq_len(n_learners)) {
+        fit_mm <- library_per_risk[[jj]][[mm]]$private_fit(train_data, cause = jj, grid_nodes = grid_nodes)
 
-        fit_mm <- library_per_risk[[jj]][[mm]]$private_fit(
-          train_data,
-          cause = jj,
-          grid_nodes = grid_nodes
-        )
-
-        z <- library_per_risk[[jj]][[mm]]$private_predictor(
-          model = fit_mm,
-          newdata = valid_data,
-          grid_nodes = grid_nodes
-        )
+        z <- library_per_risk[[jj]][[mm]]$private_predictor(model = fit_mm,
+                                                            newdata = valid_data,
+                                                            grid_nodes = grid_nodes)
 
         if (length(z) != n_expanded) {
           stop(
             sprintf(
               "Prediction length mismatch for cause %s, fold %s, learner %s: got %s, expected %s.",
-              jj, ix, mm, length(z), n_expanded
+              jj,
+              ix,
+              mm,
+              length(z),
+              n_expanded
             )
           )
         }
@@ -698,21 +639,11 @@ Superlearner <- function(data,
 
       fold_parts[[ix]] <- val_level
 
-      rm(
-        valid_idx,
-        train_data,
-        valid_data,
-        val_level,
-        preds
-      )
+      rm(valid_idx, train_data, valid_data, val_level, preds)
     }
 
 
-    level_one_data <- data.table::rbindlist(
-      fold_parts,
-      use.names = TRUE,
-      fill = FALSE
-    )
+    level_one_data <- data.table::rbindlist(fold_parts, use.names = TRUE, fill = FALSE)
 
     rm(fold_parts)
 
@@ -724,18 +655,15 @@ Superlearner <- function(data,
 
     learner_labels_j <- names(library_per_risk[[jj]])
 
-    if (
-      is.null(learner_labels_j) ||
-      anyNA(learner_labels_j) ||
-      any(!nzchar(learner_labels_j))
-    ) {
+    if (is.null(learner_labels_j) ||
+        anyNA(learner_labels_j) ||
+        any(!nzchar(learner_labels_j))) {
       learner_labels_j <- paste0("learner_", seq_along(library_per_risk[[jj]]))
     }
 
     all_na_z <- !has_non_na
 
     if (all(all_na_z)) {
-
       failed_txt <- paste(
         sprintf(
           "cause %s, learner '%s': all cross-validated predictions are NA",
@@ -745,21 +673,17 @@ Superlearner <- function(data,
         collapse = "\n"
       )
 
-      stop(
-        paste(
-          sprintf(
-            "All learners failed during cross-validation for cause %s.",
-            risk_label_j
-          ),
-          failed_txt,
-          sep = "\n"
+      stop(paste(
+        sprintf(
+          "All learners failed during cross-validation for cause %s.",
+          risk_label_j
         ),
-        call. = FALSE
-      )
+        failed_txt,
+        sep = "\n"
+      ), call. = FALSE)
     }
 
     if (any(all_na_z)) {
-
       dropped_txt <- paste(
         sprintf(
           "cause %s, learner '%s': all cross-validated predictions are NA",
@@ -793,22 +717,16 @@ Superlearner <- function(data,
       ## Re-index Z columns contiguously: Z1, Z2, ...
       new_z_cols <- paste0("Z", seq_along(retained_old_z_cols))
 
-      data.table::setnames(
-        level_one_data,
-        old = retained_old_z_cols,
-        new = new_z_cols
-      )
+      data.table::setnames(level_one_data, old = retained_old_z_cols, new = new_z_cols)
 
       z_cols <- new_z_cols
       n_learners <- length(z_cols)
 
       learner_labels_j <- names(library_per_risk[[jj]])
 
-      if (
-        is.null(learner_labels_j) ||
-        anyNA(learner_labels_j) ||
-        any(!nzchar(learner_labels_j))
-      ) {
+      if (is.null(learner_labels_j) ||
+          anyNA(learner_labels_j) ||
+          any(!nzchar(learner_labels_j))) {
         learner_labels_j <- paste0("learner_", seq_along(library_per_risk[[jj]]))
       }
     }
@@ -891,56 +809,45 @@ Superlearner <- function(data,
 
   learners_labels_per_risk <- lapply(library_per_risk, names)
 
-  cross_validation_deviance_dt <- data.table::rbindlist(
-    lapply(seq_along(cross_validation_deviance), function(jj) {
+  cross_validation_deviance_dt <- data.table::rbindlist(lapply(seq_along(cross_validation_deviance), function(jj) {
+    cv_dev_j <- cross_validation_deviance[[jj]]
 
-      cv_dev_j <- cross_validation_deviance[[jj]]
+    if (is.null(cv_dev_j)) {
+      return(NULL)
+    }
 
-      if (is.null(cv_dev_j)) {
-        return(NULL)
-      }
+    learner_labels_j <- names(cv_dev_j)
 
-      learner_labels_j <- names(cv_dev_j)
-
-      if (
-        is.null(learner_labels_j) ||
+    if (is.null(learner_labels_j) ||
         anyNA(learner_labels_j) ||
-        any(!nzchar(learner_labels_j))
-      ) {
-        learner_labels_j <- names(library_per_risk[[jj]])
-      }
+        any(!nzchar(learner_labels_j))) {
+      learner_labels_j <- names(library_per_risk[[jj]])
+    }
 
-      data.table::data.table(
-        cause_index = jj,
-        cause = names(library_per_risk)[jj],
-        learner_index = seq_along(cv_dev_j),
-        learner = learner_labels_j,
-        deviance = as.numeric(cv_dev_j)
-      )
-    }),
-    use.names = TRUE,
-    fill = TRUE
-  )
+    data.table::data.table(
+      cause_index = jj,
+      cause = names(library_per_risk)[jj],
+      learner_index = seq_along(cv_dev_j),
+      learner = learner_labels_j,
+      deviance = as.numeric(cv_dev_j)
+    )
+  }),
+  use.names = TRUE,
+  fill = TRUE)
 
   superlearner_out <- lapply(seq_len(n_crisks), function(jj) {
-
     learners_fit_j <- full_train_list[[jj]]
 
     if (length(learners_fit_j) == 1L) {
       learners_fit_j <- learners_fit_j[[1L]]
     }
 
-    list(
-      learners_fit = learners_fit_j,
-      meta_learner_fit = meta_learner_fits[[jj]]
-    )
+    list(learners_fit = learners_fit_j, meta_learner_fit = meta_learner_fits[[jj]])
   })
 
   names(superlearner_out) <- names(library_per_risk)
 
-  any_meta_learning <- any(
-    !vapply(meta_learner_fits, is.null, logical(1L))
-  )
+  any_meta_learning <- any(!vapply(meta_learner_fits, is.null, logical(1L)))
 
   metalearner <- if (any_meta_learning) {
     list(
@@ -983,4 +890,4 @@ Superlearner <- function(data,
 
   out
 
-  }
+}
