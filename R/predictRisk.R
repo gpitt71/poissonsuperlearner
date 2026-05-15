@@ -7,8 +7,9 @@
 #' @param newdata `data.frame`. New covariate data.
 #' @param times `numeric`. Prediction times.
 #' @param cause `numeric(1)`. Cause index.
-#' @param model Scalar model selector. Default is `"sl"`. Allowed values are the
-#' same as in [predict.poisson_superlearner()].
+#' @param model Model selector. Default is `"sl"`. Allowed values are the same
+#' as in [predict.poisson_superlearner()], including `"discrete_sl"` and
+#' cause-specific vectors of base-learner labels or indices.
 #' @param ... Unused.
 #'
 #' @return `numeric` matrix with `nrow(newdata)` rows and `length(times)` columns.

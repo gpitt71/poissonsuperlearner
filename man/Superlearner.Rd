@@ -14,6 +14,7 @@ Superlearner(
   nodes = NULL,
   variable_transformation = NULL,
   nfold = 3,
+  verbose = FALSE,
   ...
 )
 }
@@ -29,9 +30,12 @@ with \code{0} for censoring and \verb{1, 2, ..., K} for event types. If there is
 
 \item{event_time}{\code{character(1)}. Name of the event or censoring time column.}
 
-\item{learners}{\code{list}. List of initialized learner reference-class objects,
-for example \code{\link[=Learner_glmnet]{Learner_glmnet()}}, \code{\link[=Learner_hal]{Learner_hal()}}, or \code{\link[=Learner_gam]{Learner_gam()}}. If
-unnamed, learners are named \code{"learner_1"}, \code{"learner_2"}, and so on. Each
+\item{learners}{\code{list}. Either a single learner library used for every cause,
+or a list of cause-specific learner libraries. A learner library is a named
+or unnamed list of initialized learner reference-class objects, for example
+\code{\link[=Learner_glmnet]{Learner_glmnet()}}, \code{\link[=Learner_hal]{Learner_hal()}}, or \code{\link[=Learner_gam]{Learner_gam()}}. Missing learner
+names are filled as \code{"learner_1"}, \code{"learner_2"}, and so on; missing
+cause-library names are filled as \code{"cause_1"}, \code{"cause_2"}, and so on. Each
 learner must implement \verb{$private_fit(dt_long)} and
 \verb{$private_predictor(model, newdata)}.}
 
@@ -48,6 +52,9 @@ quantile-based node grid with \code{number_of_nodes + 1} cut points. Ignored whe
 
 \item{nfold}{\code{numeric(1)}. Number of folds for cross-validation stacking.}
 
+\item{verbose}{logical(1). If TRUE, display progress bars during full-data
+fitting and cross-validation fitting. Defaults to FALSE.}
+
 \item{...}{Additional arguments currently ignored.}
 }
 \value{
@@ -55,11 +62,14 @@ An object of class \code{poisson_superlearner}, stored as a named \code{list}
 with the following components:
 
 \code{learners}:
-the retained base learner objects.
+a cause-specific list of retained base learner libraries. Thus
+\code{learners[[k]][[j]]} is the \code{j}-th retained learner object for cause \code{k}.
 
 \code{metalearner}:
-the meta-learner object used for stacking. If no stacking is performed because
-only one learner remains, \code{metalearner} is \code{NULL}.
+a list describing the internal meta-learner used for stacking
+(\code{engine = "glmnet::glmnet"}, Poisson family, no intercept, \code{lambda = 0},
+\code{add_nodes = FALSE}, log-hazard scale). If no stacking is performed because
+only one learner remains for every cause, \code{metalearner} is \code{NULL}.
 
 \code{superlearner}:
 a \code{list} of length \code{data_info$n_crisks}, one entry per cause. For cause \code{k},
@@ -74,9 +84,10 @@ single fitted learner object itself.
 }
 
 \code{cross_validation_deviance}:
-a \code{data.table} with columns \code{learner} and \code{deviance}, giving the mean
-cross-validated Poisson deviance for each retained base learner. This
-component is present when cross-validated model comparison is available.
+a \code{data.table} with columns \code{cause_index}, \code{cause}, \code{learner_index},
+\code{learner}, and \code{deviance}, giving the cross-validated Poisson deviance for
+each retained base learner within each cause. This component is absent when
+all causes are fitted directly with a single retained learner.
 
 \code{data_info}:
 a \code{list} of bookkeeping information used for prediction and interpretation,
@@ -89,7 +100,8 @@ containing:
 \item \code{nfold}: number of folds used for stacking.
 \item \code{maximum_followup}: maximum observed follow-up time.
 \item \code{n_crisks}: number of event types detected.
-\item \code{learners_labels}: character vector of retained learner labels.
+\item \code{learners_labels}: list of character vectors with retained learner
+labels for each cause.
 \item \code{variable_transformation}: the transformation specification passed in
 \code{variable_transformation}, or \code{NULL}.
 }
@@ -117,9 +129,11 @@ If all learners fail on the full data, the function stops with an error.
 If only one learner remains after the full-data screening step or after the
 cross-validation screening step, no meta-learner is fit. In that case,
 \code{metalearner} is \code{NULL}, each \code{superlearner[[k]]$meta_learner_fit} is \code{NULL},
-and prediction is based directly on the stored fitted base learner.Numeric
-learner positions always refer to the learners actually retained in the
-fitted object.
+and prediction is based directly on the stored fitted base learner. If some,
+but not all, causes retain only one learner after screening, those causes are
+predicted directly while other causes may still use a fitted meta-learner.
+Numeric learner positions always refer to the learners actually retained for
+the corresponding cause in the fitted object.
 }
 \examples{
 data <- simulateStenoT1(50, competing_risks = TRUE)

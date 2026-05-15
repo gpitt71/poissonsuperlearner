@@ -19,8 +19,8 @@ interface and are \strong{not meant to be called directly by users}.
 \strong{Wrapper role:} this class is a user-friendly wrapper around the existing
 \code{glmnet} implementation. The package-specific contribution is to provide a
 piecewise-constant hazard workflow: create the long-format Poisson data with
-offsets for time at risk, add the interval ("node") structure for the baseline
-hazard when requested, and forward standard \code{glmnet} arguments supplied at
+offsets for time at risk, include interval ("node") indicators for the
+baseline hazard, and forward standard \code{glmnet} arguments supplied at
 initialization to the backend fitter.
 }
 
@@ -37,9 +37,8 @@ The piecewise-constant hazard model is
   lambda_k(x) = exp(beta^T x + gamma_k).
 }
 Penalization is applied to the regression coefficients through the \code{glmnet}
-elastic-net penalty. If you want node (baseline) terms to be unpenalized, use
-\code{penalty.factor} via \code{...} (and set it consistently with how your design matrix
-encodes nodes).
+elastic-net penalty. Node (baseline) terms are given zero penalty by default;
+if this backend call fails, the learner retries with a fully penalized design.
 }
 
 \section{Fields}{
@@ -47,8 +46,8 @@ encodes nodes).
 \describe{
 \item{\code{covariates} (\code{character})}{Names of covariate columns used in the model.}
 \item{\code{cross_validation} (\code{logical})}{If \code{TRUE}, chooses \code{lambda} by \code{glmnet::cv.glmnet}.}
-\item{\code{intercept} (\code{logical})}{Whether to include an intercept in the backend fit.}
-\item{\code{add_nodes} (\code{logical})}{If \code{TRUE}, include interval ("node") effects encoding the baseline hazard.}
+\item{\code{intercept} (\code{logical})}{Backend intercept flag; currently fixed to \code{TRUE}
+by the constructor.}
 \item{\code{lambda} (\code{numeric})}{If \code{cross_validation=FALSE}, the \code{lambda} used in the final fit.}
 \item{\code{formula} (\code{character})}{Formula string used to create the design matrix in long format.}
 \item{\code{learner} (\code{function})}{Backend fitter (\code{glmnet::glmnet} or \code{glmnet::cv.glmnet}).}

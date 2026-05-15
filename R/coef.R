@@ -72,14 +72,23 @@ coef.base_learner <- function(object, cause = NULL, ...) {
 #' @param cause `numeric(1)` or `NULL`. Which cause to extract meta-learner
 #'   coefficients for. If `NULL`, coefficients are returned for all causes.
 #'   Causes are indexed `1, 2, ..., object$data_info$n_crisks`.
-#' @param model Scalar model selector. Default is `"sl"` for the stacked super learner.
-#'   Other allowed values are:
+#' @param model Model selector. Default is `"sl"` for the stacked super learner.
+#'   Allowed values are:
 #'   \describe{
-#'     \item{`0` or `"sl"`}{Use the super learner prediction.}
-#'     \item{learner label}{Use one stored base learner by its label in
-#'       `object$data_info$learners_labels`.}
-#'     \item{`"learner_j"`}{Use the `j`-th stored learner.}
-#'     \item{integer `j >= 1`}{Use the `j`-th stored learner.}
+#'     \item{`0`, `"sl"`, `"superlearner"`, or `"super_learner"`}{Extract
+#'       coefficients from the stacked meta-learner. For causes with no fitted
+#'       meta-learner, this falls back to the retained base learner.}
+#'     \item{`"discrete_sl"` and aliases}{Extract coefficients from the
+#'       cause-specific base learners with the smallest cross-validated
+#'       deviance.}
+#'     \item{learner label}{Extract coefficients from one stored base learner by
+#'       its label in `object$data_info$learners_labels[[k]]`.}
+#'     \item{`"learner_j"` or character integer `"j"`}{Extract coefficients from
+#'       the `j`-th stored learner.}
+#'     \item{integer `j >= 1`}{Extract coefficients from the `j`-th stored
+#'       learner.}
+#'     \item{vector of labels or positive integer indices}{Use cause-specific
+#'       base learners; length must equal `object$data_info$n_crisks`.}
 #'   }
 #' @param ... Passed to the underlying `coef()` method of the fitted meta-learner
 #'   (learner-dependent; e.g., `s` for `glmnet`).
@@ -102,10 +111,13 @@ coef.base_learner <- function(object, cause = NULL, ...) {
 #'
 #' @return
 #' If `cause` is a single integer, returns the coefficient object produced by
-#' `coef()` for the cause-specific fitted meta-learner.
+#' `coef()` for the selected cause-specific fitted model: the meta-learner when
+#' `model = "sl"` and a meta-learner is available, or the selected base learner
+#' when `model` selects a base learner or no meta-learner is available.
 #'
 #' If `cause = NULL`, returns a `list` of length `object$data_info$n_crisks`,
-#' where element `[[k]]` contains meta-learner coefficients for cause `k`.
+#' where element `[[k]]` contains coefficients for the selected model for cause
+#' `k`.
 #'
 #' If no fitted ensemble is present (`object$superlearner` is `NULL`), signals a message
 #' and returns `invisible(object)`.
@@ -126,233 +138,403 @@ coef.base_learner <- function(object, cause = NULL, ...) {
 #' coef(fit)
 #'
 #' @export
-#' @export
 coef.poisson_superlearner <- function(object, cause = NULL, model = "sl", ...) {
 
-  if (is.null(object$superlearner)) {
+  if (is.null(object$superlearner) || length(object$superlearner) == 0L) {
     message("No fitted model available (superlearner is NULL).")
     return(invisible(object))
   }
 
   n_crisks <- object$data_info$n_crisks
+  learners_by_cause <- object$learners
 
-  learners_by_cause <- object$learners_by_cause
-  learners_labels_by_cause <- object$learners_labels_by_cause
-  z_covariates_by_cause <- object$z_covariates_by_cause
-
-  ## Backward compatibility with old fitted objects
-  if (is.null(learners_by_cause)) {
-    learners_by_cause <- replicate(
-      n_crisks,
-      object$learners,
-      simplify = FALSE
-    )
+  if (
+    is.null(learners_by_cause) ||
+    !is.list(learners_by_cause) ||
+    length(learners_by_cause) != n_crisks
+  ) {
+    stop("Could not find cause-specific learners in `object$learners`.", call. = FALSE)
   }
 
-  if (is.null(learners_labels_by_cause)) {
-    learners_labels_by_cause <- object$data_info$learners_labels_by_cause
-  }
+  learner_labels <- function(k) {
 
-  if (is.null(learners_labels_by_cause)) {
-    learners_labels_by_cause <- lapply(learners_by_cause, function(x) {
-      labs <- names(x)
-      if (is.null(labs)) {
-        labs <- paste0("learner_", seq_along(x))
-      }
-      labs
-    })
-  }
+    labs <- NULL
 
-  if (is.null(z_covariates_by_cause)) {
-    z_covariates_by_cause <- object$data_info$z_covariates_by_cause
-  }
-
-  if (is.null(z_covariates_by_cause)) {
-    z_covariates_by_cause <- lapply(
-      learners_by_cause,
-      function(x) paste0("Z", seq_along(x))
-    )
-  }
-
-  n_learners_by_cause <- lengths(learners_by_cause)
-
-  if (!is.null(cause)) {
-    if (length(cause) != 1L || is.na(cause) || cause != as.integer(cause)) {
-      stop("'cause' must be NULL or a single positive integer.", call. = FALSE)
+    if (
+      !is.null(object$data_info$learners_labels) &&
+      is.list(object$data_info$learners_labels) &&
+      length(object$data_info$learners_labels) >= k
+    ) {
+      labs <- object$data_info$learners_labels[[k]]
     }
 
-    cause <- as.integer(cause)
+    if (
+      is.null(labs) ||
+      length(labs) != length(learners_by_cause[[k]]) ||
+      anyNA(labs) ||
+      any(!nzchar(labs))
+    ) {
+      labs <- names(learners_by_cause[[k]])
+    }
 
-    if (cause < 1L || cause > n_crisks) {
+    if (
+      is.null(labs) ||
+      length(labs) != length(learners_by_cause[[k]]) ||
+      anyNA(labs) ||
+      any(!nzchar(labs))
+    ) {
+      labs <- paste0("learner_", seq_along(learners_by_cause[[k]]))
+    }
+
+    labs
+  }
+
+  best_discrete_sl_index_by_cause <- function() {
+
+    cv_dt <- object$cross_validation_deviance
+
+    index_by_cause <- integer(n_crisks)
+    label_by_cause <- character(n_crisks)
+
+    cause_names <- names(learners_by_cause)
+
+    for (k in seq_len(n_crisks)) {
+
+      labs_k <- learner_labels(k)
+      n_k <- length(labs_k)
+
+      if (n_k == 1L) {
+        index_by_cause[k] <- 1L
+        label_by_cause[k] <- labs_k[1L]
+        next
+      }
+
+      if (
+        is.null(cv_dt) ||
+        !is.data.frame(cv_dt) ||
+        nrow(cv_dt) == 0L
+      ) {
+        stop(
+          "`model = 'discrete_sl'` requires `object$cross_validation_deviance`, unless each cause has only one retained learner.",
+          call. = FALSE
+        )
+      }
+
+      cv_df <- as.data.frame(cv_dt)
+
+      if (!("deviance" %in% names(cv_df))) {
+        stop(
+          "`object$cross_validation_deviance` must contain a `deviance` column for `model = 'discrete_sl'`.",
+          call. = FALSE
+        )
+      }
+
+      if ("cause_index" %in% names(cv_df)) {
+        cv_k <- cv_df[as.integer(cv_df[["cause_index"]]) == k, , drop = FALSE]
+      } else if (
+        "cause" %in% names(cv_df) &&
+        !is.null(cause_names) &&
+        length(cause_names) >= k &&
+        !is.na(cause_names[k]) &&
+        nzchar(cause_names[k])
+      ) {
+        cv_k <- cv_df[as.character(cv_df[["cause"]]) == cause_names[k], , drop = FALSE]
+      } else {
+        stop(
+          "`object$cross_validation_deviance` must contain `cause_index` or cause labels matching `object$learners` for `model = 'discrete_sl'`.",
+          call. = FALSE
+        )
+      }
+
+      if (nrow(cv_k) == 0L) {
+        stop(
+          sprintf(
+            "No cross-validation deviance is available for cause %d, so `model = 'discrete_sl'` cannot choose among %d learners.",
+            k,
+            n_k
+          ),
+          call. = FALSE
+        )
+      }
+
+      dev_k <- as.numeric(cv_k[["deviance"]])
+
+      if (all(is.na(dev_k) | !is.finite(dev_k))) {
+        stop(
+          sprintf(
+            "All cross-validation deviances are missing or non-finite for cause %d.",
+            k
+          ),
+          call. = FALSE
+        )
+      }
+
+      dev_k[is.na(dev_k) | !is.finite(dev_k)] <- Inf
+      best_row <- which.min(dev_k)
+
+      ix <- NA_integer_
+
+      if ("learner" %in% names(cv_k)) {
+        best_label <- as.character(cv_k[["learner"]][best_row])
+        ix <- match(best_label, labs_k)
+      }
+
+      if (is.na(ix) && "learner_index" %in% names(cv_k)) {
+        ix <- as.integer(cv_k[["learner_index"]][best_row])
+      }
+
+      if (is.na(ix) || ix < 1L || ix > n_k) {
+        stop(
+          sprintf(
+            "The best cross-validation learner for cause %d could not be matched to the retained learner library. Available learners: %s.",
+            k,
+            paste(sprintf("%d='%s'", seq_along(labs_k), labs_k), collapse = ", ")
+          ),
+          call. = FALSE
+        )
+      }
+
+      index_by_cause[k] <- ix
+      label_by_cause[k] <- labs_k[ix]
+    }
+
+    list(
+      type = "learner",
+      index_by_cause = index_by_cause,
+      label_by_cause = label_by_cause
+    )
+  }
+
+  resolve_model <- function(model) {
+
+    if (is.null(model) || !length(model)) {
       stop(
-        sprintf("'cause' must be between 1 and %d.", n_crisks),
+        "`model` must be 'sl', 'discrete_sl', a learner label, a learner index, or a vector of cause-specific learner labels/indices.",
         call. = FALSE
       )
     }
 
-    causes_to_extract <- cause
-  } else {
-    causes_to_extract <- seq_len(n_crisks)
-  }
-
-
-  ## ------------------------------------------------------------
-  ## Local model resolver for cause-specific libraries
-  ## ------------------------------------------------------------
-
-  resolve_model_for_cause <- function(model, k) {
-
-    if (is.null(model) || length(model) != 1L) {
-      stop("'model' must be a scalar.", call. = FALSE)
-    }
-
-    if (is.numeric(model)) {
-      if (is.na(model) || model != as.integer(model)) {
-        stop("Numeric 'model' must be one of 0, 1, 2, ...", call. = FALSE)
-      }
-
-      model <- as.integer(model)
-
-      if (model == 0L) {
-        return(list(type = "sl", index = 0L, label = "sl"))
-      }
-
-      if (model < 1L || model > n_learners_by_cause[k]) {
-        stop(
-          sprintf(
-            "Numeric model %d is unavailable for cause %d. Available learners are 1:%d.",
-            model,
-            k,
-            n_learners_by_cause[k]
-          ),
-          call. = FALSE
-        )
-      }
-
-      return(list(
-        type = "learner",
-        index = model,
-        label = learners_labels_by_cause[[k]][model]
-      ))
-    }
-
-    if (!is.character(model) || is.na(model)) {
-      stop("'model' must be a character scalar or a numeric scalar.", call. = FALSE)
-    }
-
-    model_chr <- trimws(model)
-    model_chr_lc <- tolower(model_chr)
-
-    if (model_chr_lc %in% c("sl", "superlearner", "super_learner")) {
-      return(list(type = "sl", index = 0L, label = "sl"))
-    }
-
-    if (grepl("^learner_[0-9]+$", model_chr_lc)) {
-      j <- as.integer(sub("^learner_", "", model_chr_lc))
-
-      if (j < 1L || j > n_learners_by_cause[k]) {
-        stop(
-          sprintf(
-            "'%s' is unavailable for cause %d. Available learners are learner_1, ..., learner_%d.",
-            model_chr,
-            k,
-            n_learners_by_cause[k]
-          ),
-          call. = FALSE
-        )
-      }
-
-      return(list(
-        type = "learner",
-        index = j,
-        label = learners_labels_by_cause[[k]][j]
-      ))
-    }
-
-    j <- match(model_chr, learners_labels_by_cause[[k]])
-
-    if (is.na(j)) {
+    if (!(length(model) %in% c(1L, n_crisks))) {
       stop(
         sprintf(
-          "Learner label '%s' is not available for cause %d.",
-          model_chr,
-          k
+          "`model` must have length 1 or length %d, one entry per cause.",
+          n_crisks
         ),
         call. = FALSE
       )
     }
 
-    list(
-      type = "learner",
-      index = j,
-      label = model_chr
-    )
-  }
+    if (is.numeric(model) || is.integer(model)) {
 
-
-  ## ------------------------------------------------------------
-  ## Extract coefficients for one cause
-  ## ------------------------------------------------------------
-
-  extract_one_cause <- function(k) {
-
-    sel <- resolve_model_for_cause(model, k)
-    sl_k <- object$superlearner[[k]]
-
-    if (sel$type == "sl") {
-
-      fit_k <- sl_k$meta_learner_fit
-
-      if (is.null(fit_k)) {
-        return(NULL)
+      if (anyNA(model) || any(model != as.integer(model))) {
+        stop("Numeric `model` values must be integer learner indices.", call. = FALSE)
       }
 
-      coefs <- tryCatch(
-        psl_extract_meta_coefs(fit_k, ...),
-        error = function(e) stats::coef(fit_k, ...)
-      )
+      model_int <- as.integer(model)
 
-      zmap <- stats::setNames(
-        learners_labels_by_cause[[k]],
-        z_covariates_by_cause[[k]]
-      )
-
-      if (!is.null(names(coefs))) {
-        names(coefs) <- psl_rename_z_in_text(names(coefs), zmap)
+      if (length(model_int) == 1L && model_int == 0L) {
+        return(list(
+          type = "sl",
+          index_by_cause = rep(0L, n_crisks),
+          label_by_cause = rep("sl", n_crisks)
+        ))
       }
 
-      if (is.matrix(coefs) || inherits(coefs, "Matrix")) {
-        rn <- rownames(coefs)
-        if (!is.null(rn)) {
-          rownames(coefs) <- psl_rename_z_in_text(rn, zmap)
+      if (any(model_int < 1L)) {
+        stop(
+          "Numeric `model` values must be positive learner indices. Use scalar 0 or 'sl' for the Super Learner.",
+          call. = FALSE
+        )
+      }
+
+      index_by_cause <- if (length(model_int) == 1L) {
+        rep(model_int, n_crisks)
+      } else {
+        model_int
+      }
+
+      for (k in seq_len(n_crisks)) {
+        labs_k <- learner_labels(k)
+
+        if (index_by_cause[k] > length(labs_k)) {
+          stop(
+            sprintf(
+              "Learner index %d is not available for cause %d. Available learners: %s.",
+              index_by_cause[k],
+              k,
+              paste(sprintf("%d='%s'", seq_along(labs_k), labs_k), collapse = ", ")
+            ),
+            call. = FALSE
+          )
         }
       }
 
-      return(coefs)
+      return(list(
+        type = "learner",
+        index_by_cause = index_by_cause,
+        label_by_cause = vapply(
+          seq_len(n_crisks),
+          function(k) learner_labels(k)[index_by_cause[k]],
+          character(1L)
+        )
+      ))
     }
 
-    j <- sel$index
+    if (!is.character(model)) {
+      stop(
+        "`model` must be 'sl', 'discrete_sl', a learner label, a learner index, or a vector of cause-specific learner labels/indices.",
+        call. = FALSE
+      )
+    }
 
-    fit_j <- if (n_learners_by_cause[k] == 1L) {
-      sl_k$learners_fit
+    if (anyNA(model) || any(!nzchar(trimws(model)))) {
+      stop("Character `model` values cannot be missing or empty.", call. = FALSE)
+    }
+
+    model_chr <- trimws(model)
+    model_lc <- tolower(model_chr)
+
+    sl_values <- c("sl", "superlearner", "super_learner")
+
+    discrete_sl_values <- c(
+      "discrete_sl",
+      "discrete_superlearner",
+      "discrete_super_learner",
+      "discretesl"
+    )
+
+    if (length(model_chr) == 1L && model_lc %in% sl_values) {
+      return(list(
+        type = "sl",
+        index_by_cause = rep(0L, n_crisks),
+        label_by_cause = rep("sl", n_crisks)
+      ))
+    }
+
+    if (length(model_chr) == 1L && model_lc %in% discrete_sl_values) {
+      return(best_discrete_sl_index_by_cause())
+    }
+
+    if (any(model_lc %in% c(sl_values, discrete_sl_values))) {
+      stop(
+        "`model = 'sl'` and `model = 'discrete_sl'` must be supplied as scalar model selectors. Do not mix them with cause-specific base-learner selectors.",
+        call. = FALSE
+      )
+    }
+
+    model_chr_by_cause <- if (length(model_chr) == 1L) {
+      rep(model_chr, n_crisks)
     } else {
-      sl_k$learners_fit[[j]]
+      model_chr
     }
 
-    stats::coef(fit_j, ...)
+    index_by_cause <- integer(n_crisks)
+    label_by_cause <- character(n_crisks)
+
+    for (k in seq_len(n_crisks)) {
+
+      labs_k <- learner_labels(k)
+      selector_k <- model_chr_by_cause[k]
+      selector_k_lc <- tolower(selector_k)
+
+      if (grepl("^[0-9]+$", selector_k)) {
+        ix <- as.integer(selector_k)
+      } else if (grepl("^learner_[0-9]+$", selector_k_lc)) {
+        ix <- as.integer(sub("^learner_", "", selector_k_lc))
+      } else {
+        ix <- match(selector_k, labs_k)
+      }
+
+      if (is.na(ix) || ix < 1L || ix > length(labs_k)) {
+        stop(
+          sprintf(
+            "Learner '%s' is not available for cause %d. Available learners: %s.",
+            selector_k,
+            k,
+            paste(sprintf("%d='%s'", seq_along(labs_k), labs_k), collapse = ", ")
+          ),
+          call. = FALSE
+        )
+      }
+
+      index_by_cause[k] <- ix
+      label_by_cause[k] <- labs_k[ix]
+    }
+
+    list(
+      type = "learner",
+      index_by_cause = index_by_cause,
+      label_by_cause = label_by_cause
+    )
   }
 
+  model_sel <- resolve_model(model)
 
-  ## ------------------------------------------------------------
-  ## Return one cause or all causes
-  ## ------------------------------------------------------------
+  get_stored_fit <- function(k) {
 
-  if (length(causes_to_extract) == 1L) {
-    return(extract_one_cause(causes_to_extract))
+    sl_k <- object$superlearner[[k]]
+    n_k <- length(learners_by_cause[[k]])
+
+    if (
+      model_sel$type == "sl" &&
+      !is.null(sl_k$meta_learner_fit)
+    ) {
+      return(list(
+        fit = sl_k$meta_learner_fit,
+        type = "sl",
+        index = 0L,
+        label = "sl"
+      ))
+    }
+
+    learner_ix <- if (model_sel$type == "learner") {
+      model_sel$index_by_cause[k]
+    } else {
+      1L
+    }
+
+    fits_k <- sl_k$learners_fit
+
+    fit_k <- if (n_k == 1L) {
+      fits_k
+    } else {
+      fits_k[[learner_ix]]
+    }
+
+    list(
+      fit = fit_k,
+      type = "learner",
+      index = learner_ix,
+      label = learner_labels(k)[learner_ix]
+    )
   }
 
-  out <- lapply(causes_to_extract, extract_one_cause)
-  names(out) <- paste0("cause_", causes_to_extract)
+  if (!is.null(cause)) {
+    if (
+      length(cause) != 1L ||
+      is.na(cause) ||
+      cause != as.integer(cause) ||
+      cause < 1L ||
+      cause > n_crisks
+    ) {
+      stop(
+        sprintf("`cause` must be NULL or a single integer between 1 and %d.", n_crisks),
+        call. = FALSE
+      )
+    }
 
-  out
+    cause <- as.integer(cause)
+  }
+
+  if (is.null(cause)) {
+    out <- lapply(seq_len(n_crisks), function(k) {
+      fit_info <- get_stored_fit(k)
+      stats::coef(fit_info$fit, ...)
+    })
+    names(out) <- paste0("cause_", seq_len(n_crisks))
+    return(out)
+  }
+
+  fit_info <- get_stored_fit(cause)
+  stats::coef(fit_info$fit, ...)
 }

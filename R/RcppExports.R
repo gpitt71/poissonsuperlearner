@@ -5,6 +5,10 @@ poisson_deviance_by_folder_cols <- function(log_hazard_cols, tij, delta, folder,
     .Call(`_poissonsuperlearner_poisson_deviance_by_folder_cols`, log_hazard_cols, tij, delta, folder, nfold, eps)
 }
 
+expand_terminal_grouped_cpp <- function(gid, node_ix, tij, deltaij, N, widths) {
+    .Call(`_poissonsuperlearner_expand_terminal_grouped_cpp`, gid, node_ix, tij, deltaij, N, widths)
+}
+
 inter2_cpp <- function(a, b) {
     .Call(`_poissonsuperlearner_inter2_cpp`, a, b)
 }
@@ -37,7 +41,7 @@ pch_survival <- function(id, dt, haz, na_is_zero = FALSE) {
     .Call(`_poissonsuperlearner_pch_survival`, id, dt, haz, na_is_zero)
 }
 
-poisson_deviance_by_folder <- function(log_hazard, tij, delta, folder, F, eps = 1e-15) {
-    .Call(`_poissonsuperlearner_poisson_deviance_by_folder`, log_hazard, tij, delta, folder, F, eps)
+poisson_deviance_by_folder_hazard_cols <- function(data, hazard_cols, tij, delta, fold, nfold, eps = 1e-15) {
+    .Call(`_poissonsuperlearner_poisson_deviance_by_folder_hazard_cols`, data, hazard_cols, tij, delta, fold, nfold, eps)
 }
 

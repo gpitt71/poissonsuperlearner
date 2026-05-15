@@ -6,9 +6,10 @@
 #'
 #' Internally, `newdata` is expanded to a Cartesian product with the requested
 #' `times`, converted to long Poisson format on `object$data_info$nodes`, and hazards
-#' are predicted either from the stacked super learner (`model = "sl"`) or from one
-#' selected fitted base learner. Survival and absolute risk are then computed from
-#' the predicted hazards.
+#' are predicted either from the stacked super learner (`model = "sl"`), the
+#' discrete super learner (`model = "discrete_sl"`), or selected fitted base
+#' learners. Survival and absolute risk are then computed from the predicted
+#' hazards.
 #'
 #' @param object `poisson_superlearner`. A fitted ensemble from [Superlearner()].
 #' @param newdata `data.frame`/`data.table`. New covariate data (one row per subject).
@@ -21,16 +22,25 @@
 #'   returned with `NA` predictions.
 #' @param cause `numeric(1)`. Cause index (1, 2, ...) used for the `absolute_risk`
 #'   calculation.
-#' @param model Scalar model selector. Default is `"sl"` for the stacked super learner.
-#'   Other allowed values are:
+#' @param model Model selector. Default is `"sl"` for the stacked super learner.
+#'   Allowed values are:
 #'   \describe{
-#'     \item{`0` or `"sl"`}{Use the super learner prediction.}
+#'     \item{`0`, `"sl"`, `"superlearner"`, or `"super_learner"`}{Use the
+#'       stacked super learner prediction. For causes with only one retained
+#'       learner or no fitted meta-learner, this falls back to the retained base
+#'       learner for that cause.}
+#'     \item{`"discrete_sl"` and aliases}{For each cause, use the retained base
+#'       learner with the smallest cross-validated deviance.}
 #'     \item{learner label}{Use one stored base learner by its label in
-#'       `object$data_info$learners_labels`.}
-#'     \item{`"learner_j"`}{Use the `j`-th stored learner.}
+#'       `object$data_info$learners_labels[[k]]`.}
+#'     \item{`"learner_j"` or character integer `"j"`}{Use the `j`-th stored
+#'       learner.}
 #'     \item{integer `j >= 1`}{Use the `j`-th stored learner.}
+#'     \item{vector of labels or positive integer indices}{Use cause-specific
+#'       base learners; length must equal `object$data_info$n_crisks`.}
 #'   }
-#'   Numeric positions refer to the learners actually stored in the fitted object.
+#'   Numeric positions refer to the learners actually retained for each cause in
+#'   the fitted object.
 #' @param ... Additional arguments (currently ignored).
 #'
 #' @details
@@ -90,548 +100,784 @@ predict.poisson_superlearner <- function(object,
                                          model = "sl",
                                          ...) {
 
+  id_col <- object$data_info$id
+  status_col <- object$data_info$status
+  event_time_col <- object$data_info$event_time
+  grid_nodes <- object$data_info$nodes
+  maximum_followup <- object$data_info$maximum_followup
   n_crisks <- object$data_info$n_crisks
 
-  if (length(cause) != 1L || is.na(cause) || cause != as.integer(cause)) {
-    stop("'cause' must be a single positive integer.", call. = FALSE)
+  times <- as.numeric(times)
+
+  if (!length(times)) {
+    stop("`times` must contain at least one value.", call. = FALSE)
   }
 
-  cause <- as.integer(cause)
+  if (anyNA(times)) {
+    stop("`times` cannot contain NA values.", call. = FALSE)
+  }
 
-  if (cause < 1L || cause > n_crisks) {
+  if (any(times < 0)) {
+    stop("`times` must be non-negative.", call. = FALSE)
+  }
+
+  if (length(cause) != 1L || cause < 1L || cause > n_crisks) {
     stop(
-      sprintf("'cause' must be between 1 and %d.", n_crisks),
+      "`cause` must be a single integer between 1 and object$data_info$n_crisks.",
       call. = FALSE
     )
   }
 
-  ## ------------------------------------------------------------
-  ## Cause-specific object components
-  ## ------------------------------------------------------------
+  learners_by_cause <- object$learners
 
-  learners_by_cause <- object$learners_by_cause
-  learners_labels_by_cause <- object$learners_labels_by_cause
-  z_covariates_by_cause <- object$z_covariates_by_cause
-  metalearner_by_cause <- object$metalearner_by_cause
-
-  ## Backward compatibility for older fitted objects
-  if (is.null(learners_by_cause)) {
-    if (is.null(object$learners)) {
-      stop("No learner library found in the fitted object.", call. = FALSE)
+  if (
+    is.null(learners_by_cause) ||
+    !is.list(learners_by_cause) ||
+    length(learners_by_cause) != n_crisks
+  ) {
+    if (!is.null(object$learners_by_cause)) {
+      learners_by_cause <- object$learners_by_cause
     }
+  }
 
-    learners_by_cause <- replicate(
-      n_crisks,
-      object$learners,
-      simplify = FALSE
+  if (
+    is.null(learners_by_cause) ||
+    !is.list(learners_by_cause) ||
+    length(learners_by_cause) != n_crisks
+  ) {
+    stop(
+      "Could not find cause-specific learners in `object$learners`.",
+      call. = FALSE
     )
   }
 
-  if (is.null(learners_labels_by_cause)) {
-    learners_labels_by_cause <- object$data_info$learners_labels_by_cause
-  }
+  pwch_cols <- paste0("pwch_", seq_len(n_crisks))
 
-  if (is.null(learners_labels_by_cause)) {
-    learners_labels_by_cause <- lapply(learners_by_cause, function(x) {
-      labs <- names(x)
-      if (is.null(labs)) {
-        labs <- paste0("learner_", seq_along(x))
-      }
-      labs
-    })
-  }
+  learner_labels <- function(k) {
 
-  if (is.null(z_covariates_by_cause)) {
-    z_covariates_by_cause <- object$data_info$z_covariates_by_cause
-  }
+    labs <- NULL
 
-  if (is.null(z_covariates_by_cause)) {
-    z_covariates_by_cause <- lapply(
-      learners_by_cause,
-      function(x) paste0("Z", seq_along(x))
-    )
-  }
-
-  if (is.null(metalearner_by_cause)) {
-    metalearner_by_cause <- replicate(
-      n_crisks,
-      object$metalearner,
-      simplify = FALSE
-    )
-  }
-
-  n_learners_by_cause <- lengths(learners_by_cause)
-
-  if (length(learners_by_cause) != n_crisks) {
-    stop("'object$learners_by_cause' must have length equal to n_crisks.", call. = FALSE)
-  }
-
-  if (length(learners_labels_by_cause) != n_crisks) {
-    stop("'object$learners_labels_by_cause' must have length equal to n_crisks.", call. = FALSE)
-  }
-
-  if (length(z_covariates_by_cause) != n_crisks) {
-    stop("'object$z_covariates_by_cause' must have length equal to n_crisks.", call. = FALSE)
-  }
-
-  if (any(n_learners_by_cause == 0L)) {
-    stop("At least one cause has no retained learners.", call. = FALSE)
-  }
-
-
-  ## ------------------------------------------------------------
-  ## Resolve model selector cause-by-cause
-  ## ------------------------------------------------------------
-
-  resolve_model_by_cause <- function(model) {
-
-    if (is.null(model) || length(model) != 1L) {
-      stop("'model' must be a scalar.", call. = FALSE)
+    if (
+      !is.null(object$data_info$learners_labels) &&
+      is.list(object$data_info$learners_labels) &&
+      length(object$data_info$learners_labels) >= k
+    ) {
+      labs <- object$data_info$learners_labels[[k]]
     }
 
-    if (is.numeric(model)) {
-      if (is.na(model) || model != as.integer(model)) {
-        stop("Numeric 'model' must be one of 0, 1, 2, ...", call. = FALSE)
-      }
-
-      model <- as.integer(model)
-
-      if (model == 0L) {
-        return(list(
-          type = "sl",
-          index_by_cause = rep(0L, n_crisks),
-          label = "sl"
-        ))
-      }
-
-      bad <- which(model > n_learners_by_cause)
-
-      if (length(bad) > 0L) {
-        stop(
-          sprintf(
-            "Numeric model %d is unavailable for cause(s): %s.",
-            model,
-            paste(bad, collapse = ", ")
-          ),
-          call. = FALSE
-        )
-      }
-
-      return(list(
-        type = "learner",
-        index_by_cause = rep(model, n_crisks),
-        label = paste0("learner_", model)
-      ))
+    if (
+      is.null(labs) ||
+      length(labs) != length(learners_by_cause[[k]]) ||
+      anyNA(labs) ||
+      any(!nzchar(labs))
+    ) {
+      labs <- names(learners_by_cause[[k]])
     }
 
-    if (!is.character(model) || is.na(model)) {
-      stop("'model' must be a character scalar or a numeric scalar.", call. = FALSE)
+    if (
+      is.null(labs) ||
+      length(labs) != length(learners_by_cause[[k]]) ||
+      anyNA(labs) ||
+      any(!nzchar(labs))
+    ) {
+      labs <- paste0("learner_", seq_along(learners_by_cause[[k]]))
     }
 
-    model_chr <- trimws(model)
-    model_chr_lc <- tolower(model_chr)
+    labs
+  }
+  best_discrete_sl_index_by_cause <- function() {
 
-    if (model_chr_lc %in% c("sl", "superlearner", "super_learner")) {
-      return(list(
-        type = "sl",
-        index_by_cause = rep(0L, n_crisks),
-        label = "sl"
-      ))
-    }
-
-    if (grepl("^learner_[0-9]+$", model_chr_lc)) {
-      j <- as.integer(sub("^learner_", "", model_chr_lc))
-      bad <- which(j > n_learners_by_cause)
-
-      if (length(bad) > 0L) {
-        stop(
-          sprintf(
-            "'%s' is unavailable for cause(s): %s.",
-            model_chr,
-            paste(bad, collapse = ", ")
-          ),
-          call. = FALSE
-        )
-      }
-
-      return(list(
-        type = "learner",
-        index_by_cause = rep(j, n_crisks),
-        label = model_chr
-      ))
-    }
+    cv_dt <- object$cross_validation_deviance
 
     index_by_cause <- integer(n_crisks)
+    label_by_cause <- character(n_crisks)
 
     for (k in seq_len(n_crisks)) {
-      labels_k <- learners_labels_by_cause[[k]]
-      j <- match(model_chr, labels_k)
 
-      if (is.na(j)) {
+      labs_k <- learner_labels(k)
+      n_k <- length(labs_k)
+
+      ## If only one learner is retained for this cause, it is automatically discrete SL.
+      if (n_k == 1L) {
+        index_by_cause[k] <- 1L
+        label_by_cause[k] <- labs_k[1L]
+        next
+      }
+
+      if (
+        is.null(cv_dt) ||
+        !is.data.frame(cv_dt) ||
+        nrow(cv_dt) == 0L
+      ) {
+        stop(
+          "`model = 'discrete_sl'` requires `object$cross_validation_deviance`, unless each cause has only one retained learner.",
+          call. = FALSE
+        )
+      }
+
+      cv_df <- as.data.frame(cv_dt)
+
+      if (!("deviance" %in% names(cv_df))) {
+        stop(
+          "`object$cross_validation_deviance` must contain a `deviance` column for `model = 'discrete_sl'`.",
+          call. = FALSE
+        )
+      }
+
+      if ("cause_index" %in% names(cv_df)) {
+        cv_k <- cv_df[as.integer(cv_df[["cause_index"]]) == k, , drop = FALSE]
+      } else if (
+        "cause" %in% names(cv_df) &&
+        !is.null(names(learners_by_cause)) &&
+        length(names(learners_by_cause)) >= k &&
+        nzchar(names(learners_by_cause)[k])
+      ) {
+        cv_k <- cv_df[as.character(cv_df[["cause"]]) == names(learners_by_cause)[k], , drop = FALSE]
+      } else {
+        stop(
+          "`object$cross_validation_deviance` must contain `cause_index` or cause labels matching `object$learners` for `model = 'discrete_sl'`.",
+          call. = FALSE
+        )
+      }
+
+      if (nrow(cv_k) == 0L) {
         stop(
           sprintf(
-            "Learner label '%s' is not available for cause %d.",
-            model_chr,
+            "No cross-validation deviance is available for cause %d, so `model = 'discrete_sl'` cannot choose among %d learners.",
+            k,
+            n_k
+          ),
+          call. = FALSE
+        )
+      }
+
+      dev_k <- as.numeric(cv_k[["deviance"]])
+
+      if (all(is.na(dev_k) | !is.finite(dev_k))) {
+        stop(
+          sprintf(
+            "All cross-validation deviances are missing or non-finite for cause %d.",
             k
           ),
           call. = FALSE
         )
       }
 
-      index_by_cause[k] <- j
+      dev_k[is.na(dev_k) | !is.finite(dev_k)] <- Inf
+      best_row <- which.min(dev_k)
+
+      ix <- NA_integer_
+
+      ## Prefer label matching, because it is robust to pruning/re-indexing.
+      if ("learner" %in% names(cv_k)) {
+        best_label <- as.character(cv_k[["learner"]][best_row])
+        ix <- match(best_label, labs_k)
+      }
+
+      ## Fall back to learner_index if labels are unavailable or do not match.
+      if (
+        is.na(ix) &&
+        "learner_index" %in% names(cv_k)
+      ) {
+        ix <- as.integer(cv_k[["learner_index"]][best_row])
+      }
+
+      if (is.na(ix) || ix < 1L || ix > n_k) {
+        stop(
+          sprintf(
+            "The best cross-validation learner for cause %d could not be matched to the retained learner library. Available learners: %s.",
+            k,
+            paste(sprintf("%d='%s'", seq_along(labs_k), labs_k), collapse = ", ")
+          ),
+          call. = FALSE
+        )
+      }
+
+      index_by_cause[k] <- ix
+      label_by_cause[k] <- labs_k[ix]
     }
 
     list(
       type = "learner",
       index_by_cause = index_by_cause,
-      label = model_chr
+      label_by_cause = label_by_cause
+    )
+  }
+  resolve_model <- function(model) {
+
+    if (is.null(model) || !length(model)) {
+      stop(
+        "`model` must be 'sl', a learner label, a learner index, or a vector of cause-specific learner labels/indices.",
+        call. = FALSE
+      )
+    }
+
+    if (!(length(model) %in% c(1L, n_crisks))) {
+      stop(
+        sprintf(
+          "`model` must have length 1 or length %d, one entry per cause.",
+          n_crisks
+        ),
+        call. = FALSE
+      )
+    }
+
+    ## ------------------------------------------------------------
+    ## Numeric selector
+    ## ------------------------------------------------------------
+
+    if (is.numeric(model) || is.integer(model)) {
+
+      if (anyNA(model) || any(model != as.integer(model))) {
+        stop("Numeric `model` values must be integer learner indices.", call. = FALSE)
+      }
+
+      model_int <- as.integer(model)
+
+      if (length(model_int) == 1L && model_int == 0L) {
+        return(list(
+          type = "sl",
+          index_by_cause = rep(0L, n_crisks),
+          label_by_cause = rep("sl", n_crisks)
+        ))
+      }
+
+      if (any(model_int < 1L)) {
+        stop(
+          "Numeric `model` values must be positive learner indices. Use scalar 0 or 'sl' for the Super Learner.",
+          call. = FALSE
+        )
+      }
+
+      index_by_cause <- if (length(model_int) == 1L) {
+        rep(model_int, n_crisks)
+      } else {
+        model_int
+      }
+
+      for (k in seq_len(n_crisks)) {
+
+        labs_k <- learner_labels(k)
+
+        if (index_by_cause[k] > length(labs_k)) {
+          stop(
+            sprintf(
+              "Learner index %d is not available for cause %d. Available learners: %s.",
+              index_by_cause[k],
+              k,
+              paste(sprintf("%d='%s'", seq_along(labs_k), labs_k), collapse = ", ")
+            ),
+            call. = FALSE
+          )
+        }
+      }
+
+      return(list(
+        type = "learner",
+        index_by_cause = index_by_cause,
+        label_by_cause = vapply(
+          seq_len(n_crisks),
+          function(k) learner_labels(k)[index_by_cause[k]],
+          character(1L)
+        )
+      ))
+    }
+
+    ## ------------------------------------------------------------
+    ## Character selector
+    ## ------------------------------------------------------------
+
+    if (!is.character(model)) {
+      stop(
+        "`model` must be 'sl', a learner label, a learner index, or a vector of cause-specific learner labels/indices.",
+        call. = FALSE
+      )
+    }
+
+    if (anyNA(model) || any(!nzchar(trimws(model)))) {
+      stop("Character `model` values cannot be missing or empty.", call. = FALSE)
+    }
+
+    model_chr <- trimws(model)
+    model_lc <- tolower(model_chr)
+
+    sl_values <- c("sl", "superlearner", "super_learner")
+
+    discrete_sl_values <- c(
+      "discrete_sl",
+      "discrete_superlearner",
+      "discrete_super_learner",
+      "discretesl"
+    )
+
+    if (
+      length(model_chr) == 1L &&
+      model_lc %in% sl_values
+    ) {
+      return(list(
+        type = "sl",
+        index_by_cause = rep(0L, n_crisks),
+        label_by_cause = rep("sl", n_crisks)
+      ))
+    }
+
+    if (
+      length(model_chr) == 1L &&
+      model_lc %in% discrete_sl_values
+    ) {
+      return(best_discrete_sl_index_by_cause())
+    }
+
+    if (any(model_lc %in% c(sl_values, discrete_sl_values))) {
+      stop(
+        "`model = 'sl'` and `model = 'discrete_sl'` must be supplied as scalar model selectors. Do not mix them with cause-specific base-learner selectors.",
+        call. = FALSE
+      )
+    }
+
+    model_chr_by_cause <- if (length(model_chr) == 1L) {
+      rep(model_chr, n_crisks)
+    } else {
+      model_chr
+    }
+
+    index_by_cause <- integer(n_crisks)
+    label_by_cause <- character(n_crisks)
+
+    for (k in seq_len(n_crisks)) {
+
+      labs_k <- learner_labels(k)
+      selector_k <- model_chr_by_cause[k]
+      selector_k_lc <- tolower(selector_k)
+
+      if (grepl("^[0-9]+$", selector_k)) {
+
+        ix <- as.integer(selector_k)
+
+      } else if (grepl("^learner_[0-9]+$", selector_k_lc)) {
+
+        ix <- as.integer(sub("^learner_", "", selector_k_lc))
+
+      } else {
+
+        ix <- match(selector_k, labs_k)
+      }
+
+      if (is.na(ix) || ix < 1L || ix > length(labs_k)) {
+        stop(
+          sprintf(
+            "Learner '%s' is not available for cause %d. Available learners: %s.",
+            selector_k,
+            k,
+            paste(sprintf("%d='%s'", seq_along(labs_k), labs_k), collapse = ", ")
+          ),
+          call. = FALSE
+        )
+      }
+
+      index_by_cause[k] <- ix
+      label_by_cause[k] <- labs_k[ix]
+    }
+
+    list(
+      type = "learner",
+      index_by_cause = index_by_cause,
+      label_by_cause = label_by_cause
     )
   }
 
-  model_sel <- resolve_model_by_cause(model)
+  model_sel <- resolve_model(model)
 
+  learner_index_for_cause <- function(k) {
+    model_sel$index_by_cause[k]
+  }
 
-  ## ------------------------------------------------------------
-  ## Build prediction data
-  ## ------------------------------------------------------------
+  get_fit <- function(k, m) {
 
-  data.table::setDT(newdata)
+    fits_k <- object$superlearner[[k]]$learners_fit
 
-  tmp <- data.table::copy(newdata)
-  tmp[, internal_psl_ix := seq_len(.N)]
+    if (length(learners_by_cause[[k]]) == 1L) {
+      return(fits_k)
+    }
 
-  tmp <- tmp[
-    ,
-    setdiff(
-      names(tmp),
-      c(
-        object$data_info$event_time,
-        object$data_info$status,
-        object$data_info$id
+    fits_k[[m]]
+  }
+
+  predict_base <- function(k, m, endpoint_data, n_expanded) {
+
+    pred <- learners_by_cause[[k]][[m]]$private_predictor(
+      model = get_fit(k, m),
+      newdata = endpoint_data,
+      grid_nodes = grid_nodes
+    )
+
+    if (length(pred) != n_expanded) {
+      stop(
+        sprintf(
+          "Prediction length mismatch for cause %s, learner %s: got %s, expected %s.",
+          k,
+          m,
+          length(pred),
+          n_expanded
+        ),
+        call. = FALSE
       )
-    ),
-    with = FALSE
+    }
+
+    as.numeric(pred)
+  }
+
+  predict_meta_glmnet_hazard <- function(meta_fit, z_mat, deltatime) {
+
+    eps <- 1e-15
+
+    z_log <- log(pmax(z_mat, eps))
+    storage.mode(z_log) <- "double"
+
+    deltatime <- as.numeric(deltatime)
+
+    out <- rep(NA_real_, nrow(z_log))
+
+    ok <- stats::complete.cases(z_log) &
+      is.finite(deltatime) &
+      deltatime > 0
+
+    if (any(ok)) {
+
+      mu <- stats::predict(
+        meta_fit,
+        newx = z_log[ok, , drop = FALSE],
+        newoffset = log(deltatime[ok]),
+        s = 0,
+        type = "response"
+      )
+
+      ## glmnet returns the Poisson mean:
+      ##   E[N_ij] = deltatime_ij * hazard_ij
+      ## The rest of the prediction code needs the hazard.
+      out[ok] <- as.numeric(mu) / deltatime[ok]
+    }
+
+    out
+  }
+
+  build_endpoint_data <- function(combo_dt) {
+
+    grid_dt <- data.table::data.table(node = grid_nodes)
+    grid_dt[, prev_node_psl := data.table::shift(node)]
+    grid_dt[, (event_time_col) := node]
+
+    endpoint_dt <- grid_dt[
+      combo_dt,
+      on = event_time_col,
+      roll = Inf
+    ]
+
+    endpoint_dt[
+      ,
+      node_start := data.table::fifelse(
+        get(event_time_col) == node,
+        prev_node_psl,
+        node
+      )
+    ]
+
+    endpoint_dt <- endpoint_dt[!is.na(node_start)]
+
+    endpoint_dt[
+      ,
+      c("node", "tij") := list(
+        node_start,
+        get(event_time_col) - node_start
+      )
+    ]
+
+    endpoint_dt[, deltaij := 0L]
+
+    endpoint_dt[]
+  }
+
+
+  ## ------------------------------------------------------------
+  ## One row for each newdata x times combination
+  ## ------------------------------------------------------------
+
+  newdata_dt <- data.table::as.data.table(data.table::copy(newdata))
+  newdata_dt[, .psl_internal_ix := seq_len(.N)]
+
+  tmp <- data.table::copy(newdata_dt)
+
+  drop_cols <- intersect(
+    c(id_col, status_col, event_time_col),
+    names(tmp)
+  )
+
+  if (length(drop_cols)) {
+    tmp[, (drop_cols) := NULL]
+  }
+
+  n_new <- nrow(tmp)
+  n_times <- length(times)
+
+  combo_dt <- tmp[rep(seq_len(n_new), each = n_times)]
+  combo_dt[, .psl_time_ix := rep(seq_along(times), times = n_new)]
+  combo_dt[, .psl_pred_id := seq_len(.N)]
+  combo_dt[, (event_time_col) := rep(times, times = n_new)]
+
+  zero_combo <- combo_dt[get(event_time_col) == 0]
+  future_combo <- combo_dt[get(event_time_col) > maximum_followup]
+  valid_combo <- combo_dt[
+    get(event_time_col) > 0 &
+      get(event_time_col) <= maximum_followup
   ]
 
-  cond_zero <- 0 %in% times
-  all_zero <- all(times == 0)
-  cond_times_larger_than_max <- times > object$data_info$maximum_followup
-
-  pwch_cols <- paste0("pwch_", seq_len(n_crisks))
-
-  if (all(cond_times_larger_than_max)) {
+  if (nrow(valid_combo) == 0L && nrow(zero_combo) == 0L) {
     warning(
       paste0(
-        "All the entries in the input times are larger than the maximum follow-up: ",
-        as.character(object$data_info$maximum_followup)
-      )
+        "All entries in `times` are larger than the maximum follow-up: ",
+        as.character(maximum_followup),
+        "."
+      ),
+      call. = FALSE
     )
     return(NULL)
   }
 
-  vec_dt <- data.table::data.table(
-    tmp_prediction_time = times[times <= object$data_info$maximum_followup]
-  )
-
-  data.table::setnames(
-    vec_dt,
-    "tmp_prediction_time",
-    object$data_info$event_time
-  )
-
-  tmp[, dummy := 1L]
-  vec_dt[, dummy := 1L]
-
-  data_pp <- merge(
-    tmp,
-    vec_dt,
-    by = "dummy",
-    allow.cartesian = TRUE
-  )[, dummy := NULL]
-
-  if (is.null(data_pp[[object$data_info$id]])) {
-    data_pp[[object$data_info$id]] <- seq_len(nrow(data_pp))
-  }
-
-  if (is.null(data_pp[[object$data_info$status]])) {
-    data_pp[[object$data_info$status]] <- 0
-  }
-
 
   ## ------------------------------------------------------------
-  ## Handle time zero
+  ## t = 0
   ## ------------------------------------------------------------
 
-  zero_time <- NULL
+  zero_out <- NULL
 
-  if (cond_zero) {
-    tmptcol <- object$data_info$event_time
+  if (nrow(zero_combo)) {
+    zero_out <- data.table::copy(zero_combo)
 
-    zero_time <- data_pp[get(tmptcol) == 0]
-
-    for (cl in pwch_cols) {
-      data.table::set(zero_time, j = cl, value = 0)
+    for (cc in pwch_cols) {
+      zero_out[, (cc) := 0]
     }
 
-    data.table::set(zero_time, j = "survival_function", value = 1)
-    data.table::set(zero_time, j = "absolute_risk", value = 0)
-
-    data_pp <- data_pp[get(tmptcol) != 0]
+    zero_out[, survival_function := 1]
+    zero_out[, absolute_risk := 0]
   }
 
-  if (!all_zero) {
 
-    data_pp <- data_pre_processing(
-      data_pp,
-      id = object$data_info$id,
-      status = object$data_info$status,
-      predictions = TRUE,
-      event_time = object$data_info$event_time,
-      nodes = object$data_info$nodes
-    )
+  ## ------------------------------------------------------------
+  ## t > maximum follow-up
+  ## ------------------------------------------------------------
+
+  future_out <- NULL
+
+  if (nrow(future_combo)) {
+    future_out <- data.table::copy(future_combo)
+
+    for (cc in pwch_cols) {
+      future_out[, (cc) := NA_real_]
+    }
+
+    future_out[, survival_function := NA_real_]
+    future_out[, absolute_risk := NA_real_]
+  }
+
+
+  ## ------------------------------------------------------------
+  ## 0 < t <= maximum follow-up
+  ## ------------------------------------------------------------
+
+  valid_out <- NULL
+
+  if (nrow(valid_combo)) {
+
+    endpoint_data <- build_endpoint_data(valid_combo)
 
     if (!is.null(object$data_info$variable_transformation)) {
       apply_transformations(
-        data_pp,
+        endpoint_data,
         object$data_info$variable_transformation
       )
     }
 
-    data_pp[, deltatime := tij]
-    data_pp[, tij := 1]
+    ## This is the important part:
+    ## expand each requested subject-time endpoint into the Poisson
+    ## representation over all intervals up to that time.
+    data_pp <- make_validation_skeleton(
+      valid_data = endpoint_data,
+      grid_nodes = grid_nodes,
+      cause = 1L,
+      node_col = "node",
+      tij_col = "tij",
+      event_col = "deltaij",
+      keep_cols = ".psl_pred_id"
+    )
 
+    if (!(".psl_pred_id" %in% names(data_pp))) {
+      stop(
+        "`make_validation_skeleton()` must preserve `.psl_pred_id` during prediction.",
+        call. = FALSE
+      )
+    }
 
-    ## ------------------------------------------------------------
-    ## Cause-specific prediction
-    ## ------------------------------------------------------------
+    if (!("tij" %in% names(data_pp))) {
+      stop(
+        "`make_validation_skeleton()` must return `tij`.",
+        call. = FALSE
+      )
+    }
+
+    data_pp[, deltatime := as.numeric(tij)]
+    data_pp <- data_pp[deltatime > 0]
+
+    if ("node" %in% names(data_pp)) {
+      data.table::setorderv(data_pp, c(".psl_pred_id", "node"))
+    } else {
+      data.table::setorderv(data_pp, ".psl_pred_id")
+    }
+
+    n_expanded <- nrow(data_pp)
 
     dt_pred <- vector("list", n_crisks)
 
     for (k in seq_len(n_crisks)) {
 
-      learners_k <- learners_by_cause[[k]]
-      z_k <- z_covariates_by_cause[[k]]
-      sl_k <- object$superlearner[[k]]
-      n_k <- n_learners_by_cause[k]
+      n_learners_k <- length(learners_by_cause[[k]])
+      meta_fit_k <- object$superlearner[[k]]$meta_learner_fit
 
-      use_sl_k <- isTRUE(model_sel$type == "sl") &&
-        n_k > 1L &&
-        !is.null(sl_k$meta_learner_fit) &&
-        !is.null(metalearner_by_cause[[k]])
+      use_meta_k <- isTRUE(model_sel$type == "sl") &&
+        n_learners_k > 1L &&
+        !is.null(meta_fit_k)
 
-      if (use_sl_k) {
+      if (use_meta_k) {
 
-        learners_predictions_k <- lapply(seq_len(n_k), function(j) {
-          learners_k[[j]]$private_predictor(
-            model = sl_k$learners_fit[[j]],
-            newdata = data_pp
+        z_mat <- matrix(
+          NA_real_,
+          nrow = n_expanded,
+          ncol = n_learners_k
+        )
+
+        colnames(z_mat) <- paste0("Z", seq_len(n_learners_k))
+
+        for (m in seq_len(n_learners_k)) {
+          z_mat[, m] <- predict_base(
+            k = k,
+            m = m,
+            endpoint_data = endpoint_data,
+            n_expanded = n_expanded
           )
-        })
+        }
 
-        learners_predictions_k <- do.call(
-          cbind,
-          lapply(learners_predictions_k, as.numeric)
-        )
-
-        learners_predictions_k <- log(learners_predictions_k)
-
-        colnames(learners_predictions_k) <- z_k
-
-        pseudo_observations_k <- data.table::as.data.table(
-          learners_predictions_k
-        )
-
-        dt_pred[[k]] <- metalearner_by_cause[[k]]$private_predictor(
-          model = sl_k$meta_learner_fit,
-          newdata = cbind(pseudo_observations_k, data_pp)
+        dt_pred[[k]] <- predict_meta_glmnet_hazard(
+          meta_fit = meta_fit_k,
+          z_mat = z_mat,
+          deltatime = data_pp[["deltatime"]]
         )
 
       } else {
 
-        learner_index_k <- if (model_sel$type == "learner") {
-          model_sel$index_by_cause[k]
+        learner_ix <- if (isTRUE(model_sel$type == "learner")) {
+          learner_index_for_cause(k)
         } else {
           1L
         }
 
-        fit_k <- if (n_k == 1L) {
-          sl_k$learners_fit
-        } else {
-          sl_k$learners_fit[[learner_index_k]]
-        }
-
-        dt_pred[[k]] <- learners_k[[learner_index_k]]$private_predictor(
-          model = fit_k,
-          newdata = data_pp
+        dt_pred[[k]] <- predict_base(
+          k = k,
+          m = learner_ix,
+          endpoint_data = endpoint_data,
+          n_expanded = n_expanded
         )
       }
     }
 
     data_pp[, (pwch_cols) := dt_pred]
 
-    sum_of_hazards <- paste(pwch_cols, collapse = " + ")
-    eval(parse(
-      text = paste0("data_pp[, pwch_dot := ", sum_of_hazards, "]")
-    ))
+    haz <- as.matrix(data_pp[, .SD, .SDcols = pwch_cols])
 
-    mapply(
-      function(pwch, name) {
-        data_pp[
-          ,
-          (paste0("cumulative_hazard_", name)) :=
-            cumsum(get(pwch) * deltatime),
-          by = id
-        ]
-      },
-      pwch_cols,
-      gsub("pwch_", "", pwch_cols)
-    )
-
-    haz <- as.matrix(
-      data_pp[, .SD, .SDcols = patterns("^pwch_[0-9]+$")]
-    )
-
-    S <- pch_survival(
-      id = data_pp$id,
-      dt = data_pp$deltatime,
-      haz = haz
-    )
-
-    data_pp[, survival_function := S]
+    data_pp[
+      ,
+      survival_function := pch_survival(
+        id = .psl_pred_id,
+        dt = deltatime,
+        haz = haz
+      )
+    ]
 
     data_pp[
       ,
       absolute_risk := pch_absolute_risk(
-        id,
+        .psl_pred_id,
         deltatime,
         haz,
         cause_idx = cause
       )
     ]
 
-    data_pp <- data_pp[
+    last_pp <- data_pp[
       ,
       .SD[.N],
-      by = id
-    ][
-      ,
-      times := node_start + deltatime
+      by = .psl_pred_id
     ]
 
-    columns_ss <- unique(
-      c(
-        colnames(newdata),
-        object$data_info$event_time,
-        pwch_cols,
-        "survival_function",
-        "absolute_risk",
-        "internal_psl_ix"
-      )
+    pred_cols <- c(
+      ".psl_pred_id",
+      pwch_cols,
+      "survival_function",
+      "absolute_risk"
     )
 
-    d <- data_pp[, ..columns_ss]
-
-  } else {
-
-    columns_ss <- unique(
-      c(
-        colnames(newdata),
-        object$data_info$event_time,
-        pwch_cols,
-        "survival_function",
-        "absolute_risk",
-        "internal_psl_ix"
-      )
+    valid_out <- merge(
+      valid_combo,
+      last_pp[, ..pred_cols],
+      by = ".psl_pred_id",
+      all.x = TRUE,
+      sort = FALSE
     )
-
-    d <- zero_time[, ..columns_ss]
   }
 
 
   ## ------------------------------------------------------------
-  ## Add time zero rows, if needed
+  ## Assemble output
   ## ------------------------------------------------------------
 
-  if (cond_zero && !all_zero) {
-    columns_ss <- unique(
-      c(
-        colnames(newdata),
-        object$data_info$event_time,
-        pwch_cols,
-        "survival_function",
-        "absolute_risk",
-        "internal_psl_ix"
-      )
-    )
-
-    zero_time <- zero_time[, ..columns_ss]
-    d <- rbind(zero_time, d, fill = TRUE)
-  }
-
-
-  ## ------------------------------------------------------------
-  ## Add rows for times larger than maximum follow-up
-  ## ------------------------------------------------------------
-
-  if (any(cond_times_larger_than_max)) {
-
-    vec_dt2 <- data.table::data.table(
-      tmp_prediction_time = times[cond_times_larger_than_max]
-    )
-
-    data.table::setnames(
-      vec_dt2,
-      "tmp_prediction_time",
-      object$data_info$event_time
-    )
-
-    tmp2 <- data.table::copy(tmp)
-    tmp2[, dummy := 1L]
-    vec_dt2[, dummy := 1L]
-
-    d2 <- merge(
-      tmp2,
-      vec_dt2,
-      by = "dummy",
-      allow.cartesian = TRUE
-    )[, dummy := NULL]
-
-    d2[, c(pwch_cols, "survival_function", "absolute_risk") := NA_real_]
-
-    columns_ss <- unique(
-      c(
-        colnames(newdata),
-        object$data_info$event_time,
-        pwch_cols,
-        "survival_function",
-        "absolute_risk",
-        "internal_psl_ix"
-      )
-    )
-
-    d2 <- d2[, ..columns_ss]
-
-    d <- rbind(d, d2, fill = TRUE)
-  }
-
-
-  ## ------------------------------------------------------------
-  ## Restore user-facing id
-  ## ------------------------------------------------------------
-
-  if (object$data_info$id %in% names(d)) {
-    d[, (object$data_info$id) := NULL]
-  }
-
-  data.table::setnames(
-    d,
-    old = "internal_psl_ix",
-    new = object$data_info$id
+  out <- data.table::rbindlist(
+    list(zero_out, valid_out, future_out),
+    use.names = TRUE,
+    fill = TRUE
   )
 
-  d <- d[order(get(object$data_info$id), get(object$data_info$event_time))]
+  data.table::setorderv(
+    out,
+    c(".psl_internal_ix", ".psl_time_ix")
+  )
 
-  return(d)
+  data.table::setnames(
+    out,
+    old = ".psl_internal_ix",
+    new = id_col
+  )
+
+  private_cols <- c(".psl_pred_id", ".psl_time_ix")
+
+  out[, (intersect(private_cols, names(out))) := NULL]
+
+  return_cols <- unique(
+    c(
+      id_col,
+      setdiff(
+        names(newdata_dt),
+        c(id_col, status_col, event_time_col, ".psl_internal_ix")
+      ),
+      event_time_col,
+      pwch_cols,
+      "survival_function",
+      "absolute_risk"
+    )
+  )
+
+  return_cols <- intersect(return_cols, names(out))
+
+  out <- out[, ..return_cols]
+
+  out[]
 }
 #' Predict hazards, survival and absolute risk from a fitted base learner
 #'
@@ -688,267 +934,345 @@ predict.poisson_superlearner <- function(object,
 #'
 #' @export
 predict.base_learner <- function(object,
-                                         newdata,
-                                         times,
-                                         cause = 1,
-                                         ...) {
+                                 newdata,
+                                 times,
+                                 cause = 1,
+                                 ...) {
 
-  setDT(newdata)
+  id_col <- object$data_info$id
+  status_col <- object$data_info$status
+  event_time_col <- object$data_info$event_time
+  grid_nodes <- object$data_info$nodes
+  maximum_followup <- object$data_info$maximum_followup
+  n_crisks <- object$data_info$n_crisks
 
-  tmp <- copy(newdata)
-  tmp[,internal_psl_ix:=1:.N]
-  # here we disregard the event_time column if present in the newdata
-  tmp <- tmp[, setdiff(names(tmp), c(object$data_info$event_time,
-                                     object$data_info$status,
-                                     object$data_info$id)), with = FALSE]
+  times <- as.numeric(times)
+
+  if (!length(times)) {
+    stop("`times` must contain at least one value.", call. = FALSE)
+  }
+
+  if (anyNA(times)) {
+    stop("`times` cannot contain NA values.", call. = FALSE)
+  }
+
+  if (any(times < 0)) {
+    stop("`times` must be non-negative.", call. = FALSE)
+  }
+
+  if (
+    length(cause) != 1L ||
+    is.na(cause) ||
+    cause < 1L ||
+    cause > n_crisks
+  ) {
+    stop(
+      "`cause` must be a single integer between 1 and object$data_info$n_crisks.",
+      call. = FALSE
+    )
+  }
+
+  if (
+    is.null(object$learner_fit) ||
+    !is.list(object$learner_fit) ||
+    length(object$learner_fit) != n_crisks
+  ) {
+    stop(
+      "`object$learner_fit` must be a list with one fitted model per cause.",
+      call. = FALSE
+    )
+  }
+
+  if (
+    is.null(object$model) ||
+    !is.function(object$model$private_predictor)
+  ) {
+    stop(
+      "`object$model` must contain a learner with private_predictor().",
+      call. = FALSE
+    )
+  }
+
+  pwch_cols <- paste0("pwch_", seq_len(n_crisks))
 
 
-  ## checks on the data
-  cond_zero <- 0 %in% times
+  ## ------------------------------------------------------------
+  ## One row for each newdata x times combination
+  ## ------------------------------------------------------------
 
-  all_zero <- all(times==0)
+  newdata_dt <- data.table::as.data.table(data.table::copy(newdata))
+  newdata_dt[, .psl_internal_ix := seq_len(.N)]
 
-  cond_times_larger_than_max <- times > object$data_info$maximum_followup
+  tmp <- data.table::copy(newdata_dt)
 
-  ## frame hazard problem
-  pwch_cols <- paste0("pwch_", 1:object$data_info$n_crisks)
+  drop_cols <- intersect(
+    c(id_col, status_col, event_time_col),
+    names(tmp)
+  )
 
-  if (all(cond_times_larger_than_max)) {
+  if (length(drop_cols)) {
+    tmp[, (drop_cols) := NULL]
+  }
+
+  n_new <- nrow(tmp)
+  n_times <- length(times)
+
+  combo_dt <- tmp[rep(seq_len(n_new), each = n_times)]
+  combo_dt[, .psl_time_ix := rep(seq_along(times), times = n_new)]
+  combo_dt[, .psl_pred_id := seq_len(.N)]
+  combo_dt[, (event_time_col) := rep(times, times = n_new)]
+
+  zero_combo <- combo_dt[get(event_time_col) == 0]
+  future_combo <- combo_dt[get(event_time_col) > maximum_followup]
+  valid_combo <- combo_dt[
+    get(event_time_col) > 0 &
+      get(event_time_col) <= maximum_followup
+  ]
+
+  if (nrow(valid_combo) == 0L && nrow(zero_combo) == 0L) {
     warning(
       paste0(
-        "All the entries in the input times are larger than the maximum follow-up: ",
-        as.character(object$data_info$maximum_followup)
-      )
+        "All entries in `times` are larger than the maximum follow-up: ",
+        as.character(maximum_followup),
+        "."
+      ),
+      call. = FALSE
     )
-    d <- NULL
 
-    return(d)
-
-  } else{
-    eval(parse(
-      text = paste0(
-        "
-    vec_dt <- data.table(
-
-    ",
-        object$data_info$event_time,
-        " = times[times <= object$data_info$maximum_followup]
-  )
-    "
-      )
-    ))
-
-    # # no problem writing over id
-    # if (is.null(tmp[[object$data_info$id]])) {
-    #   tmp[[object$data_info$id]] <- 1:nrow(tmp)
-    # }
-    #
-    # if (is.null(tmp[[object$data_info$status]])) {
-    #   tmp[[object$data_info$status]] <- 0
-    # }
-
-    tmp[, dummy := 1]
-    vec_dt[, dummy := 1]
-
-    # Merge on dummy to create Cartesian product
-    data_pp <- merge(tmp, vec_dt, by = "dummy", allow.cartesian = TRUE)[, dummy := NULL]
-  }
-  # }
-
-
-
-
-# no problem writing over id
-if (is.null(data_pp[[object$data_info$id]])) {
-  data_pp[[object$data_info$id]] <- 1:nrow(data_pp)
-}
-
-if (is.null(data_pp[[object$data_info$status]])) {
-  data_pp[[object$data_info$status]] <- 0
-}
-
-
-  if(cond_zero){
-
-
-    tmptcol <- object$data_info$event_time  # character vector
-    zero_time <- data_pp[get(tmptcol) == 0]
-    for (cl in pwch_cols) set(zero_time, j = cl, value = 0)
-    set(zero_time, j = "survival_function", value = 1)
-    set(zero_time, j = "absolute_risk", value = 0)
-    data_pp<-data_pp[get(tmptcol) != 0]
-  }
-
-  if(all_zero){
-
-    return(zero_time)
+    return(NULL)
   }
 
 
+  ## ------------------------------------------------------------
+  ## t = 0
+  ## ------------------------------------------------------------
 
-  data_pp <- data_pre_processing(
-    data_pp,
-    id = object$data_info$id,
-    status = object$data_info$status,
-    predictions=TRUE,
-    event_time = object$data_info$event_time,
-    nodes = object$data_info$nodes
-  )
+  zero_out <- NULL
 
+  if (nrow(zero_combo)) {
+    zero_out <- data.table::copy(zero_combo)
 
-
-  #  ()
-  if (!is.null(object$data_info$variable_transformation)) {
-
-    apply_transformations(data_pp, object$data_info$variable_transformation)
-  }
-
-
-  # Set covariates for metalearner
-  z_covariates <- paste0("Z", 1:length(object$learners))
-
-
-  # Predict on the validation set your pseudo-observations ----
-  #
-
-  data_pp[, deltatime := tij][, tij := 1]
-
-
-    dt_pred <- lapply(object$learner_fit, function(x) {
-      object$model$private_predictor(
-        model = x, newdata = data_pp)
-    })
-
-
-  # save casue-specific pwch
-
-  data_pp[, paste0("pwch_", 1:object$data_info$n_crisks) := dt_pred]
-
-
-
-  # save sum of pwch
-
-  sum_of_hazards <- paste(pwch_cols, collapse = " + ")
-
-  pwch_dot_string <- paste0("data_pp[, pwch_dot :=", sum_of_hazards, "]")
-
-  eval(parse(text = pwch_dot_string))
-
-
-  # compute cumulative hazard
-
-  mapply(function(pwch, name) {
-    data_pp[, (paste0("cumulative_hazard_", name)) := cumsum(get(pwch) * deltatime), by = id]
-  }, pwch_cols, gsub("pwch_", "", pwch_cols))
-
-
-  # compute survival function
-
-  ## c++
-  haz <- as.matrix(data_pp[, .SD, .SDcols = patterns("^pwch_[0-9]+$")])
-  S <- pch_survival(id = data_pp$id, dt = data_pp$deltatime, haz = haz)
-  data_pp[, survival_function := S]
-
-
-  data_pp[, absolute_risk := pch_absolute_risk(id, deltatime, haz, cause_idx = cause)]
-
-  # abs_risk approx
-  # data_pp[, survival_function_shift := shift(survival_function, fill = 1), by =
-  #           id]
-  # absolute_risk_string <- paste0(
-  #   "data_pp[, absolute_risk_2 := cumsum(survival_function_shift * pwch_",
-  #   cause,
-  #   "*deltatime), by = id]"
-  # )
-  # eval(parse(text = absolute_risk_string))
-
-
-  ## non c++
-  # hazard_terms <- paste0("cumulative_hazard_", 1:object$data_info$n_crisks)
-  # sum_expr <- paste(pwch_cols, collapse = " + ")
-  # survival_function_string <- paste0("data_pp[, survival_function := exp(-cumsum((", sum_expr, ")*deltatime)),by=id]")
-  # eval(parse(text = survival_function_string))
-
-  # shift survival function
-  # data_pp[, survival_function_shift := shift(survival_function, fill = 1), by =
-  #           id]
-  # absolute_risk_string <- paste0(
-  #   "data_pp[, absolute_risk := cumsum(survival_function_shift * pwch_",
-  #   cause,
-  #   "/pwch_dot * (1-exp(-pwch_dot*deltatime))), by = id]"
-  # )
-  # eval(parse(text = absolute_risk_string))
-
-  ####
-  # data_pp <- data_pp[, .SD[.N], by = id][, times := as.numeric(as.character(node)) +
-  #                                          deltatime]
-  data_pp <- data_pp[, .SD[.N], by = id][, times := node_start + deltatime]
-
-
-  columns_ss <- unique(
-    c(
-      colnames(newdata),
-      object$data_info$event_time,
-      pwch_cols,
-      "survival_function",
-      "absolute_risk",
-      "internal_psl_ix"
-    )
-  )
-
-  d <- data_pp[, ..columns_ss]
-
-
-  if (cond_zero) {
-
-    d<- rbind(zero_time,
-              d)
-
-  }
-
-
-
-  if (any(cond_times_larger_than_max)) {
-    eval(parse(
-      text = paste0(
-        "
-    vec_dt2 <- data.table(
-
-    ",
-        object$data_info$event_time,
-        " = times[cond_times_larger_than_max]
-  )
-    "
-      )
-    ))
-
-    tmp[, dummy := 1]
-    vec_dt2[, dummy := 1]
-
-    d2 <- merge(tmp, vec_dt2, by = "dummy", allow.cartesian = TRUE)[, dummy := NULL]
-    d2[, c(pwch_cols, "survival_function", "absolute_risk") := NA_real_]
-
-
-    if (object$data_info$id %in% colnames(d)) {
-      d2[[object$data_info$id]] <- (nrow(data_pp) + 1):(nrow(data_pp) + nrow(d2))
+    for (cc in pwch_cols) {
+      zero_out[, (cc) := 0]
     }
 
-
-
-    d <- rbind(d, d2, fill = TRUE)
-
-
+    zero_out[, survival_function := 1]
+    zero_out[, absolute_risk := 0]
   }
 
 
-  if (object$data_info$id %in% names(d)) {
-    d[, (object$data_info$id) := NULL]
+  ## ------------------------------------------------------------
+  ## t > maximum follow-up
+  ## ------------------------------------------------------------
+
+  future_out <- NULL
+
+  if (nrow(future_combo)) {
+    future_out <- data.table::copy(future_combo)
+
+    for (cc in pwch_cols) {
+      future_out[, (cc) := NA_real_]
+    }
+
+    future_out[, survival_function := NA_real_]
+    future_out[, absolute_risk := NA_real_]
   }
-  setnames(d, new = object$data_info$id, old = "internal_psl_ix")
-  d <- d[order(get(object$data_info$id))]
-  return(d)
 
 
+  ## ------------------------------------------------------------
+  ## 0 < t <= maximum follow-up
+  ## ------------------------------------------------------------
+
+  valid_out <- NULL
+
+  if (nrow(valid_combo)) {
+
+    grid_dt <- data.table::data.table(node = grid_nodes)
+    grid_dt[, prev_node_psl := data.table::shift(node)]
+    grid_dt[, (event_time_col) := node]
+
+    endpoint_data <- grid_dt[
+      valid_combo,
+      on = event_time_col,
+      roll = Inf
+    ]
+
+    endpoint_data[
+      ,
+      node_start := data.table::fifelse(
+        get(event_time_col) == node,
+        prev_node_psl,
+        node
+      )
+    ]
+
+    endpoint_data <- endpoint_data[!is.na(node_start)]
+
+    endpoint_data[
+      ,
+      c("node", "tij") := list(
+        node_start,
+        get(event_time_col) - node_start
+      )
+    ]
+
+    endpoint_data[, deltaij := 0L]
+
+    if (!is.null(object$data_info$variable_transformation)) {
+      apply_transformations(
+        endpoint_data,
+        object$data_info$variable_transformation
+      )
+    }
+
+    data_pp <- make_validation_skeleton(
+      valid_data = endpoint_data,
+      grid_nodes = grid_nodes,
+      cause = 1L,
+      node_col = "node",
+      tij_col = "tij",
+      event_col = "deltaij",
+      keep_cols = ".psl_pred_id"
+    )
+
+    if (!(".psl_pred_id" %in% names(data_pp))) {
+      stop(
+        "`make_validation_skeleton()` must preserve `.psl_pred_id` during prediction.",
+        call. = FALSE
+      )
+    }
+
+    if (!("tij" %in% names(data_pp))) {
+      stop(
+        "`make_validation_skeleton()` must return `tij`.",
+        call. = FALSE
+      )
+    }
+
+    data_pp[, deltatime := as.numeric(tij)]
+    data_pp <- data_pp[deltatime > 0]
+
+    if ("node" %in% names(data_pp)) {
+      data.table::setorderv(data_pp, c(".psl_pred_id", "node"))
+    } else {
+      data.table::setorderv(data_pp, ".psl_pred_id")
+    }
+
+    n_expanded <- nrow(data_pp)
+
+    dt_pred <- vector("list", n_crisks)
+
+    for (k in seq_len(n_crisks)) {
+
+      pred_k <- object$model$private_predictor(
+        model = object$learner_fit[[k]],
+        newdata = endpoint_data,
+        grid_nodes = grid_nodes
+      )
+
+      if (length(pred_k) != n_expanded) {
+        stop(
+          sprintf(
+            "Prediction length mismatch for cause %s: got %s, expected %s.",
+            k,
+            length(pred_k),
+            n_expanded
+          ),
+          call. = FALSE
+        )
+      }
+
+      dt_pred[[k]] <- as.numeric(pred_k)
+    }
+
+    data_pp[, (pwch_cols) := dt_pred]
+
+    haz <- as.matrix(data_pp[, .SD, .SDcols = pwch_cols])
+
+    data_pp[
+      ,
+      survival_function := pch_survival(
+        id = .psl_pred_id,
+        dt = deltatime,
+        haz = haz
+      )
+    ]
+
+    data_pp[
+      ,
+      absolute_risk := pch_absolute_risk(
+        .psl_pred_id,
+        deltatime,
+        haz,
+        cause_idx = cause
+      )
+    ]
+
+    last_pp <- data_pp[
+      ,
+      .SD[.N],
+      by = .psl_pred_id
+    ]
+
+    pred_cols <- c(
+      ".psl_pred_id",
+      pwch_cols,
+      "survival_function",
+      "absolute_risk"
+    )
+
+    valid_out <- merge(
+      valid_combo,
+      last_pp[, ..pred_cols],
+      by = ".psl_pred_id",
+      all.x = TRUE,
+      sort = FALSE
+    )
+  }
 
 
+  ## ------------------------------------------------------------
+  ## Assemble output
+  ## ------------------------------------------------------------
+
+  out <- data.table::rbindlist(
+    list(zero_out, valid_out, future_out),
+    use.names = TRUE,
+    fill = TRUE
+  )
+
+  data.table::setorderv(
+    out,
+    c(".psl_internal_ix", ".psl_time_ix")
+  )
+
+  data.table::setnames(
+    out,
+    old = ".psl_internal_ix",
+    new = id_col
+  )
+
+  private_cols <- c(".psl_pred_id", ".psl_time_ix")
+
+  out[, (intersect(private_cols, names(out))) := NULL]
+
+  return_cols <- unique(
+    c(
+      id_col,
+      setdiff(
+        names(newdata_dt),
+        c(id_col, status_col, event_time_col, ".psl_internal_ix")
+      ),
+      event_time_col,
+      pwch_cols,
+      "survival_function",
+      "absolute_risk"
+    )
+  )
+
+  return_cols <- intersect(return_cols, names(out))
+
+  out <- out[, ..return_cols]
+
+  out[]
 }
