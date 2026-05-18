@@ -925,7 +925,7 @@ predict.poisson_superlearner <- function(object,
 #' }
 #'
 #' @examples
-#' d <- simulateStenoT1(120, competing_risks = TRUE)
+#' d <- simulateStenoT1(30, competing_risks = TRUE)
 #' lrn <- Learner_glmnet(covariates = c("age", "value_LDL"), lambda = 0, cross_validation = FALSE)
 #' bl <- fit_learner(d, learner = lrn, id="id", status="status_cvd", event_time="time_cvd",
 #'                   number_of_nodes=8)

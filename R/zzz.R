@@ -57,3 +57,13 @@ utils::globalVariables(
     "terminal_tij"
   )
 )
+
+
+.onLoad <- function(libname, pkgname) {
+  running_check <- identical(Sys.getenv("_R_CHECK_PACKAGE_NAME_"), pkgname) ||
+    identical(tolower(Sys.getenv("_R_CHECK_LIMIT_CORES_")), "true")
+
+  if (running_check && requireNamespace("data.table", quietly = TRUE)) {
+    data.table::setDTthreads(1L)
+  }
+}

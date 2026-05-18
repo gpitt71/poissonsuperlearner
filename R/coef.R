@@ -31,7 +31,7 @@
 #' and returns `invisible(object)`.
 #'
 #' @examples
-#' d <- simulateStenoT1(50, competing_risks = TRUE)
+#' d <- simulateStenoT1(30, competing_risks = TRUE)
 #' lrn <- Learner_glmnet(covariates = c("age", "value_LDL"),
 #'                       lambda = 0, cross_validation = FALSE)
 #' bl <- fit_learner(d, learner = lrn, id = "id",

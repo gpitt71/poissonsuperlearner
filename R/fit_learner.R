@@ -78,7 +78,7 @@
 #'                   id = "id",
 #'                   status = "status_cvd",
 #'                   event_time = "time_cvd",
-#'                   number_of_nodes = 4)
+#'                   number_of_nodes = 2)
 #'
 #' @export
 fit_learner <- function(data,
