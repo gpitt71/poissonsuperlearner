@@ -18,9 +18,9 @@ used by \code{\link[=Superlearner]{Superlearner()}} and \code{\link[=fit_learner
 }
 \details{
 \strong{User-facing API:} users should \strong{only initialize} the learner and pass it
-to \code{\link[=Superlearner]{Superlearner()}} / \code{\link[=fit_learner]{fit_learner()}}. The methods \code{private_fit()} and
-\code{private_predictor()} are part of the internal learner interface and are
-\strong{not meant to be called directly by users}.
+to \code{\link[=Superlearner]{Superlearner()}} / \code{\link[=fit_learner]{fit_learner()}}. The remaining methods documented below
+are part of the internal learner interface and are \strong{not meant to be called
+directly by users}.
 
 \strong{Wrapper role:} this class wraps \code{mgcv::bam} in a piecewise-constant hazard
 workflow. The package-specific contribution is to provide a convenient
@@ -60,6 +60,7 @@ The additive predictor \eqn{\eta(x)}{eta(x)} is constructed from \code{covariate
 \describe{
 \item{\code{initialize(...)}}{Construct and configure the learner. This is the only method users should call.}
 \item{\code{private_fit(data, ...)}}{Internal. Fits a Poisson GAM with offset \code{log(tij)} on long-format data.}
+\item{\code{private_fit_all_causes(data, ...)}}{Internal. Fits cause-specific Poisson GAMs for all requested causes using a shared long-format data setup.}
 \item{\code{private_predictor(model, newdata, ...)}}{Internal. Predicts hazards on the response scale.}
 }
 }

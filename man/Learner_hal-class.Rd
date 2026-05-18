@@ -11,9 +11,9 @@ used by \code{\link[=Superlearner]{Superlearner()}} and \code{\link[=fit_learner
 }
 \details{
 \strong{User-facing API:} users should \strong{only initialize} the learner and pass it
-to \code{\link[=Superlearner]{Superlearner()}} / \code{\link[=fit_learner]{fit_learner()}}. The methods \code{private_fit()} and
-\code{private_predictor()} (and any basis-construction helpers) are part of the
-internal learner interface and are \strong{not meant to be called directly by users}.
+to \code{\link[=Superlearner]{Superlearner()}} / \code{\link[=fit_learner]{fit_learner()}}. The remaining methods documented below
+are part of the internal learner interface and are \strong{not meant to be called
+directly by users}.
 
 \strong{Wrapper role:} this class provides a piecewise-constant hazard wrapper around
 a HAL-style indicator-basis construction, estimated by L1-penalized Poisson
@@ -105,7 +105,10 @@ HAL backend fit.}
 
 \describe{
 \item{\code{initialize(...)}}{Construct and configure the learner. This is the only method users should call.}
+\item{\code{hal_basis(...)}}{Internal helper. Constructs HAL basis matrices and metadata for fitting.}
+\item{\code{hal_prepare_new(...)}}{Internal helper. Builds prediction-time HAL basis matrices from fitted basis metadata.}
 \item{\code{private_fit(data, ...)}}{Internal. Builds bases and fits the penalized Poisson model with offset \code{log(tij)}.}
+\item{\code{private_fit_all_causes(data, ...)}}{Internal. Fits penalized Poisson HAL models for all requested causes using a shared basis setup.}
 \item{\code{private_predictor(model, newdata, ...)}}{Internal. Evaluates the fitted approximation and returns hazards on the response scale.}
 }
 }

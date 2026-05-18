@@ -6,8 +6,8 @@
 #' **User-facing API:** users are expected to **initialize** the learner (i.e.,
 #' call `Learner_glmnet(...)`) and pass the resulting object to
 #' [Superlearner()] or [fit_learner()]. The remaining methods documented below
-#' (e.g., `private_fit()`, `private_predictor()`) are part of the internal learner
-#' interface and are **not meant to be called directly by users**.
+#' are part of the internal learner interface and are **not meant to be called
+#' directly by users**.
 #'
 #' **Wrapper role:** this class is a user-friendly wrapper around the existing
 #' `glmnet` implementation. The package-specific contribution is to provide a
@@ -47,6 +47,7 @@
 #' \describe{
 #'   \item{`initialize(...)`}{Construct and configure the learner. This is the only method users should call.}
 #'   \item{`private_fit(data, ...)`}{Internal. Fits a Poisson model with offset `log(tij)` on long-format data.}
+#'   \item{`private_fit_all_causes(data, ...)`}{Internal. Fits cause-specific Poisson models for all requested causes using a shared long-format data setup.}
 #'   \item{`private_predictor(model, newdata, ...)`}{Internal. Predicts hazards on the response scale for long-format `newdata`.}
 #' }
 #'
@@ -684,9 +685,9 @@ Learner_glmnet <- setRefClass(
 #' used by [Superlearner()] and [fit_learner()].
 #'
 #' **User-facing API:** users should **only initialize** the learner and pass it
-#' to [Superlearner()] / [fit_learner()]. The methods `private_fit()` and
-#' `private_predictor()` (and any basis-construction helpers) are part of the
-#' internal learner interface and are **not meant to be called directly by users**.
+#' to [Superlearner()] / [fit_learner()]. The remaining methods documented below
+#' are part of the internal learner interface and are **not meant to be called
+#' directly by users**.
 #'
 #' **Wrapper role:** this class provides a piecewise-constant hazard wrapper around
 #' a HAL-style indicator-basis construction, estimated by L1-penalized Poisson
@@ -768,7 +769,10 @@ Learner_glmnet <- setRefClass(
 #' @section Methods (internal learner interface):
 #' \describe{
 #'   \item{`initialize(...)`}{Construct and configure the learner. This is the only method users should call.}
+#'   \item{`hal_basis(...)`}{Internal helper. Constructs HAL basis matrices and metadata for fitting.}
+#'   \item{`hal_prepare_new(...)`}{Internal helper. Builds prediction-time HAL basis matrices from fitted basis metadata.}
 #'   \item{`private_fit(data, ...)`}{Internal. Builds bases and fits the penalized Poisson model with offset `log(tij)`.}
+#'   \item{`private_fit_all_causes(data, ...)`}{Internal. Fits penalized Poisson HAL models for all requested causes using a shared basis setup.}
 #'   \item{`private_predictor(model, newdata, ...)`}{Internal. Evaluates the fitted approximation and returns hazards on the response scale.}
 #' }
 #'
@@ -1921,9 +1925,9 @@ Learner_hal <- setRefClass(
 #' used by [Superlearner()] and [fit_learner()].
 #'
 #' **User-facing API:** users should **only initialize** the learner and pass it
-#' to [Superlearner()] / [fit_learner()]. The methods `private_fit()` and
-#' `private_predictor()` are part of the internal learner interface and are
-#' **not meant to be called directly by users**.
+#' to [Superlearner()] / [fit_learner()]. The remaining methods documented below
+#' are part of the internal learner interface and are **not meant to be called
+#' directly by users**.
 #'
 #' **Wrapper role:** this class wraps `mgcv::bam` in a piecewise-constant hazard
 #' workflow. The package-specific contribution is to provide a convenient
@@ -1962,6 +1966,7 @@ Learner_hal <- setRefClass(
 #' \describe{
 #'   \item{`initialize(...)`}{Construct and configure the learner. This is the only method users should call.}
 #'   \item{`private_fit(data, ...)`}{Internal. Fits a Poisson GAM with offset `log(tij)` on long-format data.}
+#'   \item{`private_fit_all_causes(data, ...)`}{Internal. Fits cause-specific Poisson GAMs for all requested causes using a shared long-format data setup.}
 #'   \item{`private_predictor(model, newdata, ...)`}{Internal. Predicts hazards on the response scale.}
 #' }
 #'
