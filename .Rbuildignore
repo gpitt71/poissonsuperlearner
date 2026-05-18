@@ -6,3 +6,7 @@
 ^\.github$
 ^\.positai$
 ^\.claude$
+^\.git$
+^\.gitignore$
+^\.Rhistory$
+^R/\.Rhistory$
