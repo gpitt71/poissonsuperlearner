@@ -486,19 +486,22 @@ Superlearner <- function(data,
       )
     }
 
-    msg <- paste0(
-      "Only one usable base learner remains for every cause after full-data screening ",
-      "(",
-      n_dropped_full,
-      " learner(s) dropped). Fitting each retained learner directly; ",
-      "no cross-validation stacking is performed."
-    )
+    if (verbose) {
 
-    if (!is.null(reason_txt)) {
-      msg <- paste(msg, reason_txt, sep = "\n")
+      msg <- paste0(
+        "Only one usable base learner remains for every cause after full-data screening ",
+        "(",
+        n_dropped_full,
+        " learner(s) dropped). Fitting each retained learner directly; ",
+        "no cross-validation stacking is performed."
+      )
+
+      if (!is.null(reason_txt)) {
+        msg <- paste(msg, reason_txt, sep = "\n")
+      }
+
+      message(msg)
     }
-
-    message(msg)
 
     one_learner_out <- vector("list", n_crisks)
     names(one_learner_out) <- names(library_per_risk)
@@ -955,7 +958,7 @@ Superlearner <- function(data,
     NULL
   }
 
-  if (!any_meta_learning) {
+  if (!any_meta_learning && verbose) {
     message(
       "Only one usable base learner remains for every cause after cross-validation screening. No meta-learner was fitted."
     )
