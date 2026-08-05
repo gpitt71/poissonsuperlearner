@@ -1,0 +1,4 @@
+check,N,amount
+positive acconto amount with missing raw acconto date,28,1128527.72
+positive saldo amount with missing raw saldo date,16,1058818.5
+excluded rows: any positive payment amount with missing raw payment date,44,2187346.22

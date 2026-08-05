@@ -2413,3 +2413,2573 @@ Learner_gam <- setRefClass(
     }
   )
 )
+
+
+#' Recalibrated Penalized Poisson learner via `glmnet`
+#'
+#' `Learner_rec_glmnet` is a Reference Class implementing the learner interface
+#' used by [Superlearner()] and [fit_learner()].
+#'
+#' **User-facing API:** users are expected to **initialize** the learner (i.e.,
+#' call `Learner_glmnet(...)`) and pass the resulting object to
+#' [Superlearner()] or [fit_learner()]. The remaining methods documented below
+#' (e.g., `private_fit()`, `private_predictor()`) are part of the internal learner
+#' interface and are **not meant to be called directly by users**.
+#'
+#' **Wrapper role:** this class is a user-friendly wrapper around the existing
+#' `glmnet` implementation. The package-specific contribution is to provide a
+#' piecewise-constant hazard workflow: create the long-format Poisson data with
+#' offsets for time at risk, include interval ("node") indicators for the
+#' baseline hazard, and forward standard `glmnet` arguments supplied at
+#' initialization to the backend fitter.
+#'
+#' @section Model:
+#' Let \eqn{0=t_0 < t_1 < \cdots < t_m}{0=t0 < t1 < ... < tm} denote time knots and
+#' define interval indicators \eqn{I_k(t)=1\{t\in(t_k,t_{k+1}]\}}{Ik(t)=I(t in (tk, t{k+1}])}.
+#' The piecewise-constant hazard model is
+#' \deqn{
+#'   \lambda(t \mid x) = \sum_{k=0}^{m} I_k(t)\,\lambda_k(x),
+#'   \qquad \lambda_k(x) = \exp(\beta^\top x + \gamma_k).
+#' }{
+#'   lambda(t|x) = sum_{k=0}^m Ik(t) * lambda_k(x),
+#'   lambda_k(x) = exp(beta^T x + gamma_k).
+#' }
+#' Penalization is applied to the regression coefficients through the `glmnet`
+#' elastic-net penalty. Node (baseline) terms are given zero penalty by default;
+#' if this backend call fails, the learner retries with a fully penalized design.
+#'
+#' @section Fields:
+#' \describe{
+#'   \item{`covariates` (`character`)}{Names of covariate columns used in the model.}
+#'   \item{`cross_validation` (`logical`)}{If `TRUE`, chooses `lambda` by `glmnet::cv.glmnet`.}
+#'   \item{`intercept` (`logical`)}{Backend intercept flag; currently fixed to `TRUE`
+#'     by the constructor.}
+#'   \item{`lambda` (`numeric`)}{If `cross_validation=FALSE`, the `lambda` used in the final fit.}
+#'   \item{`formula` (`character`)}{Formula string used to create the design matrix in long format.}
+#'   \item{`learner` (`function`)}{Backend fitter (`glmnet::glmnet` or `glmnet::cv.glmnet`).}
+#'   \item{`fit_arguments` (`list`)}{Additional arguments forwarded to the backend fitter.}
+#' }
+#'
+#' @section Methods (internal learner interface):
+#' \describe{
+#'   \item{`initialize(...)`}{Construct and configure the learner. This is the only method users should call.}
+#'   \item{`private_fit(data, ...)`}{Internal. Fits a Poisson model with offset `log(tij)` on long-format data.}
+#'   \item{`private_predictor(model, newdata, ...)`}{Internal. Predicts hazards on the response scale for long-format `newdata`.}
+#' }
+#'
+#'
+#' @export Learner_rec_glmnet
+#' @exportClass Learner_rec_glmnet
+Learner_rec_glmnet <- setRefClass(
+  "Learner_rec_glmnet",
+  fields = list(
+    covariates = "character",
+    cross_validation = "logical",
+    rebalance = "logical",
+    intercept = "logical",
+    formula = "character",
+    learner = "function",
+    baseline_model = "list",
+    lambda = "numeric",
+    s = "ANY",
+    basic_covariates = "character",
+    fit_arguments = "list"
+  ),
+  methods = list(
+
+    initialize = function(covariates = NA_character_,
+                          cross_validation = FALSE,
+                          lambda = NA_real_,
+                          rebalance = TRUE,
+                          ...) {
+
+      .self$covariates <- covariates
+      .self$cross_validation <- cross_validation
+      .self$rebalance <- rebalance
+      .self$intercept <- TRUE
+      .self$baseline_model <- list()
+
+      tmp <- lambda
+      if (is.null(lambda)) tmp <- NA_real_
+      if (length(lambda) == 0L) tmp <- NA_real_
+      tmp <- as.numeric(tmp)
+      .self$lambda <- tmp
+
+      .self$formula <- create_formula_glmnet(
+        covariates = .self$covariates
+      )
+
+      dots <- list(...)
+
+      ## glmnet's prediction selector. This is not passed to glmnet/cv.glmnet
+      ## fitting, but is stored and used whenever predictions are needed.
+      if ("s" %in% names(dots)) {
+        .self$s <- dots[["s"]]
+        dots[["s"]] <- NULL
+      } else {
+        .self$s <- NULL
+      }
+
+      .self$fit_arguments <- dots
+      .self$fit_arguments[["family"]] <- "poisson"
+      .self$fit_arguments[["intercept"]] <- .self$intercept
+
+      if (.self$cross_validation) {
+        .self$learner <- glmnet::cv.glmnet
+      } else {
+        .self$learner <- glmnet::glmnet
+        .self$fit_arguments[["lambda"]] <- tmp
+      }
+
+      .self$basic_covariates <- .self$basic_covariates_constructor(covariates)
+    },
+
+    basic_covariates_constructor = function(covs) {
+
+      covs <- covs[
+        is.character(covs) &
+          !is.na(covs) &
+          nzchar(covs)
+      ]
+
+      out <- unlist(
+        lapply(covs, function(term) {
+          tryCatch(
+            all.vars(str2lang(term)),
+            error = function(e) {
+              tryCatch(
+                all.vars(stats::terms(stats::as.formula(paste("~", term)))),
+                error = function(e2) character(0)
+              )
+            }
+          )
+        }),
+        use.names = FALSE
+      )
+
+      unique(out)
+    },
+
+    private_fit = function(data, cause, grid_nodes, ...) {
+      stop("Recalibrated glmnet does not yet exist for superlearning.")
+      return(NULL)
+    },
+
+    private_fit_all_causes = function(data, causes, grid_nodes, ...) {
+
+      fits <- tryCatch({
+
+        n_causes <- length(causes)
+        widths <- c(diff(grid_nodes), 1.0)
+        node_support <- grid_nodes
+
+        .self$baseline_model <- list()
+
+        needed_cols <- unique(c(.self$basic_covariates, "node", "tij", "deltaij"))
+
+        train_d <- data.table::copy(
+          data[, .SD, .SDcols = needed_cols]
+        )
+
+        ## gid identifies covariate pattern only
+        if (length(.self$basic_covariates) > 0L) {
+          group_key <- unique(train_d[, .SD, .SDcols = .self$basic_covariates])
+          group_key[, gid := .I]
+
+          train_d <- group_key[train_d, on = (.self$basic_covariates)]
+        } else {
+          group_key <- data.table::data.table(gid = 1L)
+          train_d[, gid := 1L]
+        }
+
+        train_d <- train_d[
+          !is.na(gid) & !is.na(node) & !is.na(tij)
+        ]
+
+        train_d[, node_ix := match(node, node_support)]
+
+        ## Event counts by cause are kept separately.
+        event_counts <- train_d[
+          deltaij %in% causes,
+          .N,
+          by = .(gid, node_ix, deltaij)
+        ]
+
+        ## Cause-independent terminal exposure skeleton.
+        terminal_base <- train_d[, .(
+          tij        = sum(tij),
+          N_terminal = .N
+        ), by = .(gid, node, node_ix)]
+
+        data.table::setorder(terminal_base, gid, node_ix)
+
+        terminal_base[, deltaij := 0.0]
+
+        ans <- expand_terminal_grouped_cpp(
+          gid     = terminal_base$gid,
+          node_ix = terminal_base$node_ix,
+          tij     = terminal_base$tij,
+          deltaij = terminal_base$deltaij,
+          N       = terminal_base$N_terminal,
+          widths  = widths
+        )
+
+        train_long <- data.table::as.data.table(ans)
+        train_long[, node := node_support[node_ix]]
+
+        train_long <- group_key[train_long, on = "gid"]
+
+        data.table::setcolorder(
+          train_long,
+          intersect(
+            c(
+              .self$basic_covariates,
+              "gid",
+              "node",
+              "node_ix",
+              "deltaij",
+              "tij",
+              "N_terminal"
+            ),
+            names(train_long)
+          )
+        )
+
+        data.table::setorder(train_long, gid, node_ix)
+
+        node_labels <- paste0("n", seq_along(grid_nodes))
+
+        train_long[, node := factor(
+          node_ix,
+          levels = seq_along(grid_nodes),
+          labels = node_labels
+        )]
+
+        x <- Matrix::sparse.model.matrix(
+          formula(.self$formula),
+          train_long,
+          contrasts.arg = NULL
+        )[, -1, drop = FALSE]
+
+        if (nrow(x) == 0L || ncol(x) == 0L) {
+          out <- vector("list", n_causes)
+          names(out) <- as.character(causes)
+
+          for (ii in seq_len(n_causes)) {
+            out[[ii]] <- make_failed_fit(
+              "Empty design matrix in Learner_rec_glmnet::private_fit_all_causes"
+            )
+          }
+
+          return(out)
+        }
+
+        offset <- log(train_long[["tij"]])
+
+        out <- vector("list", n_causes)
+        names(out) <- as.character(causes)
+
+        cause_names <- as.character(causes)
+
+        train_index <- train_long[, .(gid, node_ix)]
+
+        if (nrow(event_counts) > 0L) {
+          event_wide <- data.table::dcast(
+            event_counts,
+            gid + node_ix ~ deltaij,
+            value.var = "N",
+            fill = 0L
+          )
+        } else {
+          event_wide <- unique(train_index)
+        }
+
+        missing_causes <- setdiff(cause_names, names(event_wide))
+
+        if (length(missing_causes) > 0L) {
+          event_wide[, (missing_causes) := 0L]
+        }
+
+        event_wide <- event_wide[
+          train_index,
+          on = .(gid, node_ix)
+        ]
+
+        for (cc in cause_names) {
+          ii_na <- which(is.na(event_wide[[cc]]))
+
+          if (length(ii_na) > 0L) {
+            data.table::set(event_wide, ii_na, cc, 0L)
+          }
+        }
+
+        y_mat <- as.matrix(event_wide[, ..cause_names])
+
+        ## Node-only design for the rebalance model.
+        ## The rebalance model itself is always fitted with lambda = 0.
+        x_rebalance <- Matrix::sparse.model.matrix(
+          stats::as.formula("~ node"),
+          train_long,
+          contrasts.arg = NULL
+        )[, -1, drop = FALSE]
+
+        if (.self$cross_validation) {
+
+          cv_args <- .self$fit_arguments
+
+          if (is.null(cv_args[["type.measure"]])) {
+            cv_args[["type.measure"]] <- "deviance"
+          }
+
+          for (ii in seq_len(n_causes)) {
+
+            cause_i <- causes[ii]
+            cause_key <- as.character(cause_i)
+
+            y <- as.numeric(y_mat[, ii])
+
+            cv_fit <- tryCatch(
+              suppressWarnings(
+                do.call(glmnet::cv.glmnet, c(
+                  list(
+                    x = x,
+                    y = as.vector(y),
+                    offset = offset
+                  ),
+                  cv_args
+                ))
+              ),
+              error = function(e1) {
+                tryCatch(
+                  suppressWarnings(
+                    do.call(glmnet::cv.glmnet, c(
+                      list(
+                        x = x,
+                        y = as.vector(y),
+                        offset = offset
+                      ),
+                      cv_args
+                    ))
+                  ),
+                  error = function(e2) NULL
+                )
+              }
+            )
+
+            if (
+              is.null(cv_fit) ||
+              length(cv_fit$lambda.min) == 0L ||
+              !is.finite(cv_fit$lambda.min)
+            ) {
+              out[[ii]] <- make_failed_fit(
+                paste0(
+                  "cv.glmnet failed in Learner_rec_glmnet::private_fit_all_causes for cause ",
+                  cause_key
+                )
+              )
+            } else {
+              attr(cv_fit, "psl_cause") <- cause_key
+              out[[ii]] <- cv_fit
+            }
+
+            ## Rebalance model.
+            ## Important: the offset is built from the same raw prediction rule
+            ## that will be used later. If .self$s is NULL, no s is passed, so
+            ## predict.cv.glmnet uses the package default.
+            if (isTRUE(.self$rebalance) && !is_failed_fit(out[[ii]])) {
+
+              raw_pred_args <- list(
+                object = out[[ii]],
+                newx = x,
+                newoffset = rep(0.0, nrow(x)),
+                type = "response"
+              )
+
+              if (!is.null(.self$s)) {
+                raw_pred_args[["s"]] <- .self$s
+              }
+
+              raw_hazard <- tryCatch(
+                as.numeric(do.call(predict, raw_pred_args)),
+                error = function(e) rep(NA_real_, nrow(x))
+              )
+
+              if (
+                length(raw_hazard) == nrow(x) &&
+                all(is.finite(raw_hazard)) &&
+                nrow(x_rebalance) == nrow(x)
+              ) {
+
+                eps <- .Machine$double.xmin
+
+                rebalance_offset <- log(train_long[["tij"]]) +
+                  log(pmax(raw_hazard, eps))
+
+                rb_fit <- tryCatch(
+                  suppressWarnings(
+                    glmnet::glmnet(
+                      x = x_rebalance,
+                      y = as.numeric(y),
+                      family = "poisson",
+                      offset = rebalance_offset,
+                      lambda = 0,
+                      intercept = TRUE
+                    )
+                  ),
+                  error = function(e) NULL
+                )
+
+                if (!is.null(rb_fit)) {
+                  attr(rb_fit, "psl_cause") <- cause_key
+                  .self$baseline_model[[cause_key]] <- rb_fit
+                } else {
+                  .self$baseline_model[[cause_key]] <- NULL
+                }
+
+              } else {
+                .self$baseline_model[[cause_key]] <- NULL
+              }
+            }
+          }
+
+        } else {
+
+          for (ii in seq_len(n_causes)) {
+
+            cause_i <- causes[ii]
+            cause_key <- as.character(cause_i)
+
+            y <- as.numeric(y_mat[, ii])
+
+            out[[ii]] <- tryCatch(
+              suppressWarnings(
+                do.call(glmnet::glmnet, c(
+                  .self$fit_arguments,
+                  list(
+                    x = x,
+                    y = as.numeric(y),
+                    offset = offset
+                  )
+                ))
+              ),
+              error = function(e) {
+                make_failed_fit(
+                  paste0(
+                    "glmnet failed in Learner_rec_glmnet::private_fit_all_causes for cause ",
+                    cause_key,
+                    ": ",
+                    conditionMessage(e)
+                  )
+                )
+              }
+            )
+
+            if (!is_failed_fit(out[[ii]])) {
+              attr(out[[ii]], "psl_cause") <- cause_key
+            }
+
+            ## Rebalance model.
+            if (isTRUE(.self$rebalance) && !is_failed_fit(out[[ii]])) {
+
+              raw_pred_args <- list(
+                object = out[[ii]],
+                newx = x,
+                newoffset = rep(0.0, nrow(x)),
+                type = "response"
+              )
+
+              if (!is.null(.self$s)) {
+                raw_pred_args[["s"]] <- .self$s
+              }
+
+              raw_hazard <- tryCatch(
+                as.numeric(do.call(predict, raw_pred_args)),
+                error = function(e) rep(NA_real_, nrow(x))
+              )
+
+              if (
+                length(raw_hazard) == nrow(x) &&
+                all(is.finite(raw_hazard)) &&
+                nrow(x_rebalance) == nrow(x)
+              ) {
+
+                eps <- .Machine$double.xmin
+
+                rebalance_offset <- log(train_long[["tij"]]) +
+                  log(pmax(raw_hazard, eps))
+
+                rb_fit <- tryCatch(
+                  suppressWarnings(
+                    glmnet::glmnet(
+                      x = x_rebalance,
+                      y = as.numeric(y),
+                      family = "poisson",
+                      offset = rebalance_offset,
+                      lambda = 0,
+                      intercept = TRUE
+                    )
+                  ),
+                  error = function(e) NULL
+                )
+
+                if (!is.null(rb_fit)) {
+                  attr(rb_fit, "psl_cause") <- cause_key
+                  .self$baseline_model[[cause_key]] <- rb_fit
+                } else {
+                  .self$baseline_model[[cause_key]] <- NULL
+                }
+
+              } else {
+                .self$baseline_model[[cause_key]] <- NULL
+              }
+            }
+          }
+        }
+
+        out
+
+      }, error = function(e) {
+
+        out <- vector("list", length(causes))
+        names(out) <- as.character(causes)
+
+        for (ii in seq_along(out)) {
+          out[[ii]] <- make_failed_fit(conditionMessage(e))
+        }
+
+        out
+      })
+
+      fits
+    },
+
+    private_predictor = function(model, newdata, grid_nodes, ...) {
+
+      pred_cols <- unique(c(.self$basic_covariates, "node"))
+
+      x <- data.table::copy(
+        newdata[, .SD, .SDcols = pred_cols]
+      )
+
+      data.table::setnames(x, "node", "terminal_node")
+
+      x[, pred_id := .I]
+
+      x[, terminal_node_ix := match(terminal_node, grid_nodes)]
+
+      if (anyNA(x$terminal_node_ix)) {
+        stop("Some terminal_node values are not exactly in grid_nodes.")
+      }
+
+      if (any(x$terminal_node_ix < 1L)) {
+        stop("Some terminal_node_ix values are smaller than 1.")
+      }
+
+      n_expanded <- sum(x$terminal_node_ix)
+
+      if (n_expanded == 0L) {
+        return(numeric(0L))
+      }
+
+      if (is_failed_fit(model)) {
+        return(rep(NA_real_, n_expanded))
+      }
+
+      idx <- rep.int(seq_len(nrow(x)), times = x$terminal_node_ix)
+
+      pred_grid <- x[idx]
+
+      pred_grid[, node_ix := sequence(x$terminal_node_ix)]
+
+      pred_grid[, `:=`(
+        tij = 1.0,
+        deltaij = 0.0
+      )]
+
+      node_labels <- paste0("n", seq_along(grid_nodes))
+
+      pred_grid[, node := factor(
+        node_ix,
+        levels = seq_along(grid_nodes),
+        labels = node_labels
+      )]
+
+      x_new <- tryCatch(
+        Matrix::sparse.model.matrix(
+          formula(.self$formula),
+          pred_grid,
+          contrasts.arg = NULL
+        )[, -1, drop = FALSE],
+        error = function(e) NULL
+      )
+
+      if (is.null(x_new) || nrow(x_new) == 0L || ncol(x_new) == 0L) {
+        return(rep(NA_real_, n_expanded))
+      }
+
+      dots <- list(...)
+
+      cause_key <- dots[["cause"]]
+      dots[["cause"]] <- NULL
+
+      ## Prediction s priority:
+      ## 1. An explicit s passed to private_predictor via ...
+      ## 2. The s stored at learner construction
+      ## 3. No s supplied, so glmnet/cv.glmnet uses its own default
+      if (is.null(dots[["s"]]) && !is.null(.self$s)) {
+        dots[["s"]] <- .self$s
+      }
+
+      pred_args <- list(
+        object = model,
+        newx = x_new,
+        newoffset = rep(0.0, nrow(x_new)),
+        type = "response"
+      )
+
+      out <- tryCatch(
+        do.call(predict, c(pred_args, dots)),
+        error = function(e) rep(NA_real_, n_expanded)
+      )
+
+      out <- as.numeric(out)
+
+      if (length(out) != n_expanded) {
+        out <- rep(NA_real_, n_expanded)
+      }
+
+      if (isTRUE(.self$rebalance)) {
+
+        if (is.null(cause_key)) {
+          cause_key <- attr(model, "psl_cause")
+        }
+
+        if (!is.null(cause_key)) {
+
+          cause_key <- as.character(cause_key)
+          rb_fit <- .self$baseline_model[[cause_key]]
+
+          if (!is.null(rb_fit)) {
+
+            x_rebalance_new <- tryCatch(
+              Matrix::sparse.model.matrix(
+                stats::as.formula("~ node"),
+                pred_grid,
+                contrasts.arg = NULL
+              )[, -1, drop = FALSE],
+              error = function(e) NULL
+            )
+
+            if (
+              !is.null(x_rebalance_new) &&
+              nrow(x_rebalance_new) == length(out)
+            ) {
+
+              multiplier <- tryCatch(
+                as.numeric(
+                  predict(
+                    rb_fit,
+                    newx = x_rebalance_new,
+                    newoffset = rep(0.0, nrow(x_rebalance_new)),
+                    type = "response"
+                  )
+                ),
+                error = function(e) rep(1.0, length(out))
+              )
+
+              if (
+                length(multiplier) == length(out) &&
+                all(is.finite(multiplier))
+              ) {
+                out <- out * multiplier
+              }
+            }
+          }
+        }
+      }
+
+      out
+    }
+  )
+)
+
+#' Recalibrated hal via `glmnet`
+#'
+#' `Learner_rec_hal` is a Reference Class implementing the learner interface
+#' used by [Superlearner()] and [fit_learner()].
+#'
+#' **User-facing API:** users are expected to **initialize** the learner (i.e.,
+#' call `Learner_glmnet(...)`) and pass the resulting object to
+#' [Superlearner()] or [fit_learner()]. The remaining methods documented below
+#' (e.g., `private_fit()`, `private_predictor()`) are part of the internal learner
+#' interface and are **not meant to be called directly by users**.
+#'
+#' **Wrapper role:** this class is a user-friendly wrapper around the existing
+#' `glmnet` implementation. The package-specific contribution is to provide a
+#' piecewise-constant hazard workflow: create the long-format Poisson data with
+#' offsets for time at risk, include interval ("node") indicators for the
+#' baseline hazard, and forward standard `glmnet` arguments supplied at
+#' initialization to the backend fitter.
+#'
+#' @section Model:
+#' Let \eqn{0=t_0 < t_1 < \cdots < t_m}{0=t0 < t1 < ... < tm} denote time knots and
+#' define interval indicators \eqn{I_k(t)=1\{t\in(t_k,t_{k+1}]\}}{Ik(t)=I(t in (tk, t{k+1}])}.
+#' The piecewise-constant hazard model is
+#' \deqn{
+#'   \lambda(t \mid x) = \sum_{k=0}^{m} I_k(t)\,\lambda_k(x),
+#'   \qquad \lambda_k(x) = \exp(\beta^\top x + \gamma_k).
+#' }{
+#'   lambda(t|x) = sum_{k=0}^m Ik(t) * lambda_k(x),
+#'   lambda_k(x) = exp(beta^T x + gamma_k).
+#' }
+#' Penalization is applied to the regression coefficients through the `glmnet`
+#' elastic-net penalty. Node (baseline) terms are given zero penalty by default;
+#' if this backend call fails, the learner retries with a fully penalized design.
+#'
+#' @section Fields:
+#' \describe{
+#'   \item{`covariates` (`character`)}{Names of covariate columns used in the model.}
+#'   \item{`cross_validation` (`logical`)}{If `TRUE`, chooses `lambda` by `glmnet::cv.glmnet`.}
+#'   \item{`intercept` (`logical`)}{Backend intercept flag; currently fixed to `TRUE`
+#'     by the constructor.}
+#'   \item{`lambda` (`numeric`)}{If `cross_validation=FALSE`, the `lambda` used in the final fit.}
+#'   \item{`formula` (`character`)}{Formula string used to create the design matrix in long format.}
+#'   \item{`learner` (`function`)}{Backend fitter (`glmnet::glmnet` or `glmnet::cv.glmnet`).}
+#'   \item{`fit_arguments` (`list`)}{Additional arguments forwarded to the backend fitter.}
+#' }
+#'
+#' @section Methods (internal learner interface):
+#' \describe{
+#'   \item{`initialize(...)`}{Construct and configure the learner. This is the only method users should call.}
+#'   \item{`private_fit(data, ...)`}{Internal. Fits a Poisson model with offset `log(tij)` on long-format data.}
+#'   \item{`private_predictor(model, newdata, ...)`}{Internal. Predicts hazards on the response scale for long-format `newdata`.}
+#' }
+#'
+#'
+#' @export Learner_rec_hal
+#' @exportClass Learner_rec_hal
+Learner_rec_hal <- setRefClass(
+  "Learner_rec_hal",
+  contains = "Learner_hal",
+  fields = list(
+    rebalance = "logical",
+    baseline_model = "list",
+    s = "ANY"
+  ),
+  methods = list(
+
+    initialize = function(covariates = NA_character_,
+                          intercept = TRUE,
+                          cross_validation = TRUE,
+                          max_degree = 2L,
+                          maxit_prefit = NA_real_,
+                          num_knots = c(10L, 5L),
+                          rebalance = TRUE,
+                          ...) {
+
+      max_degree_use <- as.integer(max_degree)
+
+      if (
+        length(max_degree_use) != 1L ||
+        is.na(max_degree_use) ||
+        max_degree_use < 1L
+      ) {
+        stop("max_degree must be a single positive integer.")
+      }
+
+      if (
+        is.null(num_knots) ||
+        length(num_knots) == 0L ||
+        anyNA(num_knots)
+      ) {
+        stop("num_knots must be a non-empty vector without missing values.")
+      }
+
+      num_knots_use <- as.numeric(num_knots)
+
+      if (length(num_knots_use) == max_degree_use) {
+        ## all fine
+
+      } else if (length(num_knots_use) > max_degree_use) {
+        warning(
+          sprintf(
+            "length(num_knots) = %d is larger than max_degree = %d; truncating num_knots to length max_degree.",
+            length(num_knots_use), max_degree_use
+          ),
+          call. = FALSE
+        )
+
+        num_knots_use <- num_knots_use[seq_len(max_degree_use)]
+
+      } else {
+        warning(
+          sprintf(
+            "length(num_knots) = %d is smaller than max_degree = %d; recycling num_knots to length max_degree.",
+            length(num_knots_use), max_degree_use
+          ),
+          call. = FALSE
+        )
+
+        num_knots_use <- rep(num_knots_use, length.out = max_degree_use)
+      }
+
+      .self$covariates <- covariates
+      .self$cross_validation <- cross_validation
+      .self$intercept <- intercept
+      .self$max_degree <- max_degree_use
+      .self$num_knots <- num_knots_use
+      .self$maxit_prefit <- maxit_prefit
+      .self$rebalance <- rebalance
+      .self$baseline_model <- list()
+      .self$lambda_opt <- NA_real_
+
+      .self$formula <- create_formula_hal(
+        covariates = .self$covariates,
+        intercept = FALSE
+      )
+
+      dots <- list(...)
+
+      ## Prediction selector for glmnet/cv.glmnet.
+      ## This is deliberately not passed to the fitting routine.
+      ## If NULL, predict.glmnet/predict.cv.glmnet uses its own default.
+      if ("s" %in% names(dots)) {
+        .self$s <- dots[["s"]]
+        dots[["s"]] <- NULL
+      } else {
+        .self$s <- NULL
+      }
+
+      if (.self$cross_validation) {
+        .self$learner <- glmnet::cv.glmnet
+      } else {
+        .self$learner <- glmnet::glmnet
+      }
+
+      .self$fit_arguments <- dots
+      .self$fit_arguments[["family"]] <- "poisson"
+      .self$fit_arguments[["intercept"]] <- .self$intercept
+
+      .self$basic_covariates <- .self$basic_covariates_constructor(covariates)
+    },
+
+    private_fit = function(data, cause, grid_nodes, ...) {
+      stop("Recalibrated HAL does not yet implement private_fit(); use private_fit_all_causes().")
+      return(NULL)
+    },
+
+    private_fit_all_causes = function(data, causes, grid_nodes, ...) {
+
+      fits <- tryCatch({
+
+        n_causes <- length(causes)
+        widths <- c(diff(grid_nodes), 1.0)
+        node_support <- grid_nodes
+
+        .self$baseline_model <- list()
+
+        needed_cols <- unique(c(.self$basic_covariates, "node", "tij", "deltaij"))
+
+        train_d <- data.table::copy(
+          data[, .SD, .SDcols = needed_cols]
+        )
+
+        ## gid identifies covariate pattern only
+        if (length(.self$basic_covariates) > 0L) {
+          group_key <- unique(train_d[, .SD, .SDcols = .self$basic_covariates])
+          group_key[, gid := .I]
+
+          train_d <- group_key[train_d, on = (.self$basic_covariates)]
+        } else {
+          group_key <- data.table::data.table(gid = 1L)
+          train_d[, gid := 1L]
+        }
+
+        train_d <- train_d[
+          !is.na(gid) & !is.na(node) & !is.na(tij)
+        ]
+
+        train_d[, node_ix := match(node, node_support)]
+
+        ## Event counts by cause.
+        event_counts <- train_d[
+          deltaij %in% causes,
+          .N,
+          by = .(gid, node_ix, deltaij)
+        ]
+
+        ## Cause-independent exposure / terminal-count skeleton.
+        terminal_base <- train_d[, .(
+          tij        = sum(tij),
+          N_terminal = .N
+        ), by = .(gid, node, node_ix)]
+
+        data.table::setorder(terminal_base, gid, node_ix)
+
+        terminal_base[, deltaij := 0.0]
+
+        ans <- expand_terminal_grouped_cpp(
+          gid     = terminal_base$gid,
+          node_ix = terminal_base$node_ix,
+          tij     = terminal_base$tij,
+          deltaij = terminal_base$deltaij,
+          N       = terminal_base$N_terminal,
+          widths  = widths
+        )
+
+        train_long <- data.table::as.data.table(ans)
+        train_long[, node := node_support[node_ix]]
+
+        train_long <- group_key[train_long, on = "gid"]
+
+        data.table::setcolorder(
+          train_long,
+          c(
+            intersect(
+              c(
+                .self$basic_covariates,
+                "gid",
+                "node",
+                "node_ix",
+                "deltaij",
+                "tij",
+                "N_terminal"
+              ),
+              names(train_long)
+            ),
+            setdiff(
+              names(train_long),
+              c(
+                .self$basic_covariates,
+                "gid",
+                "node",
+                "node_ix",
+                "deltaij",
+                "tij",
+                "N_terminal"
+              )
+            )
+          )
+        )
+
+        data.table::setorder(train_long, gid, node_ix)
+
+        node_labels <- paste0("n", seq_along(grid_nodes))
+
+        train_long[, node := factor(
+          node_ix,
+          levels = seq_along(grid_nodes),
+          labels = node_labels
+        )]
+
+        x_pp <- .self$hal_basis(
+          vars = c(.self$basic_covariates, "node"),
+          DT = train_long,
+          max_interaction = .self$max_degree,
+          knots_per_order = .self$num_knots
+        )
+
+        if (nrow(x_pp$X) == 0L || ncol(x_pp$X) == 0L) {
+          out <- vector("list", n_causes)
+          names(out) <- as.character(causes)
+
+          for (ii in seq_len(n_causes)) {
+            out[[ii]] <- make_failed_fit(
+              "Empty HAL basis in Learner_rec_hal::private_fit_all_causes"
+            )
+          }
+
+          return(out)
+        }
+
+        X_hal <- x_pp$X
+        fit_meta <- x_pp[c("colnames", "meta")]
+        offset <- log(train_long[["tij"]])
+
+        out <- vector("list", n_causes)
+        names(out) <- as.character(causes)
+
+        cause_names <- as.character(causes)
+
+        train_index <- train_long[, .(gid, node_ix)]
+
+        if (nrow(event_counts) > 0L) {
+          event_wide <- data.table::dcast(
+            event_counts,
+            gid + node_ix ~ deltaij,
+            value.var = "N",
+            fill = 0L
+          )
+        } else {
+          event_wide <- unique(train_index)
+        }
+
+        missing_causes <- setdiff(cause_names, names(event_wide))
+
+        if (length(missing_causes) > 0L) {
+          event_wide[, (missing_causes) := 0L]
+        }
+
+        event_wide <- event_wide[
+          train_index,
+          on = .(gid, node_ix)
+        ]
+
+        for (cc in cause_names) {
+          ii_na <- which(is.na(event_wide[[cc]]))
+
+          if (length(ii_na) > 0L) {
+            data.table::set(event_wide, ii_na, cc, 0L)
+          }
+        }
+
+        y_mat <- as.matrix(event_wide[, ..cause_names])
+
+        ## Node-only design for the rebalance model.
+        ## The rebalance model is always fitted with lambda = 0.
+        x_rebalance <- Matrix::sparse.model.matrix(
+          stats::as.formula("~ node"),
+          train_long,
+          contrasts.arg = NULL
+        )[, -1, drop = FALSE]
+
+        if (.self$cross_validation) {
+
+          prefit_args <- .self$fit_arguments
+
+          if (!is.na(.self$maxit_prefit)) {
+            prefit_args[["maxit"]] <- .self$maxit_prefit
+          }
+
+          for (ii in seq_len(n_causes)) {
+
+            cause_i <- causes[ii]
+            cause_key <- as.character(cause_i)
+
+            y <- as.numeric(y_mat[, ii])
+
+            cv_fit <- tryCatch(
+              suppressWarnings(
+                do.call(glmnet::cv.glmnet, c(
+                  list(
+                    x = X_hal,
+                    y = as.numeric(y),
+                    offset = offset
+                  ),
+                  prefit_args
+                ))
+              ),
+              error = function(e) NULL
+            )
+
+            if (
+              is.null(cv_fit) ||
+              length(cv_fit$lambda.min) == 0L ||
+              !is.finite(cv_fit$lambda.min)
+            ) {
+              out[[ii]] <- make_failed_fit(
+                paste0(
+                  "cv.glmnet failed in Learner_rec_hal::private_fit_all_causes for cause ",
+                  cause_key
+                )
+              )
+            } else {
+              tmp_fit <- attach_psl_fit_meta(
+                cv_fit,
+                meta = fit_meta
+              )
+
+              attr(tmp_fit, "psl_cause") <- cause_key
+
+              out[[ii]] <- tmp_fit
+            }
+
+            ## Rebalance model.
+            ## The offset is built from the same raw prediction rule that
+            ## private_predictor() will later use. If .self$s is NULL,
+            ## no s is passed and glmnet/cv.glmnet uses its default.
+            if (isTRUE(.self$rebalance) && !is_failed_fit(out[[ii]])) {
+
+              raw_pred_args <- list(
+                object = out[[ii]],
+                newx = X_hal,
+                newoffset = rep(0.0, nrow(X_hal)),
+                type = "response"
+              )
+
+              if (!is.null(.self$s)) {
+                raw_pred_args[["s"]] <- .self$s
+              }
+
+              raw_hazard <- tryCatch(
+                as.numeric(do.call(predict, raw_pred_args)),
+                error = function(e) rep(NA_real_, nrow(X_hal))
+              )
+
+              if (
+                length(raw_hazard) == nrow(X_hal) &&
+                all(is.finite(raw_hazard)) &&
+                nrow(x_rebalance) == nrow(X_hal)
+              ) {
+
+                eps <- .Machine$double.xmin
+
+                rebalance_offset <- log(train_long[["tij"]]) +
+                  log(pmax(raw_hazard, eps))
+
+                rb_fit <- tryCatch(
+                  suppressWarnings(
+                    glmnet::glmnet(
+                      x = x_rebalance,
+                      y = as.numeric(y),
+                      family = "poisson",
+                      offset = rebalance_offset,
+                      lambda = 0,
+                      intercept = TRUE
+                    )
+                  ),
+                  error = function(e) NULL
+                )
+
+                if (!is.null(rb_fit)) {
+                  attr(rb_fit, "psl_cause") <- cause_key
+                  .self$baseline_model[[cause_key]] <- rb_fit
+                } else {
+                  .self$baseline_model[[cause_key]] <- NULL
+                }
+
+              } else {
+                .self$baseline_model[[cause_key]] <- NULL
+              }
+            }
+          }
+
+        } else {
+
+          glmnet_args <- .self$fit_arguments
+
+          for (ii in seq_len(n_causes)) {
+
+            cause_i <- causes[ii]
+            cause_key <- as.character(cause_i)
+
+            y <- as.numeric(y_mat[, ii])
+
+            out[[ii]] <- tryCatch({
+
+              fit_obj <- suppressWarnings(
+                do.call(glmnet::glmnet, c(
+                  glmnet_args,
+                  list(
+                    x = X_hal,
+                    y = as.numeric(y),
+                    offset = offset
+                  )
+                ))
+              )
+
+              tmp_fit <- attach_psl_fit_meta(
+                fit_obj,
+                meta = fit_meta
+              )
+
+              attr(tmp_fit, "psl_cause") <- cause_key
+
+              tmp_fit
+
+            }, error = function(e) {
+              make_failed_fit(
+                paste0(
+                  "glmnet failed in Learner_rec_hal::private_fit_all_causes for cause ",
+                  cause_key,
+                  ": ",
+                  conditionMessage(e)
+                )
+              )
+            })
+
+            ## Rebalance model.
+            if (isTRUE(.self$rebalance) && !is_failed_fit(out[[ii]])) {
+
+              raw_pred_args <- list(
+                object = out[[ii]],
+                newx = X_hal,
+                newoffset = rep(0.0, nrow(X_hal)),
+                type = "response"
+              )
+
+              if (!is.null(.self$s)) {
+                raw_pred_args[["s"]] <- .self$s
+              }
+
+              raw_hazard <- tryCatch(
+                as.numeric(do.call(predict, raw_pred_args)),
+                error = function(e) rep(NA_real_, nrow(X_hal))
+              )
+
+              if (
+                length(raw_hazard) == nrow(X_hal) &&
+                all(is.finite(raw_hazard)) &&
+                nrow(x_rebalance) == nrow(X_hal)
+              ) {
+
+                eps <- .Machine$double.xmin
+
+                rebalance_offset <- log(train_long[["tij"]]) +
+                  log(pmax(raw_hazard, eps))
+
+                rb_fit <- tryCatch(
+                  suppressWarnings(
+                    glmnet::glmnet(
+                      x = x_rebalance,
+                      y = as.numeric(y),
+                      family = "poisson",
+                      offset = rebalance_offset,
+                      lambda = 0,
+                      intercept = TRUE
+                    )
+                  ),
+                  error = function(e) NULL
+                )
+
+                if (!is.null(rb_fit)) {
+                  attr(rb_fit, "psl_cause") <- cause_key
+                  .self$baseline_model[[cause_key]] <- rb_fit
+                } else {
+                  .self$baseline_model[[cause_key]] <- NULL
+                }
+
+              } else {
+                .self$baseline_model[[cause_key]] <- NULL
+              }
+            }
+          }
+        }
+
+        out
+
+      }, error = function(e) {
+
+        out <- vector("list", length(causes))
+        names(out) <- as.character(causes)
+
+        for (ii in seq_along(out)) {
+          out[[ii]] <- make_failed_fit(conditionMessage(e))
+        }
+
+        out
+      })
+
+      fits
+    },
+
+    private_predictor = function(model, newdata, grid_nodes, ...) {
+
+      pred_cols <- unique(c(.self$basic_covariates, "node"))
+
+      x <- data.table::copy(
+        newdata[, .SD, .SDcols = pred_cols]
+      )
+
+      data.table::setnames(x, "node", "terminal_node")
+
+      x[, pred_id := .I]
+
+      x[, terminal_node_ix := match(terminal_node, grid_nodes)]
+
+      if (anyNA(x$terminal_node_ix)) {
+        stop("Some terminal_node values are not exactly in grid_nodes.")
+      }
+
+      if (any(x$terminal_node_ix < 1L)) {
+        stop("Some terminal_node_ix values are smaller than 1.")
+      }
+
+      n_expanded <- sum(x$terminal_node_ix)
+
+      if (n_expanded == 0L) {
+        return(numeric(0L))
+      }
+
+      if (is_failed_fit(model)) {
+        return(rep(NA_real_, n_expanded))
+      }
+
+      fit_meta <- get_psl_fit_meta(model)
+
+      if (is.null(fit_meta)) {
+        return(rep(NA_real_, n_expanded))
+      }
+
+      idx <- rep.int(seq_len(nrow(x)), times = x$terminal_node_ix)
+
+      pred_grid <- x[idx]
+
+      pred_grid[, node_ix := sequence(x$terminal_node_ix)]
+
+      pred_grid[, `:=`(
+        tij = 1.0,
+        deltaij = 0.0
+      )]
+
+      node_labels <- paste0("n", seq_along(grid_nodes))
+
+      pred_grid[, node := factor(
+        node_ix,
+        levels = seq_along(grid_nodes),
+        labels = node_labels
+      )]
+
+      X_new <- try(
+        .self$hal_prepare_new(pred_grid, fit_meta),
+        silent = TRUE
+      )
+
+      if (inherits(X_new, "try-error")) {
+        return(rep(NA_real_, n_expanded))
+      }
+
+      if (is.null(X_new) || nrow(X_new) == 0L || ncol(X_new) == 0L) {
+        return(rep(NA_real_, n_expanded))
+      }
+
+      dots <- list(...)
+
+      cause_key <- dots[["cause"]]
+      dots[["cause"]] <- NULL
+
+      ## Prediction selector:
+      ## 1. If s is explicitly passed through ..., use that.
+      ## 2. Else, if s was supplied at learner construction, use .self$s.
+      ## 3. Else, pass no s and let glmnet/cv.glmnet use its default.
+      if (is.null(dots[["s"]]) && !is.null(.self$s)) {
+        dots[["s"]] <- .self$s
+      }
+
+      pred_args <- list(
+        object = model,
+        newx = X_new,
+        newoffset = rep(0.0, nrow(X_new)),
+        type = "response"
+      )
+
+      out <- try(
+        do.call(predict, c(pred_args, dots)),
+        silent = TRUE
+      )
+
+      if (inherits(out, "try-error")) {
+        return(rep(NA_real_, n_expanded))
+      }
+
+      out <- as.numeric(out)
+
+      if (length(out) != n_expanded) {
+        return(rep(NA_real_, n_expanded))
+      }
+
+      if (isTRUE(.self$rebalance)) {
+
+        if (is.null(cause_key)) {
+          cause_key <- attr(model, "psl_cause")
+        }
+
+        if (!is.null(cause_key)) {
+
+          cause_key <- as.character(cause_key)
+          rb_fit <- .self$baseline_model[[cause_key]]
+
+          if (!is.null(rb_fit)) {
+
+            x_rebalance_new <- tryCatch(
+              Matrix::sparse.model.matrix(
+                stats::as.formula("~ node"),
+                pred_grid,
+                contrasts.arg = NULL
+              )[, -1, drop = FALSE],
+              error = function(e) NULL
+            )
+
+            if (
+              !is.null(x_rebalance_new) &&
+              nrow(x_rebalance_new) == length(out)
+            ) {
+
+              multiplier <- tryCatch(
+                as.numeric(
+                  predict(
+                    rb_fit,
+                    newx = x_rebalance_new,
+                    newoffset = rep(0.0, nrow(x_rebalance_new)),
+                    type = "response"
+                  )
+                ),
+                error = function(e) rep(1.0, length(out))
+              )
+
+              if (
+                length(multiplier) == length(out) &&
+                all(is.finite(multiplier))
+              ) {
+                out <- out * multiplier
+              }
+            }
+          }
+        }
+      }
+
+      out
+    }
+  )
+)
+#' Piece-wise constant hazard via `xgboost`
+#'
+#' @export Learner_xgboost
+#' @exportClass Learner_xgboost
+Learner_xgboost <- setRefClass(
+  "Learner_xgboost",
+  fields = list(
+    covariates = "character",
+    cross_validation = "logical",
+    rebalance = "logical",
+    formula = "character",
+    learner = "function",
+    baseline_model = "list",
+    basic_covariates = "character",
+    fit_arguments = "list",
+    params = "list",
+    nrounds = "numeric",
+    nfold = "numeric",
+    early_stopping_rounds = "numeric",
+    verbose = "numeric"
+  ),
+  methods = list(
+
+    initialize = function(covariates = NA_character_,
+                          cross_validation = TRUE,
+                          rebalance = TRUE,
+                          params = list(),
+                          nrounds = 800,
+                          nfold = 5,
+                          early_stopping_rounds = 20,
+                          verbose = 0,
+                          ...) {
+
+      .self$covariates <- covariates
+      .self$cross_validation <- cross_validation
+      .self$rebalance <- rebalance
+      .self$baseline_model <- list()
+
+      covariates_use <- covariates[
+        is.character(covariates) &
+          !is.na(covariates) &
+          nzchar(covariates)
+      ]
+
+      rhs_terms <- c(
+        covariates_use,
+        "node"
+      )
+
+      ## Raw xgboost model:
+      ## deltaij ~ covariates + node - 1 + offset(log(tij))
+      .self$formula <- paste0(
+        "deltaij ~ ",
+        paste(rhs_terms, collapse = " + "),
+        " - 1 + offset(log(tij))"
+      )
+
+      default_params <- list(
+        objective = "count:poisson",
+        eval_metric = "poisson-nloglik",
+        eta = 0.01,
+        max_depth = 2,
+        alpha = 0.5,
+        lambda = 0.5
+      )
+
+      if (length(params) > 0L) {
+        default_params[names(params)] <- params
+      }
+
+      .self$params <- default_params
+
+      .self$nrounds <- as.numeric(nrounds)
+      .self$nfold <- as.numeric(nfold)
+      .self$early_stopping_rounds <- as.numeric(early_stopping_rounds)
+      .self$verbose <- as.numeric(verbose)
+
+      .self$fit_arguments <- list(...)
+
+      if (.self$cross_validation) {
+        .self$learner <- xgboost::xgb.cv
+      } else {
+        .self$learner <- xgboost::xgb.train
+      }
+
+      .self$basic_covariates <- .self$basic_covariates_constructor(
+        covariates
+      )
+    },
+
+    basic_covariates_constructor = function(covs) {
+
+      covs <- covs[
+        is.character(covs) &
+          !is.na(covs) &
+          nzchar(covs)
+      ]
+
+      out <- unlist(
+        lapply(covs, function(term) {
+          tryCatch(
+            all.vars(str2lang(term)),
+            error = function(e) {
+              tryCatch(
+                all.vars(
+                  stats::terms(
+                    stats::as.formula(
+                      paste("~", term)
+                    )
+                  )
+                ),
+                error = function(e2) character(0)
+              )
+            }
+          )
+        }),
+        use.names = FALSE
+      )
+
+      unique(out)
+    },
+
+    private_fit = function(data, cause, grid_nodes, ...) {
+      stop(
+        paste0(
+          "Learner_xgboost does not yet implement private_fit(); ",
+          "use private_fit_all_causes()."
+        )
+      )
+
+      return(NULL)
+    },
+
+    private_fit_all_causes = function(data,
+                                      causes,
+                                      grid_nodes,
+                                      ...) {
+
+      fits <- tryCatch({
+
+        if (!requireNamespace("xgboost", quietly = TRUE)) {
+          stop(
+            "Package 'xgboost' is required for Learner_xgboost."
+          )
+        }
+
+        n_causes <- length(causes)
+        widths <- c(diff(grid_nodes), 1.0)
+        node_support <- grid_nodes
+
+        .self$baseline_model <- list()
+
+        needed_cols <- unique(
+          c(
+            .self$basic_covariates,
+            "node",
+            "tij",
+            "deltaij"
+          )
+        )
+
+        train_d <- data.table::copy(
+          data[
+            ,
+            .SD,
+            .SDcols = needed_cols
+          ]
+        )
+
+        ## ------------------------------------------------------------
+        ## gid identifies the covariate pattern only
+        ## ------------------------------------------------------------
+
+        if (length(.self$basic_covariates) > 0L) {
+
+          group_key <- unique(
+            train_d[
+              ,
+              .SD,
+              .SDcols = .self$basic_covariates
+            ]
+          )
+
+          group_key[, gid := .I]
+
+          train_d <- group_key[
+            train_d,
+            on = (.self$basic_covariates)
+          ]
+
+        } else {
+
+          group_key <- data.table::data.table(
+            gid = 1L
+          )
+
+          train_d[, gid := 1L]
+        }
+
+        train_d <- train_d[
+          !is.na(gid) &
+            !is.na(node) &
+            !is.na(tij)
+        ]
+
+        train_d[
+          ,
+          node_ix := match(
+            node,
+            node_support
+          )
+        ]
+
+        ## ------------------------------------------------------------
+        ## Event counts by covariate pattern, node and cause
+        ## ------------------------------------------------------------
+
+        event_counts <- train_d[
+          deltaij %in% causes,
+          .N,
+          by = .(
+            gid,
+            node_ix,
+            deltaij
+          )
+        ]
+
+        ## ------------------------------------------------------------
+        ## Cause-independent exposure skeleton
+        ## ------------------------------------------------------------
+
+        terminal_base <- train_d[
+          ,
+          .(
+            tij = sum(tij),
+            N_terminal = .N
+          ),
+          by = .(
+            gid,
+            node,
+            node_ix
+          )
+        ]
+
+        data.table::setorder(
+          terminal_base,
+          gid,
+          node_ix
+        )
+
+        terminal_base[
+          ,
+          deltaij := 0.0
+        ]
+
+        ans <- expand_terminal_grouped_cpp(
+          gid = terminal_base$gid,
+          node_ix = terminal_base$node_ix,
+          tij = terminal_base$tij,
+          deltaij = terminal_base$deltaij,
+          N = terminal_base$N_terminal,
+          widths = widths
+        )
+
+        train_long <- data.table::as.data.table(
+          ans
+        )
+
+        train_long[
+          ,
+          node := node_support[node_ix]
+        ]
+
+        train_long <- group_key[
+          train_long,
+          on = "gid"
+        ]
+
+        data.table::setcolorder(
+          train_long,
+          c(
+            intersect(
+              c(
+                .self$basic_covariates,
+                "gid",
+                "node",
+                "node_ix",
+                "deltaij",
+                "tij",
+                "N_terminal"
+              ),
+              names(train_long)
+            ),
+            setdiff(
+              names(train_long),
+              c(
+                .self$basic_covariates,
+                "gid",
+                "node",
+                "node_ix",
+                "deltaij",
+                "tij",
+                "N_terminal"
+              )
+            )
+          )
+        )
+
+        data.table::setorder(
+          train_long,
+          gid,
+          node_ix
+        )
+
+        node_labels <- paste0(
+          "n",
+          seq_along(grid_nodes)
+        )
+
+        train_long[
+          ,
+          node := factor(
+            node_ix,
+            levels = seq_along(grid_nodes),
+            labels = node_labels
+          )
+        ]
+
+        ## ------------------------------------------------------------
+        ## Raw xgboost design matrix
+        ## ------------------------------------------------------------
+
+        mf <- stats::model.frame(
+          stats::as.formula(
+            .self$formula
+          ),
+          data = train_long,
+          na.action = stats::na.pass
+        )
+
+        tt <- attr(
+          mf,
+          "terms"
+        )
+
+        x <- stats::model.matrix(
+          tt,
+          data = mf
+        )
+
+        if (
+          nrow(x) == 0L ||
+          ncol(x) == 0L
+        ) {
+
+          out <- vector(
+            "list",
+            n_causes
+          )
+
+          names(out) <- as.character(
+            causes
+          )
+
+          for (ii in seq_len(n_causes)) {
+            out[[ii]] <- make_failed_fit(
+              paste0(
+                "Empty design matrix in ",
+                "Learner_xgboost::private_fit_all_causes"
+              )
+            )
+          }
+
+          return(out)
+        }
+
+        offset <- log(
+          train_long[["tij"]]
+        )
+
+        ## ------------------------------------------------------------
+        ## Cause-specific response matrix
+        ## ------------------------------------------------------------
+
+        out <- vector(
+          "list",
+          n_causes
+        )
+
+        names(out) <- as.character(
+          causes
+        )
+
+        cause_names <- as.character(
+          causes
+        )
+
+        train_index <- train_long[
+          ,
+          .(
+            gid,
+            node_ix
+          )
+        ]
+
+        if (nrow(event_counts) > 0L) {
+
+          event_wide <- data.table::dcast(
+            event_counts,
+            gid + node_ix ~ deltaij,
+            value.var = "N",
+            fill = 0L
+          )
+
+        } else {
+
+          event_wide <- unique(
+            train_index
+          )
+        }
+
+        missing_causes <- setdiff(
+          cause_names,
+          names(event_wide)
+        )
+
+        if (length(missing_causes) > 0L) {
+          event_wide[
+            ,
+            (missing_causes) := 0L
+          ]
+        }
+
+        event_wide <- event_wide[
+          train_index,
+          on = .(
+            gid,
+            node_ix
+          )
+        ]
+
+        for (cc in cause_names) {
+
+          ii_na <- which(
+            is.na(
+              event_wide[[cc]]
+            )
+          )
+
+          if (length(ii_na) > 0L) {
+            data.table::set(
+              event_wide,
+              ii_na,
+              cc,
+              0L
+            )
+          }
+        }
+
+        y_mat <- as.matrix(
+          event_wide[
+            ,
+            ..cause_names
+          ]
+        )
+
+        ## ------------------------------------------------------------
+        ## Node-factor design for the unpenalized rebalance model
+        ##
+        ## Same node grid as the raw xgboost fit.
+        ## ------------------------------------------------------------
+
+        x_rebalance <- Matrix::sparse.model.matrix(
+          stats::as.formula(
+            "~ node"
+          ),
+          train_long,
+          contrasts.arg = NULL
+        )[
+          ,
+          -1,
+          drop = FALSE
+        ]
+
+        ## ------------------------------------------------------------
+        ## Fit one xgboost model per cause
+        ## ------------------------------------------------------------
+
+        for (ii in seq_len(n_causes)) {
+
+          cause_i <- causes[ii]
+          cause_key <- as.character(
+            cause_i
+          )
+
+          y <- as.numeric(
+            y_mat[
+              ,
+              ii
+            ]
+          )
+
+          dtrain <- xgboost::xgb.DMatrix(
+            data = x,
+            label = y
+          )
+
+          ## Training offset: log(time at risk)
+          xgboost::setinfo(
+            dtrain,
+            "base_margin",
+            offset
+          )
+
+          best_nrounds <- as.integer(
+            .self$nrounds
+          )
+
+          ## ----------------------------------------------------------
+          ## Select number of boosting rounds using Poisson loss
+          ## ----------------------------------------------------------
+
+          if (isTRUE(.self$cross_validation)) {
+
+            cv_args <- c(
+              list(
+                params = .self$params,
+                data = dtrain,
+                nrounds = as.integer(
+                  .self$nrounds
+                ),
+                nfold = as.integer(
+                  .self$nfold
+                ),
+                verbose = as.integer(
+                  .self$verbose
+                ),
+                showsd = TRUE
+              ),
+              .self$fit_arguments
+            )
+
+            if (
+              length(
+                .self$early_stopping_rounds
+              ) == 1L &&
+              is.finite(
+                .self$early_stopping_rounds
+              ) &&
+              .self$early_stopping_rounds > 0
+            ) {
+
+              cv_args[[
+                "early_stopping_rounds"
+              ]] <- as.integer(
+                .self$early_stopping_rounds
+              )
+            }
+
+            cv_fit <- tryCatch(
+              suppressWarnings(
+                do.call(
+                  xgboost::xgb.cv,
+                  cv_args
+                )
+              ),
+              error = function(e) NULL
+            )
+
+            if (is.null(cv_fit)) {
+
+              out[[ii]] <- make_failed_fit(
+                paste0(
+                  "xgb.cv failed in ",
+                  "Learner_xgboost::private_fit_all_causes ",
+                  "for cause ",
+                  cause_key
+                )
+              )
+
+              next
+            }
+
+            if (
+              !is.null(
+                cv_fit$best_iteration
+              ) &&
+              is.finite(
+                cv_fit$best_iteration
+              )
+            ) {
+
+              best_nrounds <- as.integer(
+                cv_fit$best_iteration
+              )
+
+            } else {
+
+              ev <- cv_fit$evaluation_log
+
+              test_cols <- grep(
+                "test.*poisson.*mean",
+                names(ev),
+                value = TRUE
+              )
+
+              if (length(test_cols) > 0L) {
+                best_nrounds <- which.min(
+                  ev[[test_cols[1L]]]
+                )
+              }
+            }
+          }
+
+          ## ----------------------------------------------------------
+          ## Final raw xgboost fit
+          ## ----------------------------------------------------------
+
+          train_args <- c(
+            list(
+              params = .self$params,
+              data = dtrain,
+              nrounds = as.integer(
+                best_nrounds
+              ),
+              verbose = as.integer(
+                .self$verbose
+              )
+            ),
+            .self$fit_arguments
+          )
+
+          fit_xgb <- tryCatch(
+            suppressWarnings(
+              do.call(
+                xgboost::xgb.train,
+                train_args
+              )
+            ),
+            error = function(e) NULL
+          )
+
+          if (is.null(fit_xgb)) {
+
+            out[[ii]] <- make_failed_fit(
+              paste0(
+                "xgb.train failed in ",
+                "Learner_xgboost::private_fit_all_causes ",
+                "for cause ",
+                cause_key
+              )
+            )
+
+            next
+          }
+
+          model_obj <- list(
+            booster = fit_xgb,
+            terms = tt,
+            colnames = colnames(x),
+            xlevels = stats::.getXlevels(
+              tt,
+              mf
+            ),
+            cause = cause_key,
+            best_nrounds = best_nrounds,
+            params = .self$params
+          )
+
+          class(model_obj) <- "psl_xgboost"
+
+          attr(
+            model_obj,
+            "psl_cause"
+          ) <- cause_key
+
+          out[[ii]] <- model_obj
+
+          ## ----------------------------------------------------------
+          ## Optional node-wise baseline rebalancing
+          ##
+          ## raw hazard:
+          ##   raw_hazard_ik
+          ##
+          ## rebalanced hazard:
+          ##   raw_hazard_ik * multiplier_k
+          ##
+          ## multiplier_k is fitted by an unpenalized Poisson glmnet
+          ## with one node factor on the same grid as the raw model.
+          ## ----------------------------------------------------------
+
+          if (isTRUE(.self$rebalance)) {
+
+            dhazard <- xgboost::xgb.DMatrix(
+              data = x
+            )
+
+            ## Predict the raw hazard rather than the Poisson mean.
+            xgboost::setinfo(
+              dhazard,
+              "base_margin",
+              rep(
+                0.0,
+                nrow(x)
+              )
+            )
+
+            raw_hazard <- tryCatch(
+              as.numeric(
+                predict(
+                  fit_xgb,
+                  newdata = dhazard
+                )
+              ),
+              error = function(e) {
+                rep(
+                  NA_real_,
+                  nrow(x)
+                )
+              }
+            )
+
+            if (
+              length(raw_hazard) == nrow(x) &&
+              all(
+                is.finite(
+                  raw_hazard
+                )
+              ) &&
+              nrow(x_rebalance) == nrow(x)
+            ) {
+
+              eps <- .Machine$double.xmin
+
+              rebalance_offset <-
+                log(
+                  train_long[["tij"]]
+                ) +
+                log(
+                  pmax(
+                    raw_hazard,
+                    eps
+                  )
+                )
+
+              rb_fit <- tryCatch(
+                suppressWarnings(
+                  glmnet::glmnet(
+                    x = x_rebalance,
+                    y = as.numeric(y),
+                    family = "poisson",
+                    offset = rebalance_offset,
+                    lambda = 0,
+                    intercept = TRUE
+                  )
+                ),
+                error = function(e) NULL
+              )
+
+              if (!is.null(rb_fit)) {
+
+                attr(
+                  rb_fit,
+                  "psl_cause"
+                ) <- cause_key
+
+                .self$baseline_model[[
+                  cause_key
+                ]] <- rb_fit
+
+              } else {
+
+                .self$baseline_model[[
+                  cause_key
+                ]] <- NULL
+              }
+
+            } else {
+
+              .self$baseline_model[[
+                cause_key
+              ]] <- NULL
+            }
+          }
+        }
+
+        out
+
+      }, error = function(e) {
+
+        out <- vector(
+          "list",
+          length(causes)
+        )
+
+        names(out) <- as.character(
+          causes
+        )
+
+        for (ii in seq_along(out)) {
+          out[[ii]] <- make_failed_fit(
+            conditionMessage(e)
+          )
+        }
+
+        out
+      })
+
+      fits
+    },
+
+    private_predictor = function(model,
+                                 newdata,
+                                 grid_nodes,
+                                 ...) {
+
+      pred_cols <- unique(
+        c(
+          .self$basic_covariates,
+          "node"
+        )
+      )
+
+      x <- data.table::copy(
+        newdata[
+          ,
+          .SD,
+          .SDcols = pred_cols
+        ]
+      )
+
+      data.table::setnames(
+        x,
+        "node",
+        "terminal_node"
+      )
+
+      x[
+        ,
+        pred_id := .I
+      ]
+
+      x[
+        ,
+        terminal_node_ix := match(
+          terminal_node,
+          grid_nodes
+        )
+      ]
+
+      if (anyNA(x$terminal_node_ix)) {
+        stop(
+          "Some terminal_node values are not exactly in grid_nodes."
+        )
+      }
+
+      if (any(x$terminal_node_ix < 1L)) {
+        stop(
+          "Some terminal_node_ix values are smaller than 1."
+        )
+      }
+
+      n_expanded <- sum(
+        x$terminal_node_ix
+      )
+
+      if (n_expanded == 0L) {
+        return(
+          numeric(0L)
+        )
+      }
+
+      if (is_failed_fit(model)) {
+        return(
+          rep(
+            NA_real_,
+            n_expanded
+          )
+        )
+      }
+
+      if (!inherits(model, "psl_xgboost")) {
+        return(
+          rep(
+            NA_real_,
+            n_expanded
+          )
+        )
+      }
+
+      ## ------------------------------------------------------------
+      ## Expand each endpoint over nodes 1, ..., terminal node
+      ## ------------------------------------------------------------
+
+      idx <- rep.int(
+        seq_len(
+          nrow(x)
+        ),
+        times = x$terminal_node_ix
+      )
+
+      pred_grid <- x[
+        idx
+      ]
+
+      pred_grid[
+        ,
+        node_ix := sequence(
+          x$terminal_node_ix
+        )
+      ]
+
+      pred_grid[
+        ,
+        `:=`(
+          tij = 1.0,
+          deltaij = 0.0
+        )
+      ]
+
+      node_labels <- paste0(
+        "n",
+        seq_along(grid_nodes)
+      )
+
+      pred_grid[
+        ,
+        node := factor(
+          node_ix,
+          levels = seq_along(grid_nodes),
+          labels = node_labels
+        )
+      ]
+
+      ## ------------------------------------------------------------
+      ## Raw xgboost prediction matrix
+      ## ------------------------------------------------------------
+
+      mf_new <- tryCatch(
+        stats::model.frame(
+          model$terms,
+          data = pred_grid,
+          na.action = stats::na.pass,
+          xlev = model$xlevels
+        ),
+        error = function(e) NULL
+      )
+
+      if (is.null(mf_new)) {
+        return(
+          rep(
+            NA_real_,
+            n_expanded
+          )
+        )
+      }
+
+      x_new <- tryCatch(
+        stats::model.matrix(
+          model$terms,
+          data = mf_new
+        ),
+        error = function(e) NULL
+      )
+
+      if (
+        is.null(x_new) ||
+        nrow(x_new) == 0L ||
+        ncol(x_new) == 0L
+      ) {
+        return(
+          rep(
+            NA_real_,
+            n_expanded
+          )
+        )
+      }
+
+      missing_cols <- setdiff(
+        model$colnames,
+        colnames(x_new)
+      )
+
+      if (length(missing_cols) > 0L) {
+
+        add <- matrix(
+          0,
+          nrow = nrow(x_new),
+          ncol = length(missing_cols)
+        )
+
+        colnames(add) <- missing_cols
+
+        x_new <- cbind(
+          x_new,
+          add
+        )
+      }
+
+      extra_cols <- setdiff(
+        colnames(x_new),
+        model$colnames
+      )
+
+      if (length(extra_cols) > 0L) {
+
+        x_new <- x_new[
+          ,
+          setdiff(
+            colnames(x_new),
+            extra_cols
+          ),
+          drop = FALSE
+        ]
+      }
+
+      x_new <- x_new[
+        ,
+        model$colnames,
+        drop = FALSE
+      ]
+
+      dnew <- xgboost::xgb.DMatrix(
+        data = x_new
+      )
+
+      ## Predict the raw hazard rather than the Poisson mean.
+      xgboost::setinfo(
+        dnew,
+        "base_margin",
+        rep(
+          0.0,
+          nrow(x_new)
+        )
+      )
+
+      out <- tryCatch(
+        as.numeric(
+          predict(
+            model$booster,
+            newdata = dnew
+          )
+        ),
+        error = function(e) {
+          rep(
+            NA_real_,
+            n_expanded
+          )
+        }
+      )
+
+      if (length(out) != n_expanded) {
+        out <- rep(
+          NA_real_,
+          n_expanded
+        )
+      }
+
+      ## ------------------------------------------------------------
+      ## Apply node-wise baseline multiplier
+      ## ------------------------------------------------------------
+
+      if (isTRUE(.self$rebalance)) {
+
+        dots <- list(...)
+        cause_key <- dots[["cause"]]
+
+        if (is.null(cause_key)) {
+          cause_key <- attr(
+            model,
+            "psl_cause"
+          )
+        }
+
+        if (!is.null(cause_key)) {
+
+          cause_key <- as.character(
+            cause_key
+          )
+
+          rb_fit <- .self$baseline_model[[
+            cause_key
+          ]]
+
+          if (!is.null(rb_fit)) {
+
+            x_rebalance_new <- tryCatch(
+              Matrix::sparse.model.matrix(
+                stats::as.formula(
+                  "~ node"
+                ),
+                pred_grid,
+                contrasts.arg = NULL
+              )[
+                ,
+                -1,
+                drop = FALSE
+              ],
+              error = function(e) NULL
+            )
+
+            if (
+              !is.null(
+                x_rebalance_new
+              ) &&
+              nrow(
+                x_rebalance_new
+              ) == length(out)
+            ) {
+
+              multiplier <- tryCatch(
+                as.numeric(
+                  predict(
+                    rb_fit,
+                    newx = x_rebalance_new,
+                    newoffset = rep(
+                      0.0,
+                      nrow(
+                        x_rebalance_new
+                      )
+                    ),
+                    type = "response"
+                  )
+                ),
+                error = function(e) {
+                  rep(
+                    1.0,
+                    length(out)
+                  )
+                }
+              )
+
+              if (
+                length(multiplier) == length(out) &&
+                all(
+                  is.finite(
+                    multiplier
+                  )
+                )
+              ) {
+                out <- out * multiplier
+              }
+            }
+          }
+        }
+      }
+
+      out
+    }
+  )
+)
