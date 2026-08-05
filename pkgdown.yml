@@ -1,0 +1,9 @@
+pandoc: 3.8.3
+pkgdown: 2.2.1
+pkgdown_sha: ~
+articles:
+  basicusage: basicusage.html
+last_built: 2026-08-05T14:51Z
+urls:
+  reference: https://gpitt71.github.io/poissonsuperlearner/reference
+  article: https://gpitt71.github.io/poissonsuperlearner/articles
