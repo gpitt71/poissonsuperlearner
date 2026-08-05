@@ -1,0 +1,71 @@
+url: https://gpitt71.github.io/poissonsuperlearner/
+
+template:
+  bootstrap: 5
+  bootswatch: flatly
+  bslib:
+    primary: "#126E82"
+    secondary: "#D8A31A"
+    base_font: {google: "Source Sans 3"}
+    heading_font: {google: "IBM Plex Sans"}
+    code_font: {google: "IBM Plex Mono"}
+
+development:
+  mode: auto
+
+navbar:
+  structure:
+    left: [intro, reference, articles, news]
+    right: [search, github]
+  components:
+    intro:
+      text: Get started
+      href: articles/basicusage.html
+    github:
+      icon: fa-github
+      aria-label: GitHub
+      href: https://github.com/gpitt71/poissonsuperlearner
+
+home:
+  title: Poisson Super Learner for Survival and Competing Risks
+  description: >
+    Flexible piecewise-constant hazard modelling and ensemble learning for
+    survival and competing-risks prediction.
+
+articles:
+  - title: Get started
+    navbar: ~
+    contents:
+      - basicusage
+
+reference:
+  - title: Fit models
+    desc: Define base learners and fit piecewise-constant hazard models.
+    contents:
+      - Learner_glmnet
+      - Learner_gam
+      - Learner_hal
+      - fit_learner
+      - Superlearner
+
+  - title: Predict and inspect
+    desc: Generate predictions and inspect fitted models.
+    contents:
+      - starts_with("predict")
+      - starts_with("coef")
+      - starts_with("print")
+      - starts_with("summary")
+
+  - title: Hazard and risk utilities
+    contents:
+      - pch_survival
+      - pch_absolute_risk
+      - pch_absolute_risk_euler
+
+  - title: Example data
+    contents:
+      - simulateStenoT1
+
+  - title: Package
+    contents:
+      - poissonsuperlearner-package

@@ -9,4 +9,7 @@
 ^\.git$
 ^\.gitignore$
 ^\.Rhistory$
+^_pkgdown\.yml$
+^docs$
 ^R/\.Rhistory$
+^pkgdown$
