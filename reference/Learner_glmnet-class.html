@@ -82,7 +82,7 @@ if this backend call fails, the learner retries with a fully penalized design.</
 <dd><p>Names of covariate columns used in the model.</p></dd>
 
 <dt><code>cross_validation</code> (<code>logical</code>)</dt>
-<dd><p>If <code>TRUE</code>, chooses <code>lambda</code> by <code><a href="https://glmnet.stanford.edu/reference/cv.glmnet.html" class="external-link">glmnet::cv.glmnet</a></code>.</p></dd>
+<dd><p>If <code>TRUE</code>, chooses <code>lambda</code> by <code><a href="https://rdrr.io/pkg/glmnet/man/cv.glmnet.html" class="external-link">glmnet::cv.glmnet</a></code>.</p></dd>
 
 <dt><code>intercept</code> (<code>logical</code>)</dt>
 <dd><p>Backend intercept flag; currently fixed to <code>TRUE</code>
@@ -95,7 +95,7 @@ by the constructor.</p></dd>
 <dd><p>Formula string used to create the design matrix in long format.</p></dd>
 
 <dt><code>learner</code> (<code>function</code>)</dt>
-<dd><p>Backend fitter (<code><a href="https://glmnet.stanford.edu/reference/glmnet.html" class="external-link">glmnet::glmnet</a></code> or <code><a href="https://glmnet.stanford.edu/reference/cv.glmnet.html" class="external-link">glmnet::cv.glmnet</a></code>).</p></dd>
+<dd><p>Backend fitter (<code><a href="https://rdrr.io/pkg/glmnet/man/glmnet.html" class="external-link">glmnet::glmnet</a></code> or <code><a href="https://rdrr.io/pkg/glmnet/man/cv.glmnet.html" class="external-link">glmnet::cv.glmnet</a></code>).</p></dd>
 
 <dt><code>fit_arguments</code> (<code>list</code>)</dt>
 <dd><p>Additional arguments forwarded to the backend fitter.</p></dd>

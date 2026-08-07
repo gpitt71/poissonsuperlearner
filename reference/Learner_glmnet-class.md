@@ -43,7 +43,7 @@ fails, the learner retries with a fully penalized design.
 - `cross_validation` (`logical`):
 
   If `TRUE`, chooses `lambda` by
-  [`glmnet::cv.glmnet`](https://glmnet.stanford.edu/reference/cv.glmnet.html).
+  [`glmnet::cv.glmnet`](https://rdrr.io/pkg/glmnet/man/cv.glmnet.html).
 
 - `intercept` (`logical`):
 
@@ -60,9 +60,8 @@ fails, the learner retries with a fully penalized design.
 - `learner` (`function`):
 
   Backend fitter
-  ([`glmnet::glmnet`](https://glmnet.stanford.edu/reference/glmnet.html)
-  or
-  [`glmnet::cv.glmnet`](https://glmnet.stanford.edu/reference/cv.glmnet.html)).
+  ([`glmnet::glmnet`](https://rdrr.io/pkg/glmnet/man/glmnet.html) or
+  [`glmnet::cv.glmnet`](https://rdrr.io/pkg/glmnet/man/cv.glmnet.html)).
 
 - `fit_arguments` (`list`):
 

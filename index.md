@@ -1,4 +1,4 @@
-# Poisson SuperLearner
+# Poisson Super Learner
 
 The package provides an implementation of piecewise-constant hazard
 models for time-to-event analysis of survival and competing risks data.
