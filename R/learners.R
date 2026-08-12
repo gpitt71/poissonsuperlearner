@@ -2418,3 +2418,956 @@ Learner_gam <- setRefClass(
     }
   )
 )
+
+
+#' Piece-wise constant hazard via `xgboost`
+#'
+#' @export Learner_xgboost
+#' @exportClass Learner_xgboost
+Learner_xgboost <- setRefClass(
+  "Learner_xgboost",
+  fields = list(
+    covariates = "character",
+    cross_validation = "logical",
+    rebalance = "logical",
+    formula = "character",
+    learner = "function",
+    baseline_model = "list",
+    basic_covariates = "character",
+    fit_arguments = "list",
+    params = "list",
+    nrounds = "numeric",
+    nfold = "numeric",
+    early_stopping_rounds = "numeric",
+    verbose = "numeric"
+  ),
+  methods = list(
+
+    initialize = function(covariates = NA_character_,
+                          cross_validation = TRUE,
+                          params = list(),
+                          nrounds = 800,
+                          nfold = 5,
+                          early_stopping_rounds = 20,
+                          verbose = 0,
+                          ...) {
+
+      .self$covariates <- covariates
+      .self$cross_validation <- cross_validation
+      .self$baseline_model <- list()
+
+      covariates_use <- covariates[
+        is.character(covariates) &
+          !is.na(covariates) &
+          nzchar(covariates)
+      ]
+
+      rhs_terms <- c(
+        covariates_use,
+        "node"
+      )
+
+      ## Raw xgboost model:
+      ## deltaij ~ covariates + node - 1 + offset(log(tij))
+      .self$formula <- paste0(
+        "deltaij ~ ",
+        paste(rhs_terms, collapse = " + "),
+        " - 1 + offset(log(tij))"
+      )
+
+      default_params <- list(
+        objective = "count:poisson",
+        eval_metric = "poisson-nloglik",
+        eta = 0.01,
+        max_depth = 2,
+        alpha = 0.5,
+        lambda = 0.5
+      )
+
+      if (length(params) > 0L) {
+        default_params[names(params)] <- params
+      }
+
+      .self$params <- default_params
+
+      .self$nrounds <- as.numeric(nrounds)
+      .self$nfold <- as.numeric(nfold)
+      .self$early_stopping_rounds <- as.numeric(early_stopping_rounds)
+      .self$verbose <- as.numeric(verbose)
+
+      .self$fit_arguments <- list(...)
+
+      if (.self$cross_validation) {
+        .self$learner <- xgboost::xgb.cv
+      } else {
+        .self$learner <- xgboost::xgb.train
+      }
+
+      .self$basic_covariates <- .self$basic_covariates_constructor(
+        covariates
+      )
+    },
+
+    basic_covariates_constructor = function(covs) {
+
+      covs <- covs[
+        is.character(covs) &
+          !is.na(covs) &
+          nzchar(covs)
+      ]
+
+      out <- unlist(
+        lapply(covs, function(term) {
+          tryCatch(
+            all.vars(str2lang(term)),
+            error = function(e) {
+              tryCatch(
+                all.vars(
+                  stats::terms(
+                    stats::as.formula(
+                      paste("~", term)
+                    )
+                  )
+                ),
+                error = function(e2) character(0)
+              )
+            }
+          )
+        }),
+        use.names = FALSE
+      )
+
+      unique(out)
+    },
+
+    private_fit = function(data, cause, grid_nodes, ...) {
+      stop(
+        paste0(
+          "Learner_xgboost does not yet implement private_fit(); ",
+          "use private_fit_all_causes()."
+        )
+      )
+
+      return(NULL)
+    },
+
+    private_fit_all_causes = function(data,
+                                      causes,
+                                      grid_nodes,
+                                      ...) {
+
+      fits <- tryCatch({
+
+        # if (!requireNamespace("xgboost", quietly = TRUE)) {
+        #   stop(
+        #     "Package 'xgboost' is required for Learner_xgboost."
+        #   )
+        # }
+
+        n_causes <- length(causes)
+        widths <- c(diff(grid_nodes), 1.0)
+        node_support <- grid_nodes
+
+        needed_cols <- unique(
+          c(
+            .self$basic_covariates,
+            "node",
+            "tij",
+            "deltaij"
+          )
+        )
+
+        train_d <- data.table::copy(
+          data[
+            ,
+            .SD,
+            .SDcols = needed_cols
+          ]
+        )
+
+        ## ------------------------------------------------------------
+        ## gid identifies the covariate pattern only
+        ## ------------------------------------------------------------
+
+        if (length(.self$basic_covariates) > 0L) {
+
+          group_key <- unique(
+            train_d[
+              ,
+              .SD,
+              .SDcols = .self$basic_covariates
+            ]
+          )
+
+          group_key[, gid := .I]
+
+          train_d <- group_key[
+            train_d,
+            on = (.self$basic_covariates)
+          ]
+
+        } else {
+
+          group_key <- data.table::data.table(
+            gid = 1L
+          )
+
+          train_d[, gid := 1L]
+        }
+
+        train_d <- train_d[
+          !is.na(gid) &
+            !is.na(node) &
+            !is.na(tij)
+        ]
+
+        train_d[
+          ,
+          node_ix := match(
+            node,
+            node_support
+          )
+        ]
+
+        ## ------------------------------------------------------------
+        ## Event counts by covariate pattern, node and cause
+        ## ------------------------------------------------------------
+
+        event_counts <- train_d[
+          deltaij %in% causes,
+          .N,
+          by = .(
+            gid,
+            node_ix,
+            deltaij
+          )
+        ]
+
+        ## ------------------------------------------------------------
+        ## Cause-independent exposure skeleton
+        ## ------------------------------------------------------------
+
+        terminal_base <- train_d[
+          ,
+          .(
+            tij = sum(tij),
+            N_terminal = .N
+          ),
+          by = .(
+            gid,
+            node,
+            node_ix
+          )
+        ]
+
+        data.table::setorder(
+          terminal_base,
+          gid,
+          node_ix
+        )
+
+        terminal_base[
+          ,
+          deltaij := 0.0
+        ]
+
+        ans <- expand_terminal_grouped_cpp(
+          gid = terminal_base$gid,
+          node_ix = terminal_base$node_ix,
+          tij = terminal_base$tij,
+          deltaij = terminal_base$deltaij,
+          N = terminal_base$N_terminal,
+          widths = widths
+        )
+
+        train_long <- data.table::as.data.table(
+          ans
+        )
+
+        train_long[
+          ,
+          node := node_support[node_ix]
+        ]
+
+        train_long <- group_key[
+          train_long,
+          on = "gid"
+        ]
+
+        data.table::setcolorder(
+          train_long,
+          c(
+            intersect(
+              c(
+                .self$basic_covariates,
+                "gid",
+                "node",
+                "node_ix",
+                "deltaij",
+                "tij",
+                "N_terminal"
+              ),
+              names(train_long)
+            ),
+            setdiff(
+              names(train_long),
+              c(
+                .self$basic_covariates,
+                "gid",
+                "node",
+                "node_ix",
+                "deltaij",
+                "tij",
+                "N_terminal"
+              )
+            )
+          )
+        )
+
+        data.table::setorder(
+          train_long,
+          gid,
+          node_ix
+        )
+
+        node_labels <- paste0(
+          "n",
+          seq_along(grid_nodes)
+        )
+
+        train_long[
+          ,
+          node := factor(
+            node_ix,
+            levels = seq_along(grid_nodes),
+            labels = node_labels
+          )
+        ]
+
+        ## ------------------------------------------------------------
+        ## Raw xgboost design matrix
+        ## ------------------------------------------------------------
+
+        mf <- stats::model.frame(
+          stats::as.formula(
+            .self$formula
+          ),
+          data = train_long,
+          na.action = stats::na.pass
+        )
+
+        tt <- attr(
+          mf,
+          "terms"
+        )
+
+        x <- stats::model.matrix(
+          tt,
+          data = mf
+        )
+
+        if (
+          nrow(x) == 0L ||
+          ncol(x) == 0L
+        ) {
+
+          out <- vector(
+            "list",
+            n_causes
+          )
+
+          names(out) <- as.character(
+            causes
+          )
+
+          for (ii in seq_len(n_causes)) {
+            out[[ii]] <- make_failed_fit(
+              paste0(
+                "Empty design matrix in ",
+                "Learner_xgboost::private_fit_all_causes"
+              )
+            )
+          }
+
+          return(out)
+        }
+
+        offset <- log(
+          train_long[["tij"]]
+        )
+
+        ## ------------------------------------------------------------
+        ## Cause-specific response matrix
+        ## ------------------------------------------------------------
+
+        out <- vector(
+          "list",
+          n_causes
+        )
+
+        names(out) <- as.character(
+          causes
+        )
+
+        cause_names <- as.character(
+          causes
+        )
+
+        train_index <- train_long[
+          ,
+          .(
+            gid,
+            node_ix
+          )
+        ]
+
+        if (nrow(event_counts) > 0L) {
+
+          event_wide <- data.table::dcast(
+            event_counts,
+            gid + node_ix ~ deltaij,
+            value.var = "N",
+            fill = 0L
+          )
+
+        } else {
+
+          event_wide <- unique(
+            train_index
+          )
+        }
+
+        missing_causes <- setdiff(
+          cause_names,
+          names(event_wide)
+        )
+
+        if (length(missing_causes) > 0L) {
+          event_wide[
+            ,
+            (missing_causes) := 0L
+          ]
+        }
+
+        event_wide <- event_wide[
+          train_index,
+          on = .(
+            gid,
+            node_ix
+          )
+        ]
+
+        for (cc in cause_names) {
+
+          ii_na <- which(
+            is.na(
+              event_wide[[cc]]
+            )
+          )
+
+          if (length(ii_na) > 0L) {
+            data.table::set(
+              event_wide,
+              ii_na,
+              cc,
+              0L
+            )
+          }
+        }
+
+        y_mat <- as.matrix(
+          event_wide[
+            ,
+            ..cause_names
+          ]
+        )
+
+
+        ## ------------------------------------------------------------
+        ## Fit one xgboost model per cause
+        ## ------------------------------------------------------------
+
+        for (ii in seq_len(n_causes)) {
+
+          cause_i <- causes[ii]
+          cause_key <- as.character(
+            cause_i
+          )
+
+          y <- as.numeric(
+            y_mat[
+              ,
+              ii
+            ]
+          )
+
+          dtrain <- xgboost::xgb.DMatrix(
+            data = x,
+            label = y
+          )
+
+          ## Training offset: log(time at risk)
+          xgboost::setinfo(
+            dtrain,
+            "base_margin",
+            offset
+          )
+
+          best_nrounds <- as.integer(
+            .self$nrounds
+          )
+
+          ## ----------------------------------------------------------
+          ## Select number of boosting rounds using Poisson loss
+          ## ----------------------------------------------------------
+
+          if (isTRUE(.self$cross_validation)) {
+
+            cv_args <- c(
+              list(
+                params = .self$params,
+                data = dtrain,
+                nrounds = as.integer(
+                  .self$nrounds
+                ),
+                nfold = as.integer(
+                  .self$nfold
+                ),
+                verbose = as.integer(
+                  .self$verbose
+                ),
+                showsd = TRUE
+              ),
+              .self$fit_arguments
+            )
+
+            if (
+              length(
+                .self$early_stopping_rounds
+              ) == 1L &&
+              is.finite(
+                .self$early_stopping_rounds
+              ) &&
+              .self$early_stopping_rounds > 0
+            ) {
+
+              cv_args[[
+                "early_stopping_rounds"
+              ]] <- as.integer(
+                .self$early_stopping_rounds
+              )
+            }
+
+            cv_fit <- tryCatch(
+              suppressWarnings(
+                do.call(
+                  xgboost::xgb.cv,
+                  cv_args
+                )
+              ),
+              error = function(e) NULL
+            )
+
+            if (is.null(cv_fit)) {
+
+              out[[ii]] <- make_failed_fit(
+                paste0(
+                  "xgb.cv failed in ",
+                  "Learner_xgboost::private_fit_all_causes ",
+                  "for cause ",
+                  cause_key
+                )
+              )
+
+              next
+            }
+
+            if (
+              !is.null(
+                cv_fit$best_iteration
+              ) &&
+              is.finite(
+                cv_fit$best_iteration
+              )
+            ) {
+
+              best_nrounds <- as.integer(
+                cv_fit$best_iteration
+              )
+
+            } else {
+
+              ev <- cv_fit$evaluation_log
+
+              test_cols <- grep(
+                "test.*poisson.*mean",
+                names(ev),
+                value = TRUE
+              )
+
+              if (length(test_cols) > 0L) {
+                best_nrounds <- which.min(
+                  ev[[test_cols[1L]]]
+                )
+              }
+            }
+          }
+
+          ## ----------------------------------------------------------
+          ## Final raw xgboost fit
+          ## ----------------------------------------------------------
+
+          train_args <- c(
+            list(
+              params = .self$params,
+              data = dtrain,
+              nrounds = as.integer(
+                best_nrounds
+              ),
+              verbose = as.integer(
+                .self$verbose
+              )
+            ),
+            .self$fit_arguments
+          )
+
+          fit_xgb <- tryCatch(
+            suppressWarnings(
+              do.call(
+                xgboost::xgb.train,
+                train_args
+              )
+            ),
+            error = function(e) NULL
+          )
+
+          if (is.null(fit_xgb)) {
+
+            out[[ii]] <- make_failed_fit(
+              paste0(
+                "xgb.train failed in ",
+                "Learner_xgboost::private_fit_all_causes ",
+                "for cause ",
+                cause_key
+              )
+            )
+
+            next
+          }
+
+          model_obj <- list(
+            booster = fit_xgb,
+            terms = tt,
+            colnames = colnames(x),
+            xlevels = stats::.getXlevels(
+              tt,
+              mf
+            ),
+            cause = cause_key,
+            best_nrounds = best_nrounds,
+            params = .self$params
+          )
+
+          class(model_obj) <- "psl_xgboost"
+
+          attr(
+            model_obj,
+            "psl_cause"
+          ) <- cause_key
+
+          out[[ii]] <- model_obj
+
+          ## ----------------------------------------------------------
+          ## Optional node-wise baseline rebalancing
+          ##
+          ## raw hazard:
+          ##   raw_hazard_ik
+          ##
+          ## rebalanced hazard:
+          ##   raw_hazard_ik * multiplier_k
+          ##
+          ## multiplier_k is fitted by an unpenalized Poisson glmnet
+          ## with one node factor on the same grid as the raw model.
+          ## ----------------------------------------------------------
+
+
+        }
+
+        out
+
+      }, error = function(e) {
+
+        out <- vector(
+          "list",
+          length(causes)
+        )
+
+        names(out) <- as.character(
+          causes
+        )
+
+        for (ii in seq_along(out)) {
+          out[[ii]] <- make_failed_fit(
+            conditionMessage(e)
+          )
+        }
+
+        out
+      })
+
+      fits
+    },
+
+    private_predictor = function(model,
+                                 newdata,
+                                 grid_nodes,
+                                 ...) {
+
+      pred_cols <- unique(
+        c(
+          .self$basic_covariates,
+          "node"
+        )
+      )
+
+      x <- data.table::copy(
+        newdata[
+          ,
+          .SD,
+          .SDcols = pred_cols
+        ]
+      )
+
+      data.table::setnames(
+        x,
+        "node",
+        "terminal_node"
+      )
+
+      x[
+        ,
+        pred_id := .I
+      ]
+
+      x[
+        ,
+        terminal_node_ix := match(
+          terminal_node,
+          grid_nodes
+        )
+      ]
+
+      if (anyNA(x$terminal_node_ix)) {
+        stop(
+          "Some terminal_node values are not exactly in grid_nodes."
+        )
+      }
+
+      if (any(x$terminal_node_ix < 1L)) {
+        stop(
+          "Some terminal_node_ix values are smaller than 1."
+        )
+      }
+
+      n_expanded <- sum(
+        x$terminal_node_ix
+      )
+
+      if (n_expanded == 0L) {
+        return(
+          numeric(0L)
+        )
+      }
+
+      if (is_failed_fit(model)) {
+        return(
+          rep(
+            NA_real_,
+            n_expanded
+          )
+        )
+      }
+
+      if (!inherits(model, "psl_xgboost")) {
+        return(
+          rep(
+            NA_real_,
+            n_expanded
+          )
+        )
+      }
+
+      ## ------------------------------------------------------------
+      ## Expand each endpoint over nodes 1, ..., terminal node
+      ## ------------------------------------------------------------
+
+      idx <- rep.int(
+        seq_len(
+          nrow(x)
+        ),
+        times = x$terminal_node_ix
+      )
+
+      pred_grid <- x[
+        idx
+      ]
+
+      pred_grid[
+        ,
+        node_ix := sequence(
+          x$terminal_node_ix
+        )
+      ]
+
+      pred_grid[
+        ,
+        `:=`(
+          tij = 1.0,
+          deltaij = 0.0
+        )
+      ]
+
+      node_labels <- paste0(
+        "n",
+        seq_along(grid_nodes)
+      )
+
+      pred_grid[
+        ,
+        node := factor(
+          node_ix,
+          levels = seq_along(grid_nodes),
+          labels = node_labels
+        )
+      ]
+
+      ## ------------------------------------------------------------
+      ## Raw xgboost prediction matrix
+      ## ------------------------------------------------------------
+
+      mf_new <- tryCatch(
+        stats::model.frame(
+          model$terms,
+          data = pred_grid,
+          na.action = stats::na.pass,
+          xlev = model$xlevels
+        ),
+        error = function(e) NULL
+      )
+
+      if (is.null(mf_new)) {
+        return(
+          rep(
+            NA_real_,
+            n_expanded
+          )
+        )
+      }
+
+      x_new <- tryCatch(
+        stats::model.matrix(
+          model$terms,
+          data = mf_new
+        ),
+        error = function(e) NULL
+      )
+
+      if (
+        is.null(x_new) ||
+        nrow(x_new) == 0L ||
+        ncol(x_new) == 0L
+      ) {
+        return(
+          rep(
+            NA_real_,
+            n_expanded
+          )
+        )
+      }
+
+      missing_cols <- setdiff(
+        model$colnames,
+        colnames(x_new)
+      )
+
+      if (length(missing_cols) > 0L) {
+
+        add <- matrix(
+          0,
+          nrow = nrow(x_new),
+          ncol = length(missing_cols)
+        )
+
+        colnames(add) <- missing_cols
+
+        x_new <- cbind(
+          x_new,
+          add
+        )
+      }
+
+      extra_cols <- setdiff(
+        colnames(x_new),
+        model$colnames
+      )
+
+      if (length(extra_cols) > 0L) {
+
+        x_new <- x_new[
+          ,
+          setdiff(
+            colnames(x_new),
+            extra_cols
+          ),
+          drop = FALSE
+        ]
+      }
+
+      x_new <- x_new[
+        ,
+        model$colnames,
+        drop = FALSE
+      ]
+
+      dnew <- xgboost::xgb.DMatrix(
+        data = x_new
+      )
+
+      ## Predict the raw hazard rather than the Poisson mean.
+      xgboost::setinfo(
+        dnew,
+        "base_margin",
+        rep(
+          0.0,
+          nrow(x_new)
+        )
+      )
+
+      out <- tryCatch(
+        as.numeric(
+          predict(
+            model$booster,
+            newdata = dnew
+          )
+        ),
+        error = function(e) {
+          rep(
+            NA_real_,
+            n_expanded
+          )
+        }
+      )
+
+      if (length(out) != n_expanded) {
+        out <- rep(
+          NA_real_,
+          n_expanded
+        )
+      }
+
+
+
+      out
+    }
+  )
+)
