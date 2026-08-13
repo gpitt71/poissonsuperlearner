@@ -2541,14 +2541,206 @@ Learner_xgboost <- setRefClass(
     },
 
     private_fit = function(data, cause, grid_nodes, ...) {
-      stop(
-        paste0(
-          "Learner_xgboost does not yet implement private_fit(); ",
-          "use private_fit_all_causes()."
-        )
-      )
+      fit <- tryCatch({
+        widths <- c(diff(grid_nodes), 1.0)
+        node_support <- grid_nodes
 
-      return(NULL)
+        needed_cols <- unique(c(
+          .self$basic_covariates,
+          "node",
+          "tij",
+          "deltaij"
+        ))
+
+        train_d <- data.table::copy(
+          data[, .SD, .SDcols = needed_cols]
+        )
+
+        if (length(.self$basic_covariates) > 0L) {
+          group_key <- unique(
+            train_d[, .SD, .SDcols = .self$basic_covariates]
+          )
+          group_key[, gid := .I]
+          train_d <- group_key[train_d, on = (.self$basic_covariates)]
+        } else {
+          group_key <- data.table::data.table(gid = 1L)
+          train_d[, gid := 1L]
+        }
+
+        train_d <- train_d[
+          !is.na(gid) & !is.na(node) & !is.na(tij)
+        ]
+
+        train_d <- train_d[, .(
+          tij = sum(tij),
+          deltaij = sum(as.numeric(deltaij == cause)),
+          N_terminal = .N
+        ), by = .(gid, node)]
+
+        train_d[, node_ix := match(node, node_support)]
+        data.table::setorder(train_d, gid, node_ix)
+
+        ans <- expand_terminal_grouped_cpp(
+          gid = train_d$gid,
+          node_ix = train_d$node_ix,
+          tij = train_d$tij,
+          deltaij = train_d$deltaij,
+          N = train_d$N_terminal,
+          widths = widths
+        )
+
+        train_d <- data.table::as.data.table(ans)
+        train_d[, node := node_support[node_ix]]
+        train_d <- group_key[train_d, on = "gid"]
+
+        data.table::setcolorder(
+          train_d,
+          c(
+            intersect(
+              c(
+                .self$basic_covariates,
+                "gid", "node", "node_ix", "deltaij", "tij",
+                "N_terminal"
+              ),
+              names(train_d)
+            ),
+            setdiff(
+              names(train_d),
+              c(
+                .self$basic_covariates,
+                "gid", "node", "node_ix", "deltaij", "tij",
+                "N_terminal"
+              )
+            )
+          )
+        )
+        data.table::setorder(train_d, gid, node_ix)
+
+        node_labels <- paste0("n", seq_along(grid_nodes))
+        train_d[, node := factor(
+          node_ix,
+          levels = seq_along(grid_nodes),
+          labels = node_labels
+        )]
+
+        mf <- stats::model.frame(
+          stats::as.formula(.self$formula),
+          data = train_d,
+          na.action = stats::na.pass
+        )
+        tt <- attr(mf, "terms")
+        x <- stats::model.matrix(tt, data = mf)
+
+        if (nrow(x) == 0L || ncol(x) == 0L) {
+          return(make_failed_fit(
+            "Empty design matrix in Learner_xgboost::private_fit"
+          ))
+        }
+
+        dtrain <- xgboost::xgb.DMatrix(
+          data = x,
+          label = as.numeric(train_d[["deltaij"]])
+        )
+        xgboost::setinfo(
+          dtrain,
+          "base_margin",
+          log(as.numeric(train_d[["tij"]]))
+        )
+
+        best_nrounds <- as.integer(.self$nrounds)
+
+        if (isTRUE(.self$cross_validation)) {
+          cv_args <- c(
+            list(
+              params = .self$params,
+              data = dtrain,
+              nrounds = as.integer(.self$nrounds),
+              nfold = as.integer(.self$nfold),
+              verbose = as.integer(.self$verbose),
+              showsd = TRUE
+            ),
+            .self$fit_arguments
+          )
+
+          if (
+            length(.self$early_stopping_rounds) == 1L &&
+              is.finite(.self$early_stopping_rounds) &&
+              .self$early_stopping_rounds > 0
+          ) {
+            cv_args[["early_stopping_rounds"]] <- as.integer(
+              .self$early_stopping_rounds
+            )
+          }
+
+          cv_fit <- tryCatch(
+            suppressWarnings(do.call(xgboost::xgb.cv, cv_args)),
+            error = function(e) NULL
+          )
+
+          if (is.null(cv_fit)) {
+            return(make_failed_fit(
+              "xgb.cv failed in Learner_xgboost::private_fit"
+            ))
+          }
+
+          if (
+            !is.null(cv_fit$best_iteration) &&
+              length(cv_fit$best_iteration) == 1L &&
+              is.finite(cv_fit$best_iteration)
+          ) {
+            best_nrounds <- as.integer(cv_fit$best_iteration)
+          } else {
+            ev <- cv_fit$evaluation_log
+            test_cols <- grep(
+              "test.*poisson.*mean",
+              names(ev),
+              value = TRUE
+            )
+            if (length(test_cols) > 0L) {
+              best_nrounds <- which.min(ev[[test_cols[1L]]])
+            }
+          }
+        }
+
+        train_args <- c(
+          list(
+            params = .self$params,
+            data = dtrain,
+            nrounds = as.integer(best_nrounds),
+            verbose = as.integer(.self$verbose)
+          ),
+          .self$fit_arguments
+        )
+
+        fit_xgb <- tryCatch(
+          suppressWarnings(do.call(xgboost::xgb.train, train_args)),
+          error = function(e) NULL
+        )
+
+        if (is.null(fit_xgb)) {
+          return(make_failed_fit(
+            "xgb.train failed in Learner_xgboost::private_fit"
+          ))
+        }
+
+        model_obj <- list(
+          booster = fit_xgb,
+          terms = tt,
+          colnames = colnames(x),
+          xlevels = stats::.getXlevels(tt, mf),
+          cause = as.character(cause),
+          best_nrounds = best_nrounds,
+          params = .self$params
+        )
+        class(model_obj) <- "psl_xgboost"
+        attr(model_obj, "psl_cause") <- as.character(cause)
+
+        model_obj
+      }, error = function(e) {
+        make_failed_fit(conditionMessage(e))
+      })
+
+      fit
     },
 
     private_fit_all_causes = function(data,
