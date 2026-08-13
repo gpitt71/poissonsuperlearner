@@ -260,3 +260,94 @@ List add_cols_cpp(List idxs_list, int p_start) {
     _["ncol"] = ncol
   );
 }
+
+// Enumerate and construct all nonempty interaction columns for one covariate
+// combination. The mixed-radix order intentionally matches hal_basis().
+// [[Rcpp::export]]
+List inter_cols_batch_cpp(List primitive_idxs, int p_start) {
+  const int d = primitive_idxs.size();
+  if (d == 0) {
+    return List::create(_["i"] = IntegerVector(0),
+                        _["col_nnz"] = IntegerVector(0),
+                        _["selection"] = IntegerMatrix(0, 0),
+                        _["ncol"] = 0);
+  }
+
+  std::vector<int> lens(d);
+  R_xlen_t total = 1;
+  for (int j = 0; j < d; ++j) {
+    List z = primitive_idxs[j];
+    lens[j] = z.size();
+    if (lens[j] == 0) total = 0;
+    else total *= lens[j];
+  }
+
+  std::vector<int> i_out;
+  std::vector<int> col_nnz;
+  std::vector<int> selections;
+  std::vector<int> sel(d);
+  int ncol = 0;
+
+  List first_lists = primitive_idxs[0];
+  R_xlen_t first_nnz = 0;
+  for (int k = 0; k < first_lists.size(); ++k) {
+    IntegerVector z = first_lists[k];
+    first_nnz += z.size();
+  }
+  R_xlen_t repeats = 1;
+  for (int j = 1; j < d; ++j) repeats *= lens[j];
+  i_out.reserve(static_cast<size_t>(first_nnz * repeats));
+  col_nnz.reserve(static_cast<size_t>(total));
+  selections.reserve(static_cast<size_t>(total * d));
+
+  for (R_xlen_t t = 0; t < total; ++t) {
+    R_xlen_t rem = t;
+    for (int j = 0; j < d; ++j) {
+      sel[j] = static_cast<int>(rem % lens[j]);
+      rem /= lens[j];
+    }
+
+    List first_list = primitive_idxs[0];
+    IntegerVector first = first_list[sel[0]];
+    std::vector<int> acc(first.begin(), first.end());
+
+    for (int j = 1; j < d && !acc.empty(); ++j) {
+      List next_list = primitive_idxs[j];
+      IntegerVector next = next_list[sel[j]];
+      std::vector<int> intersection;
+      intersection.reserve(std::min(acc.size(), static_cast<size_t>(next.size())));
+
+      size_t a = 0;
+      R_xlen_t b = 0;
+      while (a < acc.size() && b < next.size()) {
+        if (acc[a] < next[b]) ++a;
+        else if (acc[a] > next[b]) ++b;
+        else {
+          intersection.push_back(acc[a]);
+          ++a;
+          ++b;
+        }
+      }
+      acc.swap(intersection);
+    }
+
+    if (acc.empty()) continue;
+
+    ++ncol;
+    i_out.insert(i_out.end(), acc.begin(), acc.end());
+    col_nnz.push_back(static_cast<int>(acc.size()));
+    for (int j = 0; j < d; ++j) selections.push_back(sel[j] + 1);
+  }
+
+  IntegerMatrix selection(ncol, d);
+  for (int row = 0; row < ncol; ++row) {
+    for (int j = 0; j < d; ++j) {
+      selection(row, j) = selections[row * d + j];
+    }
+  }
+
+  return List::create(_["i"] = wrap(i_out),
+                      _["col_nnz"] = wrap(col_nnz),
+                      _["selection"] = selection,
+                      _["ncol"] = ncol);
+}

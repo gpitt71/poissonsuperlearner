@@ -101,6 +101,18 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// inter_cols_batch_cpp
+List inter_cols_batch_cpp(List primitive_idxs, int p_start);
+RcppExport SEXP _poissonsuperlearner_inter_cols_batch_cpp(SEXP primitive_idxsSEXP, SEXP p_startSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< List >::type primitive_idxs(primitive_idxsSEXP);
+    Rcpp::traits::input_parameter< int >::type p_start(p_startSEXP);
+    rcpp_result_gen = Rcpp::wrap(inter_cols_batch_cpp(primitive_idxs, p_start));
+    return rcpp_result_gen;
+END_RCPP
+}
 // pch_absolute_risk
 NumericVector pch_absolute_risk(IntegerVector id, NumericVector dt, NumericMatrix haz, int cause_idx, const bool one_based, const bool na_is_zero);
 RcppExport SEXP _poissonsuperlearner_pch_absolute_risk(SEXP idSEXP, SEXP dtSEXP, SEXP hazSEXP, SEXP cause_idxSEXP, SEXP one_basedSEXP, SEXP na_is_zeroSEXP) {
@@ -173,6 +185,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_poissonsuperlearner_mk_main_numeric_cpp", (DL_FUNC) &_poissonsuperlearner_mk_main_numeric_cpp, 2},
     {"_poissonsuperlearner_mk_main_factor_cpp", (DL_FUNC) &_poissonsuperlearner_mk_main_factor_cpp, 2},
     {"_poissonsuperlearner_add_cols_cpp", (DL_FUNC) &_poissonsuperlearner_add_cols_cpp, 2},
+    {"_poissonsuperlearner_inter_cols_batch_cpp", (DL_FUNC) &_poissonsuperlearner_inter_cols_batch_cpp, 2},
     {"_poissonsuperlearner_pch_absolute_risk", (DL_FUNC) &_poissonsuperlearner_pch_absolute_risk, 6},
     {"_poissonsuperlearner_pch_absolute_risk_euler", (DL_FUNC) &_poissonsuperlearner_pch_absolute_risk_euler, 6},
     {"_poissonsuperlearner_pch_survival", (DL_FUNC) &_poissonsuperlearner_pch_survival, 4},

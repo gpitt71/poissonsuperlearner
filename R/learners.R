@@ -943,6 +943,7 @@ Learner_hal <- setRefClass(
       state <- list(
         I_chunks = vector("list", 0L),
         J_chunks = vector("list", 0L),
+        P_chunks = vector("list", 0L),
         name_chunks = vector("list", 0L),
         colmeta_chunks = vector("list", 0L),
         chunk_used = 0L,
@@ -956,7 +957,13 @@ Learner_hal <- setRefClass(
           next
         mains_meta <- lapply(prim$prim_meta, function(m)
           c(list(type = "main"), m))
+        p_before <- state$p
         state <- add_cols(state, prim$idxs, prim$names, mains_meta)
+        if (state$p > p_before) {
+          state$P_chunks[[state$chunk_used]] <- lengths(prim$idxs)[
+            lengths(prim$idxs) > 0L
+          ]
+        }
       }
 
       # interactions
@@ -995,47 +1002,38 @@ Learner_hal <- setRefClass(
               length(z$idxs), integer(1L)) == 0L))
               next
 
-            lens <- vapply(prim_d, function(z)
-              length(z$idxs), integer(1L))
-            total <- prod(lens)
-            if (!total)
+            batch <- inter_cols_batch_cpp(
+              lapply(prim_d, `[[`, "idxs"),
+              p_start = state$p
+            )
+            if (!batch$ncol)
               next
 
-            for (t in 0:(total - 1L)) {
-              sel <- integer(d)
-              rem <- t
-              for (j in seq_len(d)) {
-                sel[j] <- (rem %% lens[j]) + 1L
-                rem <- rem %/% lens[j]
-              }
-
-              chosen_idx <- vector("list", d)
+            selection <- batch$selection
+            batch_names <- character(batch$ncol)
+            batch_meta <- vector("list", batch$ncol)
+            for (row in seq_len(batch$ncol)) {
+              sel <- selection[row, ]
               nm_parts <- character(d)
               parts_meta <- vector("list", d)
-
               for (j in seq_len(d)) {
-                chosen_idx[[j]] <- prim_d[[j]]$idxs[[sel[j]]]
                 nm_parts[j] <- prim_d[[j]]$names[[sel[j]]]
                 parts_meta[[j]] <- prim_d[[j]]$meta[[sel[j]]]
               }
-
-              idx_prod <- interN_cpp(chosen_idx)
-              if (!length(idx_prod))
-                next
-
-              state <- add_cols(
-                state,
-                idxs_list = list(idx_prod),
-                nm_vec = paste0(nm_parts, collapse = ":"),
-                col_meta_list = list(
-                  list(
-                    type = "interaction",
-                    order = d,
-                    parts = parts_meta
-                  )
-                )
+              batch_names[row] <- paste0(nm_parts, collapse = ":")
+              batch_meta[[row]] <- list(
+                type = "interaction",
+                order = d,
+                parts = parts_meta
               )
             }
+
+            state$chunk_used <- state$chunk_used + 1L
+            state$I_chunks[[state$chunk_used]] <- batch$i
+            state$P_chunks[[state$chunk_used]] <- batch$col_nnz
+            state$name_chunks[[state$chunk_used]] <- batch_names
+            state$colmeta_chunks[[state$chunk_used]] <- batch_meta
+            state$p <- state$p + batch$ncol
           }
         }
       }
@@ -1044,34 +1042,23 @@ Learner_hal <- setRefClass(
         stop("No basis columns created.")
 
       I_chunks <- state$I_chunks
-      J_chunks <- state$J_chunks
+      P_chunks <- state$P_chunks
       name_chunks <- state$name_chunks
       colmeta_chunks <- state$colmeta_chunks
 
       i_vec <- unlist(I_chunks, use.names = FALSE)
-      j_vec <- unlist(J_chunks, use.names = FALSE)
+      col_nnz <- unlist(P_chunks, use.names = FALSE)
 
       names_all <- unlist(name_chunks, use.names = FALSE)
       per_col_meta <- unlist(colmeta_chunks, recursive = FALSE, use.names = FALSE)
 
-      X <- Matrix::sparseMatrix(
-        i = if (length(i_vec))
-          i_vec
-        else
-          integer(),
-        j = if (length(j_vec))
-          j_vec
-        else
-          integer(),
-        x = if (length(i_vec))
-          1L
-        else
-          integer(),
-        dims = c(n, if (length(j_vec))
-          max(j_vec)
-          else
-            0L),
-        dimnames = list(NULL, names_all)
+      X <- methods::new(
+        "dgCMatrix",
+        i = as.integer(i_vec - 1L),
+        p = as.integer(c(0, cumsum(col_nnz))),
+        x = rep.int(1, length(i_vec)),
+        Dim = as.integer(c(n, length(col_nnz))),
+        Dimnames = list(NULL, names_all)
       )
 
       list(

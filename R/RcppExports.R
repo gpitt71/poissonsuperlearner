@@ -29,6 +29,10 @@ add_cols_cpp <- function(idxs_list, p_start) {
     .Call(`_poissonsuperlearner_add_cols_cpp`, idxs_list, p_start)
 }
 
+inter_cols_batch_cpp <- function(primitive_idxs, p_start) {
+    .Call(`_poissonsuperlearner_inter_cols_batch_cpp`, primitive_idxs, p_start)
+}
+
 pch_absolute_risk <- function(id, dt, haz, cause_idx, one_based = TRUE, na_is_zero = FALSE) {
     .Call(`_poissonsuperlearner_pch_absolute_risk`, id, dt, haz, cause_idx, one_based, na_is_zero)
 }
