@@ -190,6 +190,12 @@ Define base learners and fit piecewise-constant hazard models.
   [`Learner_hal`](https://gpitt71.github.io/poissonsuperlearner/reference/Learner_hal-class.md)
   : HAL learner for piecewise Poisson hazards
 
+- [`Learner_xgboost-class`](https://gpitt71.github.io/poissonsuperlearner/reference/Learner_xgboost-class.md)
+  [`Learner_xgboost`](https://gpitt71.github.io/poissonsuperlearner/reference/Learner_xgboost-class.md)
+  :
+
+  Piece-wise constant hazard via `xgboost`
+
 - [`fit_learner()`](https://gpitt71.github.io/poissonsuperlearner/reference/fit_learner.md)
   : Fit a single base learner
 

@@ -73,7 +73,7 @@ bases such as \$\$ \sum\_{r=1}^R\sum\_{p=1}^{K_1}\sum\_{q=1}^{K_2}
 - `cross_validation`:
 
   If `TRUE`, selects the penalty level using
-  [`glmnet::cv.glmnet`](https://rdrr.io/pkg/glmnet/man/cv.glmnet.html).
+  [`glmnet::cv.glmnet`](https://glmnet.stanford.edu/reference/cv.glmnet.html).
 
 - `maxit_prefit`:
 

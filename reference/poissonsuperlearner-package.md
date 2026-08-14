@@ -8,6 +8,16 @@ hazard models. For the Super Learner framework see van der Laan, Polley
 and Hubbard (2007)
 [doi:10.2202/1544-6115.1309](https://doi.org/10.2202/1544-6115.1309) .
 
+## See also
+
+Useful links:
+
+- <https://gpitt71.github.io/poissonsuperlearner/>
+
+- <https://github.com/gpitt71/poissonsuperlearner>
+
+- Report bugs at <https://github.com/gpitt71/poissonsuperlearner/issues>
+
 ## Author
 
 **Maintainer**: Gabriele Pittarello <gabriele.pittarello@sund.ku.dk>
