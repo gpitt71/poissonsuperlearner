@@ -45,6 +45,7 @@ reference:
       - Learner_glmnet
       - Learner_gam
       - Learner_hal
+      - Learner_xgboost
       - fit_learner
       - Superlearner
 
