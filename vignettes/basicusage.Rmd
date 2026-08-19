@@ -14,6 +14,7 @@ knitr::opts_chunk$set(
 )
 
 library(poissonsuperlearner)
+library(data.table)
 library(riskRegression)
 ```
 
