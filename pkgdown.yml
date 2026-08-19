@@ -3,7 +3,7 @@ pkgdown: 2.2.1
 pkgdown_sha: ~
 articles:
   basicusage: basicusage.html
-last_built: 2026-08-14T08:16Z
+last_built: 2026-08-19T07:36Z
 urls:
   reference: https://gpitt71.github.io/poissonsuperlearner/reference
   article: https://gpitt71.github.io/poissonsuperlearner/articles
