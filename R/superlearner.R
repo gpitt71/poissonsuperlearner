@@ -604,8 +604,6 @@ Superlearner <- function(data,
     }
 
     if (length(library_per_risk[[jj]]) == 1L) {
-      meta_learner_fits[[jj]] <- NULL
-      cross_validation_deviance[[jj]] <- NULL
       next
     }
 
@@ -842,7 +840,6 @@ Superlearner <- function(data,
     ## ------------------------------------------------------------
 
     if (length(z_cols) == 1L) {
-      meta_learner_fits[[jj]] <- NULL
       rm(level_one_data)
       next
     }

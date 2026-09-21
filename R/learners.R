@@ -69,11 +69,18 @@ Learner_glmnet <- setRefClass(
     fit_arguments = "list"
   ),
   methods = list(
-    initialize = function(covariates = NA_character_,
+    initialize = function(covariates = NULL,
                           cross_validation = FALSE,
                           lambda = NA_real_,
                           ...) {
-      .self$covariates <- covariates
+
+      covariates_use <- if (is.null(covariates)) {
+        character(0L)
+      } else {
+        covariates
+      }
+
+      .self$covariates <- covariates_use
 
       .self$cross_validation <- cross_validation
 
@@ -107,7 +114,7 @@ Learner_glmnet <- setRefClass(
         .self$fit_arguments[['lambda']] <- tmp
       }
 
-      .self$basic_covariates <- .self$basic_covariates_constructor(covariates)
+      .self$basic_covariates <- .self$basic_covariates_constructor(covariates_use)
 
 
     },
@@ -115,6 +122,9 @@ Learner_glmnet <- setRefClass(
 
     basic_covariates_constructor= function(covs) {
 
+      if (is.null(covs) || length(covs) == 0L) {
+        return(character(0L))
+      }
 
       covs <- covs[
         is.character(covs) &
@@ -1977,7 +1987,14 @@ Learner_gam <- setRefClass(
     initialize = function(covariates = NULL,
                           cross_validation = FALSE,
                           ...) {
-      .self$covariates <- covariates
+
+      covariates_use <- if (is.null(covariates)) {
+        character(0L)
+      } else {
+        covariates
+      }
+
+      .self$covariates <- covariates_use
       .self$cross_validation <- cross_validation
       .self$intercept <- TRUE
 
@@ -1989,7 +2006,7 @@ Learner_gam <- setRefClass(
 
       .self$fit_arguments <- list(...)
       .self$fit_arguments[['family']] <- poisson()
-      .self$basic_covariates <- .self$basic_covariates_constructor(covariates)
+      .self$basic_covariates <- .self$basic_covariates_constructor(covariates_use)
 
 
     },
@@ -1997,6 +2014,9 @@ Learner_gam <- setRefClass(
 
     basic_covariates_constructor= function(covs) {
 
+      if (is.null(covs) || length(covs) == 0L) {
+        return(character(0L))
+      }
 
       covs <- covs[
         is.character(covs) &

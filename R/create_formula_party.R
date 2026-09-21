@@ -10,27 +10,20 @@
 #' @param covariates Character vector of covariate names or `NA_character_`.
 #' @returns Character scalar formula for `deltaij`.
 #' @noRd
-create_formula_glmnet <- function(covariates=NA_character_){
+create_formula_glmnet <- function(covariates = NULL) {
 
+  rhs <- paste(
+    c(covariates[!is.na(covariates)], "node"),
+    collapse = "+"
+  )
 
-  xs<- NULL
-
-  if (!any(is.na( covariates))) {
-    xs <- paste(covariates, collapse = "+")
-  }
-
-  xs <- paste(xs, "+ node")
-
-
-  out <- paste("deltaij ~", xs, "+offset(log(tij))", sep =
-                 "")
-
-  return(out)
-
-
-
-
+  paste0(
+    "deltaij ~ ",
+    rhs,
+    " + offset(log(tij))"
+  )
 }
+
 
 #' Build a GAM formula
 #'
@@ -40,31 +33,24 @@ create_formula_glmnet <- function(covariates=NA_character_){
 #' added, and no exposure offset is included here because the backend handles it
 #' separately. The `competing_risks` argument is retained for compatibility.
 #'
-#' @param covariates Character vector of covariate names or `NA_character_`.
+#' @param covariates Character vector of covariate names or `NULL`.
 #' @param competing_risks Historical flag, currently unused.
 #' @returns Character scalar formula for `deltaij`.
 #' @noRd
-create_formula_gam <- function(covariates=NA_character_,
-                           competing_risks=FALSE){
+create_formula_gam <- function(covariates = NULL,
+                               competing_risks = FALSE) {
 
+  rhs <- paste(
+    c(covariates[!is.na(covariates)], "node"),
+    collapse = " + "
+  )
 
-
-  if (!any(is.na( covariates))) {
-    xs <- paste(covariates, collapse = "+")
-  }
-
-  xs <- paste(xs, "+ node")
-
-
-  out <- paste("deltaij ~", xs, sep =
-                 "")
-
-  return(out)
-
-
-
-
+  paste0(
+    "deltaij ~ ",
+    rhs
+  )
 }
+
 
 #' Build a HAL interaction formula
 #'
@@ -75,7 +61,7 @@ create_formula_gam <- function(covariates=NA_character_,
 #' The `competing_risks` argument is retained for compatibility. Invalid names
 #' fail later during formula parsing or basis construction.
 #'
-#' @param covariates Character vector of covariate names or `NA_character_`.
+#' @param covariates Character vector of covariate names or `NULL`.
 #' @param competing_risks Historical flag, currently unused.
 #' @param intercept Logical; whether to keep an intercept.
 #' @returns Character scalar formula with exposure offset.

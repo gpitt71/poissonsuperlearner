@@ -610,7 +610,7 @@ summary.poisson_superlearner <- function(object,
           fit_info$label
         )
       )
-      meta_out[[ii]] <- NULL
+      meta_out[[ii]] <- list(NULL)
       next
     }
 
@@ -619,7 +619,7 @@ summary.poisson_superlearner <- function(object,
 
     if (is.null(coefs)) {
       cat("  cause ", k, ": <not available>\n", sep = "")
-      meta_out[[ii]] <- NULL
+      meta_out[[ii]] <- list(NULL)
       next
     }
 
