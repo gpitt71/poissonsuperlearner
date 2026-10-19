@@ -113,6 +113,137 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// hal_poisson_irls_cpp
+List hal_poisson_irls_cpp(S4 X, NumericVector y, NumericVector offset, NumericVector lambda, NumericVector penalty_factor, bool intercept, double tol, int maxit_irls, int maxit_cd, bool active_set, bool rescale_penalty_factor, int check_interrupt_every);
+RcppExport SEXP _poissonsuperlearner_hal_poisson_irls_cpp(SEXP XSEXP, SEXP ySEXP, SEXP offsetSEXP, SEXP lambdaSEXP, SEXP penalty_factorSEXP, SEXP interceptSEXP, SEXP tolSEXP, SEXP maxit_irlsSEXP, SEXP maxit_cdSEXP, SEXP active_setSEXP, SEXP rescale_penalty_factorSEXP, SEXP check_interrupt_everySEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< S4 >::type X(XSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type y(ySEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type offset(offsetSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type lambda(lambdaSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type penalty_factor(penalty_factorSEXP);
+    Rcpp::traits::input_parameter< bool >::type intercept(interceptSEXP);
+    Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
+    Rcpp::traits::input_parameter< int >::type maxit_irls(maxit_irlsSEXP);
+    Rcpp::traits::input_parameter< int >::type maxit_cd(maxit_cdSEXP);
+    Rcpp::traits::input_parameter< bool >::type active_set(active_setSEXP);
+    Rcpp::traits::input_parameter< bool >::type rescale_penalty_factor(rescale_penalty_factorSEXP);
+    Rcpp::traits::input_parameter< int >::type check_interrupt_every(check_interrupt_everySEXP);
+    rcpp_result_gen = Rcpp::wrap(hal_poisson_irls_cpp(X, y, offset, lambda, penalty_factor, intercept, tol, maxit_irls, maxit_cd, active_set, rescale_penalty_factor, check_interrupt_every));
+    return rcpp_result_gen;
+END_RCPP
+}
+// hal_token_sums_cpp
+List hal_token_sums_cpp(NumericMatrix numeric_data, IntegerMatrix cat_data, IntegerVector var1, IntegerVector kind1, NumericVector cut1, IntegerVector level1, IntegerVector var2, IntegerVector kind2, NumericVector cut2, IntegerVector level2, NumericVector weights, NumericVector signal);
+RcppExport SEXP _poissonsuperlearner_hal_token_sums_cpp(SEXP numeric_dataSEXP, SEXP cat_dataSEXP, SEXP var1SEXP, SEXP kind1SEXP, SEXP cut1SEXP, SEXP level1SEXP, SEXP var2SEXP, SEXP kind2SEXP, SEXP cut2SEXP, SEXP level2SEXP, SEXP weightsSEXP, SEXP signalSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type numeric_data(numeric_dataSEXP);
+    Rcpp::traits::input_parameter< IntegerMatrix >::type cat_data(cat_dataSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type var1(var1SEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type kind1(kind1SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type cut1(cut1SEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type level1(level1SEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type var2(var2SEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type kind2(kind2SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type cut2(cut2SEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type level2(level2SEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type weights(weightsSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type signal(signalSEXP);
+    rcpp_result_gen = Rcpp::wrap(hal_token_sums_cpp(numeric_data, cat_data, var1, kind1, cut1, level1, var2, kind2, cut2, level2, weights, signal));
+    return rcpp_result_gen;
+END_RCPP
+}
+// hal_token_support_cpp
+IntegerVector hal_token_support_cpp(NumericMatrix numeric_data, IntegerMatrix cat_data, int var1, int kind1, double cut1, int level1, int var2, int kind2, double cut2, int level2);
+RcppExport SEXP _poissonsuperlearner_hal_token_support_cpp(SEXP numeric_dataSEXP, SEXP cat_dataSEXP, SEXP var1SEXP, SEXP kind1SEXP, SEXP cut1SEXP, SEXP level1SEXP, SEXP var2SEXP, SEXP kind2SEXP, SEXP cut2SEXP, SEXP level2SEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type numeric_data(numeric_dataSEXP);
+    Rcpp::traits::input_parameter< IntegerMatrix >::type cat_data(cat_dataSEXP);
+    Rcpp::traits::input_parameter< int >::type var1(var1SEXP);
+    Rcpp::traits::input_parameter< int >::type kind1(kind1SEXP);
+    Rcpp::traits::input_parameter< double >::type cut1(cut1SEXP);
+    Rcpp::traits::input_parameter< int >::type level1(level1SEXP);
+    Rcpp::traits::input_parameter< int >::type var2(var2SEXP);
+    Rcpp::traits::input_parameter< int >::type kind2(kind2SEXP);
+    Rcpp::traits::input_parameter< double >::type cut2(cut2SEXP);
+    Rcpp::traits::input_parameter< int >::type level2(level2SEXP);
+    rcpp_result_gen = Rcpp::wrap(hal_token_support_cpp(numeric_data, cat_data, var1, kind1, cut1, level1, var2, kind2, cut2, level2));
+    return rcpp_result_gen;
+END_RCPP
+}
+// hal_token_index_cpp
+SEXP hal_token_index_cpp(NumericMatrix numeric_data, IntegerMatrix cat_data, IntegerVector token_offsets, IntegerVector token_var, IntegerVector token_kind, NumericVector token_cut, IntegerVector token_level);
+RcppExport SEXP _poissonsuperlearner_hal_token_index_cpp(SEXP numeric_dataSEXP, SEXP cat_dataSEXP, SEXP token_offsetsSEXP, SEXP token_varSEXP, SEXP token_kindSEXP, SEXP token_cutSEXP, SEXP token_levelSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type numeric_data(numeric_dataSEXP);
+    Rcpp::traits::input_parameter< IntegerMatrix >::type cat_data(cat_dataSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type token_offsets(token_offsetsSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type token_var(token_varSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type token_kind(token_kindSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type token_cut(token_cutSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type token_level(token_levelSEXP);
+    rcpp_result_gen = Rcpp::wrap(hal_token_index_cpp(numeric_data, cat_data, token_offsets, token_var, token_kind, token_cut, token_level));
+    return rcpp_result_gen;
+END_RCPP
+}
+// hal_token_index_bytes_cpp
+double hal_token_index_bytes_cpp(SEXP index);
+RcppExport SEXP _poissonsuperlearner_hal_token_index_bytes_cpp(SEXP indexSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type index(indexSEXP);
+    rcpp_result_gen = Rcpp::wrap(hal_token_index_bytes_cpp(index));
+    return rcpp_result_gen;
+END_RCPP
+}
+// hal_token_sums_cached_cpp
+List hal_token_sums_cached_cpp(SEXP index, NumericMatrix numeric_data, IntegerMatrix cat_data, NumericVector weights, NumericVector signal);
+RcppExport SEXP _poissonsuperlearner_hal_token_sums_cached_cpp(SEXP indexSEXP, SEXP numeric_dataSEXP, SEXP cat_dataSEXP, SEXP weightsSEXP, SEXP signalSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type index(indexSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type numeric_data(numeric_dataSEXP);
+    Rcpp::traits::input_parameter< IntegerMatrix >::type cat_data(cat_dataSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type weights(weightsSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type signal(signalSEXP);
+    rcpp_result_gen = Rcpp::wrap(hal_token_sums_cached_cpp(index, numeric_data, cat_data, weights, signal));
+    return rcpp_result_gen;
+END_RCPP
+}
+// hal_token_irls_cpp
+List hal_token_irls_cpp(SEXP index, NumericMatrix numeric_data, IntegerMatrix cat_data, NumericVector y, NumericVector offset, NumericVector lambda, NumericVector penalty_factor, bool intercept, double tol, int maxit_irls, int maxit_cd, bool active_set, bool rescale_penalty_factor, bool strong_rules);
+RcppExport SEXP _poissonsuperlearner_hal_token_irls_cpp(SEXP indexSEXP, SEXP numeric_dataSEXP, SEXP cat_dataSEXP, SEXP ySEXP, SEXP offsetSEXP, SEXP lambdaSEXP, SEXP penalty_factorSEXP, SEXP interceptSEXP, SEXP tolSEXP, SEXP maxit_irlsSEXP, SEXP maxit_cdSEXP, SEXP active_setSEXP, SEXP rescale_penalty_factorSEXP, SEXP strong_rulesSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type index(indexSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type numeric_data(numeric_dataSEXP);
+    Rcpp::traits::input_parameter< IntegerMatrix >::type cat_data(cat_dataSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type y(ySEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type offset(offsetSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type lambda(lambdaSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type penalty_factor(penalty_factorSEXP);
+    Rcpp::traits::input_parameter< bool >::type intercept(interceptSEXP);
+    Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
+    Rcpp::traits::input_parameter< int >::type maxit_irls(maxit_irlsSEXP);
+    Rcpp::traits::input_parameter< int >::type maxit_cd(maxit_cdSEXP);
+    Rcpp::traits::input_parameter< bool >::type active_set(active_setSEXP);
+    Rcpp::traits::input_parameter< bool >::type rescale_penalty_factor(rescale_penalty_factorSEXP);
+    Rcpp::traits::input_parameter< bool >::type strong_rules(strong_rulesSEXP);
+    rcpp_result_gen = Rcpp::wrap(hal_token_irls_cpp(index, numeric_data, cat_data, y, offset, lambda, penalty_factor, intercept, tol, maxit_irls, maxit_cd, active_set, rescale_penalty_factor, strong_rules));
+    return rcpp_result_gen;
+END_RCPP
+}
 // pch_absolute_risk
 NumericVector pch_absolute_risk(IntegerVector id, NumericVector dt, NumericMatrix haz, int cause_idx, const bool one_based, const bool na_is_zero);
 RcppExport SEXP _poissonsuperlearner_pch_absolute_risk(SEXP idSEXP, SEXP dtSEXP, SEXP hazSEXP, SEXP cause_idxSEXP, SEXP one_basedSEXP, SEXP na_is_zeroSEXP) {
@@ -186,6 +317,13 @@ static const R_CallMethodDef CallEntries[] = {
     {"_poissonsuperlearner_mk_main_factor_cpp", (DL_FUNC) &_poissonsuperlearner_mk_main_factor_cpp, 2},
     {"_poissonsuperlearner_add_cols_cpp", (DL_FUNC) &_poissonsuperlearner_add_cols_cpp, 2},
     {"_poissonsuperlearner_inter_cols_batch_cpp", (DL_FUNC) &_poissonsuperlearner_inter_cols_batch_cpp, 2},
+    {"_poissonsuperlearner_hal_poisson_irls_cpp", (DL_FUNC) &_poissonsuperlearner_hal_poisson_irls_cpp, 12},
+    {"_poissonsuperlearner_hal_token_sums_cpp", (DL_FUNC) &_poissonsuperlearner_hal_token_sums_cpp, 12},
+    {"_poissonsuperlearner_hal_token_support_cpp", (DL_FUNC) &_poissonsuperlearner_hal_token_support_cpp, 10},
+    {"_poissonsuperlearner_hal_token_index_cpp", (DL_FUNC) &_poissonsuperlearner_hal_token_index_cpp, 7},
+    {"_poissonsuperlearner_hal_token_index_bytes_cpp", (DL_FUNC) &_poissonsuperlearner_hal_token_index_bytes_cpp, 1},
+    {"_poissonsuperlearner_hal_token_sums_cached_cpp", (DL_FUNC) &_poissonsuperlearner_hal_token_sums_cached_cpp, 5},
+    {"_poissonsuperlearner_hal_token_irls_cpp", (DL_FUNC) &_poissonsuperlearner_hal_token_irls_cpp, 14},
     {"_poissonsuperlearner_pch_absolute_risk", (DL_FUNC) &_poissonsuperlearner_pch_absolute_risk, 6},
     {"_poissonsuperlearner_pch_absolute_risk_euler", (DL_FUNC) &_poissonsuperlearner_pch_absolute_risk_euler, 6},
     {"_poissonsuperlearner_pch_survival", (DL_FUNC) &_poissonsuperlearner_pch_survival, 4},
