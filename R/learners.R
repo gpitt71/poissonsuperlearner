@@ -1484,6 +1484,11 @@ Learner_hal <- setRefClass(
             ))
           )
 
+          # A non-CV glmnet fit may contain an entire lambda path.  Keep an
+          # explicit default so higher-level prediction returns one hazard per
+          # row, consistently with the other non-CV learners.
+          fit_obj$selected_lambda <- tail(fit_obj$lambda, 1L)
+
           attach_psl_fit_meta(
             fit_obj,
             meta = fit_meta
@@ -1758,6 +1763,8 @@ Learner_hal <- setRefClass(
                 ))
               )
 
+              fit_obj$selected_lambda <- tail(fit_obj$lambda, 1L)
+
               attach_psl_fit_meta(
                 fit_obj,
                 meta = fit_meta
@@ -1893,6 +1900,12 @@ Learner_hal <- setRefClass(
 
       if (inherits(model, "cv.glmnet") && is.null(dots[["s"]])) {
         pred_args[["s"]] <- "lambda.min"
+      }
+
+      if (!inherits(model, "cv.glmnet") && is.null(dots[["s"]]) &&
+          length(model$selected_lambda) == 1L &&
+          is.finite(model$selected_lambda)) {
+        pred_args[["s"]] <- model$selected_lambda
       }
 
       out <- try(

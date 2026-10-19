@@ -33,6 +33,34 @@ inter_cols_batch_cpp <- function(primitive_idxs, p_start) {
     .Call(`_poissonsuperlearner_inter_cols_batch_cpp`, primitive_idxs, p_start)
 }
 
+hal_poisson_irls_cpp <- function(X, y, offset, lambda, penalty_factor, intercept = TRUE, tol = 1e-8, maxit_irls = 100L, maxit_cd = 10000L, active_set = TRUE, rescale_penalty_factor = TRUE, check_interrupt_every = 25L) {
+    .Call(`_poissonsuperlearner_hal_poisson_irls_cpp`, X, y, offset, lambda, penalty_factor, intercept, tol, maxit_irls, maxit_cd, active_set, rescale_penalty_factor, check_interrupt_every)
+}
+
+hal_token_sums_cpp <- function(numeric_data, cat_data, var1, kind1, cut1, level1, var2, kind2, cut2, level2, weights, signal) {
+    .Call(`_poissonsuperlearner_hal_token_sums_cpp`, numeric_data, cat_data, var1, kind1, cut1, level1, var2, kind2, cut2, level2, weights, signal)
+}
+
+hal_token_support_cpp <- function(numeric_data, cat_data, var1, kind1, cut1, level1, var2 = -1L, kind2 = -1L, cut2 = 0, level2 = -1L) {
+    .Call(`_poissonsuperlearner_hal_token_support_cpp`, numeric_data, cat_data, var1, kind1, cut1, level1, var2, kind2, cut2, level2)
+}
+
+hal_token_index_cpp <- function(numeric_data, cat_data, token_offsets, token_var, token_kind, token_cut, token_level) {
+    .Call(`_poissonsuperlearner_hal_token_index_cpp`, numeric_data, cat_data, token_offsets, token_var, token_kind, token_cut, token_level)
+}
+
+hal_token_index_bytes_cpp <- function(index) {
+    .Call(`_poissonsuperlearner_hal_token_index_bytes_cpp`, index)
+}
+
+hal_token_sums_cached_cpp <- function(index, numeric_data, cat_data, weights, signal) {
+    .Call(`_poissonsuperlearner_hal_token_sums_cached_cpp`, index, numeric_data, cat_data, weights, signal)
+}
+
+hal_token_irls_cpp <- function(index, numeric_data, cat_data, y, offset, lambda, penalty_factor, intercept = TRUE, tol = 1e-8, maxit_irls = 100L, maxit_cd = 10000L, active_set = TRUE, rescale_penalty_factor = TRUE, strong_rules = TRUE) {
+    .Call(`_poissonsuperlearner_hal_token_irls_cpp`, index, numeric_data, cat_data, y, offset, lambda, penalty_factor, intercept, tol, maxit_irls, maxit_cd, active_set, rescale_penalty_factor, strong_rules)
+}
+
 pch_absolute_risk <- function(id, dt, haz, cause_idx, one_based = TRUE, na_is_zero = FALSE) {
     .Call(`_poissonsuperlearner_pch_absolute_risk`, id, dt, haz, cause_idx, one_based, na_is_zero)
 }

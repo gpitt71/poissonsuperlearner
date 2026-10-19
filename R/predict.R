@@ -904,7 +904,8 @@ predict.poisson_superlearner <- function(object,
 #'   returned with `NA` predictions.
 #' @param cause `numeric(1)`. Cause index (1, 2, ...) used for the `absolute_risk`
 #'   calculation.
-#' @param ... Additional arguments (currently ignored).
+#' @param ... Additional arguments passed to the fitted learner's private
+#'   predictor, such as `s` to select one fitted lambda.
 #'
 #' @details
 #' **Special case `times = 0`:** when `0` is included in `times`, the returned rows
@@ -1167,7 +1168,8 @@ predict.base_learner <- function(object,
       pred_k <- object$model$private_predictor(
         model = object$learner_fit[[k]],
         newdata = endpoint_data,
-        grid_nodes = grid_nodes
+        grid_nodes = grid_nodes,
+        ...
       )
 
       if (length(pred_k) != n_expanded) {

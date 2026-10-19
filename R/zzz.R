@@ -2,6 +2,7 @@ utils::globalVariables(
   c(
     ".",
     "..columns_ss",
+    "..cause_names",
     "..z_covariates",
     "LDL_hinge3_sq",
     "age_hinge55_sq",
@@ -14,6 +15,7 @@ utils::globalVariables(
     "dummy",
     "event",
     "folder",
+    "gid",
     "id",
     "k",
     "node",
