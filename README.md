@@ -11,6 +11,8 @@ The package provides:
 * Cross-validated ensemble learning.
 * Absolute risk prediction at arbitrary time horizons.
 
+The implemented methods are described in the methodological manuscript ["Poisson Super Learning for survival and competing risks on a discretized time scale" (ArXiv:2611.03256)](https://arxiv.org/pdf/2611.03256).
+
 ---
 
 ## Installation
