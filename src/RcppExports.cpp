@@ -220,6 +220,23 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// hal_token_score_cpp
+NumericVector hal_token_score_cpp(SEXP index, NumericMatrix numeric_data, IntegerMatrix cat_data, NumericVector y, NumericVector offset, NumericVector beta, double intercept);
+RcppExport SEXP _poissonsuperlearner_hal_token_score_cpp(SEXP indexSEXP, SEXP numeric_dataSEXP, SEXP cat_dataSEXP, SEXP ySEXP, SEXP offsetSEXP, SEXP betaSEXP, SEXP interceptSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type index(indexSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type numeric_data(numeric_dataSEXP);
+    Rcpp::traits::input_parameter< IntegerMatrix >::type cat_data(cat_dataSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type y(ySEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type offset(offsetSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type beta(betaSEXP);
+    Rcpp::traits::input_parameter< double >::type intercept(interceptSEXP);
+    rcpp_result_gen = Rcpp::wrap(hal_token_score_cpp(index, numeric_data, cat_data, y, offset, beta, intercept));
+    return rcpp_result_gen;
+END_RCPP
+}
 // hal_token_irls_cpp
 List hal_token_irls_cpp(SEXP index, NumericMatrix numeric_data, IntegerMatrix cat_data, NumericVector y, NumericVector offset, NumericVector lambda, NumericVector penalty_factor, bool intercept, double tol, int maxit_irls, int maxit_cd, bool active_set, bool rescale_penalty_factor, bool strong_rules);
 RcppExport SEXP _poissonsuperlearner_hal_token_irls_cpp(SEXP indexSEXP, SEXP numeric_dataSEXP, SEXP cat_dataSEXP, SEXP ySEXP, SEXP offsetSEXP, SEXP lambdaSEXP, SEXP penalty_factorSEXP, SEXP interceptSEXP, SEXP tolSEXP, SEXP maxit_irlsSEXP, SEXP maxit_cdSEXP, SEXP active_setSEXP, SEXP rescale_penalty_factorSEXP, SEXP strong_rulesSEXP) {
@@ -323,6 +340,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_poissonsuperlearner_hal_token_index_cpp", (DL_FUNC) &_poissonsuperlearner_hal_token_index_cpp, 7},
     {"_poissonsuperlearner_hal_token_index_bytes_cpp", (DL_FUNC) &_poissonsuperlearner_hal_token_index_bytes_cpp, 1},
     {"_poissonsuperlearner_hal_token_sums_cached_cpp", (DL_FUNC) &_poissonsuperlearner_hal_token_sums_cached_cpp, 5},
+    {"_poissonsuperlearner_hal_token_score_cpp", (DL_FUNC) &_poissonsuperlearner_hal_token_score_cpp, 7},
     {"_poissonsuperlearner_hal_token_irls_cpp", (DL_FUNC) &_poissonsuperlearner_hal_token_irls_cpp, 14},
     {"_poissonsuperlearner_pch_absolute_risk", (DL_FUNC) &_poissonsuperlearner_pch_absolute_risk, 6},
     {"_poissonsuperlearner_pch_absolute_risk_euler", (DL_FUNC) &_poissonsuperlearner_pch_absolute_risk_euler, 6},

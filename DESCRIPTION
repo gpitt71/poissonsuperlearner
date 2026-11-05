@@ -25,13 +25,15 @@ Imports:
     lava,
     Matrix,
     glmnet,
+    hal9001,
     mgcv
 Suggests: 
     knitr,
     rmarkdown,
     survival,
     prodlim,
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    ggplot2
 VignetteBuilder: knitr
 LazyData: true
 Config/testthat/edition: 3

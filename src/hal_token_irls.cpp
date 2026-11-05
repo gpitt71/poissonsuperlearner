@@ -414,6 +414,39 @@ List hal_token_sums_cached_cpp(SEXP index,NumericMatrix numeric_data,IntegerMatr
  return List::create(_["curvature"]=curvature,_["gradient"]=gradient);
 }
 
+// Evaluate the score X' (y - mu) / n for an already fitted token model.
+// This is used to obtain lambda_max without constructing the HAL design.
+namespace {
+inline std::vector<int> token_rows(const Prepared& P,const NumericMatrix& x,
+                                   const IntegerMatrix& cat,int j);
+}
+// [[Rcpp::export]]
+NumericVector hal_token_score_cpp(SEXP index, NumericMatrix numeric_data,
+    IntegerMatrix cat_data, NumericVector y, NumericVector offset,
+    NumericVector beta, double intercept) {
+  XPtr<Prepared> P(index);
+  int n=numeric_data.nrow(),p=P->tokens.size();
+  if(cat_data.nrow()!=n||y.size()!=n||offset.size()!=n||beta.size()!=p)
+    stop("Mismatched token score dimensions.");
+  std::vector<double> eta(n,intercept);
+  for(int i=0;i<n;++i){
+    if(!std::isfinite(y[i])||y[i]<0||!std::isfinite(offset[i]))
+      stop("Invalid token score response or offset.");
+    eta[i]+=offset[i];
+  }
+  for(int j=0;j<p;++j)if(beta[j]!=0){
+    auto rows=token_rows(*P,numeric_data,cat_data,j);
+    for(int i:rows)eta[i]+=beta[j];
+  }
+  NumericVector signal(n),weights(n,1.0);
+  for(int i=0;i<n;++i){
+    if(!std::isfinite(eta[i])||eta[i]>700)stop("Nonfinite token score predictor.");
+    signal[i]=y[i]-std::exp(std::max(-745.0,eta[i]));
+  }
+  List sums=hal_token_sums_cached_cpp(index,numeric_data,cat_data,weights,signal);
+  return sums["gradient"];
+}
+
 // Token-only Poisson IRLS.  The cached Prepared index is retained for the path.
 #include <chrono>
 namespace {

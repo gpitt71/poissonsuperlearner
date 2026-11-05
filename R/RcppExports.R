@@ -57,6 +57,10 @@ hal_token_sums_cached_cpp <- function(index, numeric_data, cat_data, weights, si
     .Call(`_poissonsuperlearner_hal_token_sums_cached_cpp`, index, numeric_data, cat_data, weights, signal)
 }
 
+hal_token_score_cpp <- function(index, numeric_data, cat_data, y, offset, beta, intercept) {
+    .Call(`_poissonsuperlearner_hal_token_score_cpp`, index, numeric_data, cat_data, y, offset, beta, intercept)
+}
+
 hal_token_irls_cpp <- function(index, numeric_data, cat_data, y, offset, lambda, penalty_factor, intercept = TRUE, tol = 1e-8, maxit_irls = 100L, maxit_cd = 10000L, active_set = TRUE, rescale_penalty_factor = TRUE, strong_rules = TRUE) {
     .Call(`_poissonsuperlearner_hal_token_irls_cpp`, index, numeric_data, cat_data, y, offset, lambda, penalty_factor, intercept, tol, maxit_irls, maxit_cd, active_set, rescale_penalty_factor, strong_rules)
 }

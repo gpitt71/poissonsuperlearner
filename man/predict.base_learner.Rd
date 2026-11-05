@@ -24,7 +24,8 @@ returned with \code{NA} predictions.}
 \item{cause}{\code{numeric(1)}. Cause index (1, 2, ...) used for the \code{absolute_risk}
 calculation.}
 
-\item{...}{Additional arguments (currently ignored).}
+\item{...}{Additional arguments passed to the fitted learner's private
+predictor, such as \code{s} to select one fitted lambda.}
 }
 \value{
 A \code{data.table} with one row per \verb{(row in newdata, time in times)} and columns:
